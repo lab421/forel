@@ -46,7 +46,7 @@ pub fn evaluate(condition: &Condition, path: &Path) -> Result<bool> {
         }
 
         ConditionKind::Tags => {
-            let target = condition.value.to_lowercase();
+            let target = condition.value.trim().to_lowercase();
             // Tag names only (drop the "\nN" colour-index suffix if present).
             let names: Vec<String> = super::action::read_file_tags(path)
                 .iter()
@@ -129,8 +129,7 @@ fn detect_kind(path: &Path, meta: &std::fs::Metadata) -> &'static str {
         Some("dmg" | "iso" | "img" | "sparseimage" | "sparsebundle") => "disk_image",
 
         Some(
-            "doc" | "docx" | "odt" | "pages" | "xls" | "xlsx" | "ods" | "numbers" | "csv"
-            | "epub",
+            "doc" | "docx" | "odt" | "pages" | "xls" | "xlsx" | "ods" | "numbers" | "csv" | "epub",
         ) => "document",
 
         _ => "document",
@@ -168,4 +167,171 @@ fn parse_size(value: &str) -> u64 {
         _ => 1.0,
     };
     (n * mult) as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, path::PathBuf};
+
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::rules::{
+        action,
+        model::{Action, ActionKind},
+    };
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new() -> Self {
+            let path =
+                std::env::temp_dir().join(format!("forel-condition-test-{}", Uuid::new_v4()));
+            fs::create_dir(&path).expect("create temp test directory");
+            Self { path }
+        }
+
+        fn file(&self, name: &str, contents: &str) -> PathBuf {
+            let path = self.path.join(name);
+            fs::write(&path, contents).expect("write temp test file");
+            path
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn condition(kind: ConditionKind, operator: Operator, value: &str) -> Condition {
+        Condition {
+            id: Uuid::new_v4().to_string(),
+            rule_id: "rule".to_string(),
+            kind,
+            operator,
+            value: value.to_string(),
+        }
+    }
+
+    fn test_action(kind: ActionKind, params: serde_json::Value) -> Action {
+        Action {
+            id: Uuid::new_v4().to_string(),
+            rule_id: "rule".to_string(),
+            kind,
+            params,
+            position: 0,
+        }
+    }
+
+    #[test]
+    fn parse_size_supports_bytes_and_binary_units() {
+        assert_eq!(parse_size("1024"), 1024);
+        assert_eq!(parse_size("1 KB"), 1024);
+        assert_eq!(parse_size("1.5 MB"), 1_572_864);
+        assert_eq!(parse_size("2GB"), 2_147_483_648);
+        assert_eq!(parse_size("bad value"), 0);
+    }
+
+    #[test]
+    fn size_condition_compares_parsed_thresholds() {
+        let dir = TestDir::new();
+        let file = dir.file("data.bin", "1234567890");
+
+        assert!(evaluate(
+            &condition(ConditionKind::SizeBytes, Operator::Is, "10 bytes"),
+            &file
+        )
+        .expect("evaluate size is"));
+        assert!(evaluate(
+            &condition(ConditionKind::SizeBytes, Operator::LessThan, "1 KB"),
+            &file
+        )
+        .expect("evaluate size less than"));
+    }
+
+    #[test]
+    fn tag_condition_matches_trimmed_case_insensitive_tag_names() {
+        let dir = TestDir::new();
+        let file = dir.file("document.txt", "hello");
+        let add_tag = test_action(ActionKind::AddTag, json!({ "tag": "Project" }));
+
+        action::execute(&add_tag, &file).expect("add tag");
+
+        assert!(evaluate(
+            &condition(ConditionKind::Tags, Operator::Is, " project "),
+            &file
+        )
+        .expect("evaluate tag equality"));
+        assert!(evaluate(
+            &condition(ConditionKind::Tags, Operator::Contains, "roj"),
+            &file
+        )
+        .expect("evaluate tag contains"));
+        assert!(evaluate(
+            &condition(ConditionKind::Tags, Operator::MatchesRegex, "^proj"),
+            &file
+        )
+        .expect("evaluate tag regex"));
+    }
+
+    #[test]
+    fn color_label_condition_matches_finder_color_tag_name() {
+        let dir = TestDir::new();
+        let file = dir.file("image.png", "png");
+        let set_red = test_action(ActionKind::SetColorLabel, json!({ "color": "Red" }));
+
+        action::execute(&set_red, &file).expect("set color label");
+
+        assert!(evaluate(
+            &condition(ConditionKind::ColorLabel, Operator::Is, "red"),
+            &file
+        )
+        .expect("evaluate red label"));
+        assert!(evaluate(
+            &condition(ConditionKind::ColorLabel, Operator::IsNot, "blue"),
+            &file
+        )
+        .expect("evaluate missing blue label"));
+    }
+
+    #[test]
+    fn kind_condition_classifies_common_file_types_and_directories() {
+        let dir = TestDir::new();
+        let pdf = dir.file("paper.pdf", "%PDF");
+        let image = dir.file("photo.heic", "image");
+        let archive = dir.file("backup.tar", "archive");
+        let folder = dir.path.join("Folder");
+        fs::create_dir(&folder).expect("create folder");
+        let app = dir.path.join("Example.app");
+        fs::create_dir(&app).expect("create app bundle");
+
+        assert!(
+            evaluate(&condition(ConditionKind::Kind, Operator::Is, "pdf"), &pdf)
+                .expect("evaluate pdf kind")
+        );
+        assert!(evaluate(
+            &condition(ConditionKind::Kind, Operator::Is, "image"),
+            &image
+        )
+        .expect("evaluate image kind"));
+        assert!(evaluate(
+            &condition(ConditionKind::Kind, Operator::Is, "archive"),
+            &archive
+        )
+        .expect("evaluate archive kind"));
+        assert!(evaluate(
+            &condition(ConditionKind::Kind, Operator::Is, "folder"),
+            &folder
+        )
+        .expect("evaluate folder kind"));
+        assert!(evaluate(
+            &condition(ConditionKind::Kind, Operator::Is, "application"),
+            &app
+        )
+        .expect("evaluate application kind"));
+    }
 }

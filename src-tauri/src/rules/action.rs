@@ -27,8 +27,7 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
                 .context("CopyToFolder requires 'destination' param")?;
             let file_name = path.file_name().context("no file name")?;
             let dest = Path::new(dest_dir).join(file_name);
-            std::fs::copy(path, &dest)
-                .with_context(|| format!("copy {:?} → {:?}", path, dest))?;
+            std::fs::copy(path, &dest).with_context(|| format!("copy {:?} → {:?}", path, dest))?;
         }
 
         ActionKind::Rename => {
@@ -82,7 +81,7 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
                 .params
                 .get("color")
                 .and_then(|v| v.as_str())
-                .context("SetColorLabel requires 'color' param")?;
+                .unwrap_or("");
             set_color_label(path, color)?;
         }
 
@@ -122,7 +121,7 @@ fn apply_rename_pattern(pattern: &str, path: &Path) -> Result<String> {
         bail!("rename pattern produced empty filename");
     }
 
-    if ext.is_empty() {
+    if ext.is_empty() || pattern.contains("{extension}") {
         Ok(result)
     } else {
         Ok(format!("{}.{}", result, ext))
@@ -222,5 +221,113 @@ fn capitalize(s: &str) -> String {
     match chars.next() {
         Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
         None => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, path::PathBuf};
+
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::*;
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!("forel-action-test-{}", Uuid::new_v4()));
+            fs::create_dir(&path).expect("create temp test directory");
+            Self { path }
+        }
+
+        fn file(&self, name: &str, contents: &str) -> PathBuf {
+            let path = self.path.join(name);
+            fs::write(&path, contents).expect("write temp test file");
+            path
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn test_action(kind: ActionKind, params: serde_json::Value) -> Action {
+        Action {
+            id: Uuid::new_v4().to_string(),
+            rule_id: "rule".to_string(),
+            kind,
+            params,
+            position: 0,
+        }
+    }
+
+    #[test]
+    fn add_and_remove_tag_updates_finder_tag_xattr_without_duplicates() {
+        let dir = TestDir::new();
+        let file = dir.file("document.txt", "hello");
+        let add = test_action(ActionKind::AddTag, json!({ "tag": "Project" }));
+        let remove = test_action(ActionKind::RemoveTag, json!({ "tag": "Project" }));
+
+        execute(&add, &file).expect("add tag once");
+        execute(&add, &file).expect("add tag twice");
+        assert_eq!(read_file_tags(&file), vec!["Project".to_string()]);
+
+        execute(&remove, &file).expect("remove tag");
+        assert!(read_file_tags(&file).is_empty());
+    }
+
+    #[test]
+    fn set_color_label_replaces_existing_color_and_preserves_text_tags() {
+        let dir = TestDir::new();
+        let file = dir.file("image.png", "png");
+        let add_text_tag = test_action(ActionKind::AddTag, json!({ "tag": "Project" }));
+        let set_red = test_action(ActionKind::SetColorLabel, json!({ "color": "Red" }));
+        let set_blue = test_action(ActionKind::SetColorLabel, json!({ "color": "Blue" }));
+
+        execute(&add_text_tag, &file).expect("add text tag");
+        execute(&set_red, &file).expect("set red label");
+        execute(&set_blue, &file).expect("replace with blue label");
+
+        assert_eq!(
+            read_file_tags(&file),
+            vec!["Project".to_string(), "Blue\n4".to_string()]
+        );
+    }
+
+    #[test]
+    fn set_color_label_with_missing_color_clears_existing_label() {
+        let dir = TestDir::new();
+        let file = dir.file("image.png", "png");
+        let add_text_tag = test_action(ActionKind::AddTag, json!({ "tag": "Project" }));
+        let set_red = test_action(ActionKind::SetColorLabel, json!({ "color": "Red" }));
+        let clear = test_action(ActionKind::SetColorLabel, json!({}));
+
+        execute(&add_text_tag, &file).expect("add text tag");
+        execute(&set_red, &file).expect("set red label");
+        execute(&clear, &file).expect("clear label");
+
+        assert_eq!(read_file_tags(&file), vec!["Project".to_string()]);
+    }
+
+    #[test]
+    fn rename_pattern_does_not_append_extension_twice_when_extension_token_is_used() {
+        let dir = TestDir::new();
+        let file = dir.file("report.txt", "hello");
+        let rename = test_action(
+            ActionKind::Rename,
+            json!({ "pattern": "{name}-archived.{extension}" }),
+        );
+
+        execute(&rename, &file).expect("rename file");
+
+        assert!(!file.exists());
+        assert!(dir.path.join("report-archived.txt").exists());
+        assert!(!dir.path.join("report-archived.txt.txt").exists());
     }
 }

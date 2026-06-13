@@ -55,7 +55,8 @@ pub fn init(conn: &Connection) -> Result<()> {
 pub fn list_custom_tags(conn: &Connection) -> Result<Vec<String>> {
     let mut stmt = conn.prepare("SELECT name FROM custom_tags ORDER BY name")?;
     let rows = stmt.query_map([], |row| row.get(0))?;
-    rows.collect::<rusqlite::Result<_>>().context("list custom tags")
+    rows.collect::<rusqlite::Result<_>>()
+        .context("list custom tags")
 }
 
 pub fn insert_custom_tag(conn: &Connection, name: &str) -> Result<()> {
@@ -69,9 +70,8 @@ pub fn insert_custom_tag(conn: &Connection, name: &str) -> Result<()> {
 // ---------- WatchedFolder ----------
 
 pub fn list_folders(conn: &Connection) -> Result<Vec<WatchedFolder>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, path, enabled, created_at FROM watched_folders ORDER BY created_at",
-    )?;
+    let mut stmt = conn
+        .prepare("SELECT id, path, enabled, created_at FROM watched_folders ORDER BY created_at")?;
     let rows = stmt.query_map([], |row| {
         Ok(WatchedFolder {
             id: row.get(0)?,
@@ -80,13 +80,19 @@ pub fn list_folders(conn: &Connection) -> Result<Vec<WatchedFolder>> {
             created_at: row.get(3)?,
         })
     })?;
-    rows.collect::<rusqlite::Result<_>>().context("list folders")
+    rows.collect::<rusqlite::Result<_>>()
+        .context("list folders")
 }
 
 pub fn insert_folder(conn: &Connection, folder: &WatchedFolder) -> Result<()> {
     conn.execute(
         "INSERT INTO watched_folders (id, path, enabled, created_at) VALUES (?1,?2,?3,?4)",
-        params![folder.id, folder.path, folder.enabled as i64, folder.created_at],
+        params![
+            folder.id,
+            folder.path,
+            folder.enabled as i64,
+            folder.created_at
+        ],
     )?;
     Ok(())
 }
@@ -174,33 +180,44 @@ pub fn insert_rule(conn: &Connection, rule: &Rule) -> Result<()> {
 }
 
 pub fn update_rule(conn: &Connection, rule: &Rule) -> Result<()> {
-    let match_str = if rule.condition_match == ConditionMatch::Any {
-        "any"
-    } else {
-        "all"
-    };
-    conn.execute(
-        "UPDATE rules SET name=?1, enabled=?2, condition_match=?3, priority=?4 WHERE id=?5",
-        params![
-            rule.name,
-            rule.enabled as i64,
-            match_str,
-            rule.priority,
-            rule.id
-        ],
-    )?;
+    conn.execute_batch("BEGIN IMMEDIATE")?;
 
-    // Replace conditions and actions
-    conn.execute("DELETE FROM conditions WHERE rule_id=?1", params![rule.id])?;
-    conn.execute("DELETE FROM actions WHERE rule_id=?1", params![rule.id])?;
+    let result = (|| -> Result<()> {
+        let match_str = if rule.condition_match == ConditionMatch::Any {
+            "any"
+        } else {
+            "all"
+        };
+        conn.execute(
+            "UPDATE rules SET name=?1, enabled=?2, condition_match=?3, priority=?4 WHERE id=?5",
+            params![
+                rule.name,
+                rule.enabled as i64,
+                match_str,
+                rule.priority,
+                rule.id
+            ],
+        )?;
 
-    for cond in &rule.conditions {
-        insert_condition(conn, cond)?;
+        conn.execute("DELETE FROM conditions WHERE rule_id=?1", params![rule.id])?;
+        conn.execute("DELETE FROM actions WHERE rule_id=?1", params![rule.id])?;
+
+        for cond in &rule.conditions {
+            insert_condition(conn, cond)?;
+        }
+        for act in &rule.actions {
+            insert_action(conn, act)?;
+        }
+
+        Ok(())
+    })();
+
+    if let Err(err) = result {
+        let _ = conn.execute_batch("ROLLBACK");
+        return Err(err);
     }
-    for act in &rule.actions {
-        insert_action(conn, act)?;
-    }
 
+    conn.execute_batch("COMMIT")?;
     Ok(())
 }
 
@@ -220,9 +237,8 @@ pub fn toggle_rule(conn: &Connection, id: &str, enabled: bool) -> Result<()> {
 // ---------- Conditions ----------
 
 fn list_conditions(conn: &Connection, rule_id: &str) -> Result<Vec<Condition>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, rule_id, kind, operator, value FROM conditions WHERE rule_id=?1",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT id, rule_id, kind, operator, value FROM conditions WHERE rule_id=?1")?;
     let rows = stmt.query_map(params![rule_id], |row| {
         Ok(Condition {
             id: row.get(0)?,
@@ -232,7 +248,8 @@ fn list_conditions(conn: &Connection, rule_id: &str) -> Result<Vec<Condition>> {
             value: row.get(4)?,
         })
     })?;
-    rows.collect::<rusqlite::Result<_>>().context("list conditions")
+    rows.collect::<rusqlite::Result<_>>()
+        .context("list conditions")
 }
 
 fn insert_condition(conn: &Connection, cond: &Condition) -> Result<()> {
@@ -265,7 +282,8 @@ fn list_actions(conn: &Connection, rule_id: &str) -> Result<Vec<Action>> {
             position: row.get(4)?,
         })
     })?;
-    rows.collect::<rusqlite::Result<_>>().context("list actions")
+    rows.collect::<rusqlite::Result<_>>()
+        .context("list actions")
 }
 
 fn insert_action(conn: &Connection, act: &Action) -> Result<()> {
@@ -361,5 +379,146 @@ fn parse_action_kind(s: &str) -> ActionKind {
         "set_color_label" => ActionKind::SetColorLabel,
         "run_script" => ActionKind::RunScript,
         _ => ActionKind::MoveToFolder,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::*;
+
+    fn connection() -> Connection {
+        let conn = Connection::open_in_memory().expect("open in-memory database");
+        init(&conn).expect("initialize schema");
+        conn
+    }
+
+    fn folder() -> WatchedFolder {
+        WatchedFolder {
+            id: Uuid::new_v4().to_string(),
+            path: format!("/tmp/forel-test-{}", Uuid::new_v4()),
+            enabled: true,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    fn rule(folder_id: &str, name: &str) -> Rule {
+        Rule {
+            id: Uuid::new_v4().to_string(),
+            folder_id: folder_id.to_string(),
+            name: name.to_string(),
+            enabled: true,
+            condition_match: ConditionMatch::All,
+            conditions: Vec::new(),
+            actions: Vec::new(),
+            priority: 0,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    fn condition(rule_id: &str, kind: ConditionKind, operator: Operator, value: &str) -> Condition {
+        Condition {
+            id: Uuid::new_v4().to_string(),
+            rule_id: rule_id.to_string(),
+            kind,
+            operator,
+            value: value.to_string(),
+        }
+    }
+
+    fn action(rule_id: &str, kind: ActionKind, params: serde_json::Value, position: i64) -> Action {
+        Action {
+            id: Uuid::new_v4().to_string(),
+            rule_id: rule_id.to_string(),
+            kind,
+            params,
+            position,
+        }
+    }
+
+    #[test]
+    fn rule_round_trip_preserves_new_tag_and_color_variants() {
+        let conn = connection();
+        let folder = folder();
+        insert_folder(&conn, &folder).expect("insert folder");
+        let mut rule = rule(&folder.id, "tagged images");
+        insert_rule(&conn, &rule).expect("insert rule");
+
+        rule.condition_match = ConditionMatch::Any;
+        rule.conditions = vec![
+            condition(&rule.id, ConditionKind::Tags, Operator::Is, "Project"),
+            condition(
+                &rule.id,
+                ConditionKind::SizeBytes,
+                Operator::GreaterThan,
+                "1 MB",
+            ),
+        ];
+        rule.actions = vec![
+            action(
+                &rule.id,
+                ActionKind::SetColorLabel,
+                json!({ "color": "Blue" }),
+                2,
+            ),
+            action(
+                &rule.id,
+                ActionKind::AddTag,
+                json!({ "tag": "Reviewed" }),
+                1,
+            ),
+        ];
+
+        update_rule(&conn, &rule).expect("update rule with children");
+
+        let rules = list_rules(&conn, &folder.id).expect("list rules");
+        assert_eq!(rules.len(), 1);
+        let loaded = &rules[0];
+        assert_eq!(loaded.condition_match, ConditionMatch::Any);
+        assert_eq!(loaded.conditions[0].kind, ConditionKind::Tags);
+        assert_eq!(loaded.conditions[0].operator, Operator::Is);
+        assert_eq!(loaded.conditions[0].value, "Project");
+        assert_eq!(loaded.conditions[1].kind, ConditionKind::SizeBytes);
+        assert_eq!(loaded.actions[0].kind, ActionKind::AddTag);
+        assert_eq!(loaded.actions[0].params, json!({ "tag": "Reviewed" }));
+        assert_eq!(loaded.actions[1].kind, ActionKind::SetColorLabel);
+        assert_eq!(loaded.actions[1].params, json!({ "color": "Blue" }));
+    }
+
+    #[test]
+    fn update_rule_rolls_back_when_replacing_children_fails() {
+        let conn = connection();
+        let folder = folder();
+        insert_folder(&conn, &folder).expect("insert folder");
+        let mut original = rule(&folder.id, "original");
+        insert_rule(&conn, &original).expect("insert rule");
+
+        original.conditions = vec![condition(
+            &original.id,
+            ConditionKind::Name,
+            Operator::Contains,
+            "invoice",
+        )];
+        update_rule(&conn, &original).expect("insert original children");
+
+        let mut invalid_update = original.clone();
+        invalid_update.name = "updated".to_string();
+        invalid_update.conditions = vec![condition(
+            "missing-rule-id",
+            ConditionKind::Extension,
+            Operator::Is,
+            "pdf",
+        )];
+
+        assert!(update_rule(&conn, &invalid_update).is_err());
+
+        let rules = list_rules(&conn, &folder.id).expect("list rules after failed update");
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].name, "original");
+        assert_eq!(rules[0].conditions.len(), 1);
+        assert_eq!(rules[0].conditions[0].kind, ConditionKind::Name);
+        assert_eq!(rules[0].conditions[0].value, "invoice");
     }
 }
