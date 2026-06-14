@@ -43,6 +43,9 @@ tasks:
       - sh: '{{if eq .OBFUSCATED "true"}}command -v garble >/dev/null 2>&1{{else}}true{{end}}'
         msg: "garble is required for obfuscated builds. Install it with: go install mvdan.cc/garble@v0.16.0 (requires Go 1.24+). See https://github.com/burrowers/garble/releases for version/toolchain compatibility."
     cmds:
+      # Remove any prior output first: go build refuses to overwrite a leftover
+      # universal (fat) binary from a previous `dmg`/`package:universal` run.
+      - rm -f "{{.OUTPUT}}"
       - '{{if eq .OBFUSCATED "true"}}garble {{.GARBLE_ARGS}} build{{else}}go build{{end}} {{.BUILD_FLAGS}} -o "{{.OUTPUT}}"'
     vars:
       BUILD_FLAGS: '{{if eq .DEV "true"}}{{if or .EXTRA_TAGS (eq .OBFUSCATED "true")}}-tags {{if eq .OBFUSCATED "true"}}wails_obfuscated{{if .EXTRA_TAGS}},{{end}}{{end}}{{.EXTRA_TAGS}} {{end}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production{{if eq .OBFUSCATED "true"}},wails_obfuscated{{end}}{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
@@ -85,6 +88,27 @@ tasks:
     cmds:
       - task: create:app:bundle
 
+  dmg:
+    summary: Builds a universal .app and wraps it in a distributable .dmg
+    deps:
+      - task: package:universal
+    cmds:
+      - task: create:dmg
+
+  create:dmg:
+    summary: Creates a drag-to-Applications .dmg from the built .app
+    internal: true
+    cmds:
+      - |
+        set -euo pipefail
+        APP="{{.BIN_DIR}}/{{.APP_NAME}}.app"
+        DMG="{{.BIN_DIR}}/{{.APP_NAME}}.dmg"
+        STAGING="$(mktemp -d)"
+        cp -R "$APP" "$STAGING/"
+        ln -s /Applications "$STAGING/Applications"
+        rm -f "$DMG"
+        hdiutil create -volname "{{.APP_NAME}}" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
+        rm -rf "$STAGING"
 
   create:app:bundle:
     summary: Creates an `.app` bundle

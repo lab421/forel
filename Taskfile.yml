@@ -21,6 +21,11 @@ tasks:
     cmds:
       - task: "{{OS}}:package"
 
+  dmg:
+    summary: Builds a universal (Intel + Apple Silicon) .dmg
+    cmds:
+      - task: "{{OS}}:dmg"
+
   run:
     summary: Runs the application
     cmds:
