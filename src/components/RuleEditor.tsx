@@ -2,8 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Check, Minus, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useForelStore } from "../store";
-import {
+import { useForelStore } from "../store";import {
   ACTION_KIND_LABELS,
   Action,
   ActionKind,
@@ -459,48 +458,72 @@ function ActionRow({
 
 // ---------- Rename pattern editor ----------
 //
-// Parses a pattern string like "{name} - {date_modified}.{extension}" into
-// interleaved text and token segments. Tokens are shown as removable chips;
-// text is editable inline. A palette below lets the user click-to-insert tokens.
+// Uses a contenteditable div. Tokens are rendered as <span contenteditable="false">
+// so the browser treats each one as a single atomic character — a single
+// Backspace or Delete removes the whole token. Free text between tokens is
+// editable normally. The DOM is the source of truth while editing; the pattern
+// string is reconstructed by walking child nodes on every input event.
 
-type PatternSegment = { kind: "text"; value: string } | { kind: "token"; key: string };
-
-function parsePattern(pattern: string): PatternSegment[] {
-  const segments: PatternSegment[] = [];
-  const re = /\{([^}]+)\}/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(pattern)) !== null) {
-    if (m.index > last) segments.push({ kind: "text", value: pattern.slice(last, m.index) });
-    const tokenKey = m[1];
-    const known = RENAME_TOKENS.find((t) => t.key === tokenKey);
-    if (known) {
-      segments.push({ kind: "token", key: tokenKey });
-    } else {
-      segments.push({ kind: "text", value: m[0] });
-    }
-    last = m.index + m[0].length;
-  }
-  if (last < pattern.length) segments.push({ kind: "text", value: pattern.slice(last) });
-  return segments;
-}
-
-function segmentsToPattern(segments: PatternSegment[]): string {
-  return segments.map((s) => (s.kind === "token" ? `{${s.key}}` : s.value)).join("");
-}
-
-// Builds a human-readable preview of the rename result using the example value
-// for each token. Mirrors the extension-auto-append logic in action.rs.
+// Builds a human-readable preview using example values for each token.
 function previewPattern(pattern: string): string {
   if (!pattern.trim()) return "";
   let result = pattern;
   for (const t of RENAME_TOKENS) {
     result = result.replace(new RegExp(`\\{${t.key}\\}`, "g"), t.example);
   }
-  // Auto-append .pdf extension when {extension} is not in the pattern (matches Rust logic)
-  if (!pattern.includes("{extension}")) {
-    result = `${result}.pdf`;
+  if (!pattern.includes("{extension}")) result = `${result}.pdf`;
+  return result;
+}
+
+// Token key embedded as a data attribute in the DOM.
+const TOKEN_ATTR = "data-token";
+
+// Build the initial DOM HTML from a pattern string.
+function patternToHtml(pattern: string): string {
+  const re = /\{([^}]+)\}/g;
+  let html = "";
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(pattern)) !== null) {
+    if (m.index > last) html += escapeHtml(pattern.slice(last, m.index));
+    const key = m[1];
+    const token = RENAME_TOKENS.find((t) => t.key === key);
+    if (token) {
+      html += tokenChipHtml(key, token.label);
+    } else {
+      html += escapeHtml(m[0]);
+    }
+    last = m.index + m[0].length;
   }
+  if (last < pattern.length) html += escapeHtml(pattern.slice(last));
+  return html;
+}
+
+function tokenChipHtml(key: string, label: string): string {
+  return `<span contenteditable="false" ${TOKEN_ATTR}="${key}" class="rename-token-chip">${escapeHtml(label)}</span>`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Walk the contenteditable DOM and reconstruct the pattern string.
+function domToPattern(el: HTMLElement): string {
+  let result = "";
+  el.childNodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      result += node.textContent ?? "";
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const span = node as HTMLElement;
+      const key = span.getAttribute(TOKEN_ATTR);
+      if (key) {
+        result += `{${key}}`;
+      } else {
+        // Nested element without token attr (e.g. a <br> inserted by the browser)
+        result += span.textContent ?? "";
+      }
+    }
+  });
   return result;
 }
 
@@ -511,152 +534,155 @@ function RenamePatternEditor({
   value: string;
   onChange: (pattern: string) => void;
 }) {
-  const [segments, setSegments] = useState<PatternSegment[]>(() => parsePattern(value));
-  // Track which text segment is being edited (index into segments)
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [focused, setFocused] = useState(false);
+  // Track the last pattern we wrote into the DOM so we don't clobber the DOM
+  // on re-renders triggered by our own onChange calls.
+  const lastWritten = useRef<string | null>(null);
 
-  // Sync outward whenever segments change
-  const emit = (segs: PatternSegment[]) => {
-    setSegments(segs);
-    onChange(segmentsToPattern(segs));
-  };
+  // Initialise or sync the DOM when value changes from outside.
+  useEffect(() => {
+    const el = editorRef.current;
+    if (!el) return;
+    if (lastWritten.current === value) return; // our own change, skip
+    lastWritten.current = value;
+    el.innerHTML = patternToHtml(value);
+  }, [value]);
 
-  // When the editor loses focus, merge adjacent text segments and clean up empties
-  const normalise = (segs: PatternSegment[]): PatternSegment[] => {
-    const out: PatternSegment[] = [];
-    for (const s of segs) {
-      const prev = out[out.length - 1];
-      if (s.kind === "text" && prev?.kind === "text") {
-        out[out.length - 1] = { kind: "text", value: prev.value + s.value };
-      } else if (s.kind !== "text" || s.value !== "") {
-        out.push(s);
-      }
-    }
-    return out;
-  };
-
-  const removeSegment = (i: number) => {
-    const next = normalise(segments.filter((_, idx) => idx !== i));
-    setEditingIndex(null);
-    emit(next);
-  };
-
-  const updateText = (i: number, text: string) => {
-    const next = segments.map((s, idx) =>
-      idx === i && s.kind === "text" ? { kind: "text" as const, value: text } : s
-    );
-    emit(next);
+  const handleInput = () => {
+    const el = editorRef.current;
+    if (!el) return;
+    const pattern = domToPattern(el);
+    lastWritten.current = pattern;
+    onChange(pattern);
   };
 
   const insertToken = (key: string) => {
-    // Insert after the currently editing text segment, or at end
-    const insertAfter = editingIndex ?? segments.length - 1;
-    const newSegs = [...segments];
-    // Split the text segment at cursor (we insert at end of the text segment)
-    const insertAt = insertAfter + 1;
-    newSegs.splice(insertAt, 0, { kind: "token", key }, { kind: "text", value: "" });
-    const normalised = normalise(newSegs);
-    emit(normalised);
-    // Focus the text segment after the new token
-    const newTokenIdx = normalised.findIndex(
-      (s, i) => s.kind === "token" && s.key === key && i >= insertAt - 1
-    );
-    setEditingIndex(newTokenIdx + 1 < normalised.length ? newTokenIdx + 1 : null);
+    const el = editorRef.current;
+    if (!el) return;
+    el.focus();
+
+    const token = RENAME_TOKENS.find((t) => t.key === key);
+    if (!token) return;
+
+    // Insert the chip at the current selection position.
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+
+      const chip = document.createElement("span");
+      chip.setAttribute("contenteditable", "false");
+      chip.setAttribute(TOKEN_ATTR, key);
+      chip.className = "rename-token-chip";
+      chip.textContent = token.label;
+      range.insertNode(chip);
+
+      // Place cursor after the inserted chip.
+      range.setStartAfter(chip);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      // No selection — append at end.
+      const chip = document.createElement("span");
+      chip.setAttribute("contenteditable", "false");
+      chip.setAttribute(TOKEN_ATTR, key);
+      chip.className = "rename-token-chip";
+      chip.textContent = token.label;
+      el.appendChild(chip);
+    }
+
+    handleInput();
   };
 
-  const handleContainerClick = () => {
-    // If no text segment exists, add one at the end and start editing it
-    if (segments.length === 0 || segments[segments.length - 1].kind === "token") {
-      const next = [...segments, { kind: "text" as const, value: "" }];
-      setSegments(next);
-      setEditingIndex(next.length - 1);
+  // Arrow keys: skip over token chips atomically so the cursor never lands inside one.
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") { e.preventDefault(); return; }
+
+    const isLeft  = e.key === "ArrowLeft";
+    const isRight = e.key === "ArrowRight";
+    if (!isLeft && !isRight) return;
+
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+
+    // Only act when the cursor is collapsed (no selection) or shift-selecting.
+    // For shift+arrow we still want to skip the whole token.
+    const node = isRight ? range.endContainer : range.startContainer;
+    const offset = isRight ? range.endOffset : range.startOffset;
+
+    if (isRight) {
+      // Check what's immediately to the right of the cursor.
+      let sibling: ChildNode | null = null;
+      if (node.nodeType === Node.TEXT_NODE) {
+        // Are we at the end of this text node?
+        if (offset === node.textContent!.length) {
+          sibling = node.nextSibling;
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        sibling = (node as Element).childNodes[offset] ?? null;
+      }
+
+      if (sibling && (sibling as HTMLElement).getAttribute?.(TOKEN_ATTR)) {
+        e.preventDefault();
+        const newRange = document.createRange();
+        newRange.setStartAfter(sibling);
+        newRange.collapse(true);
+        if (!e.shiftKey) {
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+        } else {
+          sel.extend(newRange.startContainer, newRange.startOffset);
+        }
+      }
     } else {
-      const lastTextIdx = segments.reduceRight(
-        (acc, s, i) => (acc === -1 && s.kind === "text" ? i : acc),
-        -1
-      );
-      if (lastTextIdx !== -1) setEditingIndex(lastTextIdx);
+      // ArrowLeft — check what's immediately to the left.
+      let sibling: ChildNode | null = null;
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (offset === 0) {
+          sibling = node.previousSibling;
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        sibling = (node as Element).childNodes[offset - 1] ?? null;
+      }
+
+      if (sibling && (sibling as HTMLElement).getAttribute?.(TOKEN_ATTR)) {
+        e.preventDefault();
+        const newRange = document.createRange();
+        newRange.setStartBefore(sibling);
+        newRange.collapse(true);
+        if (!e.shiftKey) {
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+        } else {
+          sel.extend(newRange.startContainer, newRange.startOffset);
+        }
+      }
     }
   };
 
-  useEffect(() => {
-    if (editingIndex !== null) inputRef.current?.focus();
-  }, [editingIndex]);
-
-  const activeTokens = new Set(segments.filter((s) => s.kind === "token").map((s) => (s as { kind: "token"; key: string }).key));
+  const activeTokens = new Set(
+    [...value.matchAll(/\{([^}]+)\}/g)]
+      .map((m) => m[1])
+      .filter((k) => RENAME_TOKENS.some((t) => t.key === k))
+  );
 
   return (
     <div className="rename-pattern-editor">
-      {/* Pattern field */}
-      <div className="rename-pattern-field" onClick={handleContainerClick}>
-        {segments.length === 0 && (
-          <span className="rename-pattern-placeholder">name — click tokens below to build a pattern</span>
-        )}
-        {segments.map((seg, i) => {
-          if (seg.kind === "token") {
-            const def = RENAME_TOKENS.find((t) => t.key === seg.key);
-            return (
-              <span key={i} className="rename-token-chip">
-                {def?.label ?? seg.key}
-                <button
-                  type="button"
-                  className="rename-token-chip-remove"
-                  onClick={(e) => { e.stopPropagation(); removeSegment(i); }}
-                >
-                  <X size={9} />
-                </button>
-              </span>
-            );
-          }
-          // text segment
-          if (editingIndex === i) {
-            return (
-              <input
-                key={i}
-                ref={inputRef}
-                className="rename-text-inline"
-                value={seg.value}
-                onChange={(e) => updateText(i, e.target.value)}
-                onBlur={() => {
-                  setEditingIndex(null);
-                  emit(normalise(segments));
-                }}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); inputRef.current?.blur(); }
-                  if (e.key === "Backspace" && seg.value === "") {
-                    // Remove empty text then the token before it
-                    e.preventDefault();
-                    const filtered = segments.filter((_, idx) => idx !== i);
-                    // also remove the token immediately before
-                    const prevToken = filtered.reduceRight(
-                      (acc, s, idx) => (acc === -1 && s.kind === "token" && idx < i ? idx : acc),
-                      -1
-                    );
-                    const next = normalise(
-                      prevToken !== -1 ? filtered.filter((_, idx) => idx !== prevToken) : filtered
-                    );
-                    setEditingIndex(null);
-                    emit(next);
-                  }
-                }}
-              />
-            );
-          }
-          // non-editing text
-          return seg.value ? (
-            <span
-              key={i}
-              className="rename-text-span"
-              onClick={(e) => { e.stopPropagation(); setEditingIndex(i); }}
-            >
-              {seg.value}
-            </span>
-          ) : null;
-        })}
-      </div>
-
+      <div
+        ref={editorRef}
+        className={`rename-ce${focused ? " rename-ce--focused" : ""}`}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={handleInput}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onKeyDown={handleKeyDown}
+        spellCheck={false}
+        data-placeholder="click tokens below to build a pattern"
+      />
       {/* Token palette */}
       <div className="rename-token-palette">
         {RENAME_TOKENS.map((t) => (
@@ -664,7 +690,10 @@ function RenamePatternEditor({
             key={t.key}
             type="button"
             className={`rename-palette-btn${activeTokens.has(t.key) ? " rename-palette-btn--used" : ""}`}
-            onClick={() => insertToken(t.key)}
+            onMouseDown={(e) => {
+              e.preventDefault(); // keep focus in editor
+              insertToken(t.key);
+            }}
           >
             {t.label}
           </button>
@@ -672,10 +701,10 @@ function RenamePatternEditor({
       </div>
 
       {/* Live preview */}
-      {segmentsToPattern(segments).trim() && (
+      {value.trim() && (
         <div className="rename-preview">
           <span className="rename-preview-label">Preview: </span>
-          <span className="rename-preview-value">{previewPattern(segmentsToPattern(segments))}</span>
+          <span className="rename-preview-value">{previewPattern(value)}</span>
         </div>
       )}
     </div>

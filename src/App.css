@@ -729,71 +729,50 @@ input, select, textarea { font-family: inherit; font-size: 13px; color: var(--te
   gap: 6px;
 }
 
-.rename-pattern-field {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
+/* The contenteditable field — IS the visual box */
+.rename-ce {
+  outline: none;
   min-height: 30px;
-  padding: 3px 8px;
+  padding: 4px 8px;
   background: var(--bg-control);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
+  font-size: 13px;
+  font-family: var(--font);
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 22px;
   cursor: text;
 }
-.rename-pattern-field:focus-within {
+.rename-ce--focused {
   border-color: var(--accent);
 }
 
-.rename-pattern-placeholder {
+/* Placeholder via CSS so React never touches the contenteditable DOM */
+.rename-ce:empty::before {
+  content: attr(data-placeholder);
   color: var(--text-secondary);
   font-size: 12px;
   pointer-events: none;
 }
 
+/* Token chips — atomic, non-editable, visually distinct from text */
 .rename-token-chip {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 6px 2px 8px;
+  padding: 0 7px;
   background: var(--accent);
   color: var(--on-accent);
-  border-radius: 5px;
-  font-size: 12px;
-  font-weight: 500;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
   white-space: nowrap;
-  line-height: 1.4;
-}
-
-.rename-token-chip-remove {
-  display: flex;
-  align-items: center;
-  padding: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: rgba(255, 255, 255, 0.75);
-  line-height: 0;
-}
-.rename-token-chip-remove:hover { color: #fff; }
-
-.rename-text-inline {
-  background: none;
-  border: none;
-  outline: none;
-  font-size: 13px;
-  color: var(--text);
-  min-width: 30px;
-  width: auto;
-  padding: 0;
-  line-height: 1.4;
-}
-
-.rename-text-span {
-  font-size: 13px;
-  color: var(--text);
-  cursor: text;
-  line-height: 1.4;
+  line-height: 18px;
+  vertical-align: middle;
+  cursor: default;
+  user-select: none;
+  margin: 0 1px;
 }
 
 .rename-token-palette {
