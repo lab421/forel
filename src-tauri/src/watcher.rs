@@ -38,18 +38,19 @@ pub fn start(db: Arc<Mutex<Connection>>, _app: AppHandle) -> Result<WatcherHandl
                     on_event(&event, &db);
                 }
 
-                // Process commands
-                match cmd_rx.try_recv() {
-                    Ok(WatcherCmd::Add(path)) => {
-                        if watch_set.insert(path.clone()) {
-                            let _ = watcher.watch(&path, RecursiveMode::NonRecursive);
+                // Process all pending commands
+                while let Ok(cmd) = cmd_rx.try_recv() {
+                    match cmd {
+                        WatcherCmd::Add(path) => {
+                            if watch_set.insert(path.clone()) {
+                                let _ = watcher.watch(&path, RecursiveMode::NonRecursive);
+                            }
+                        }
+                        WatcherCmd::Remove(path) => {
+                            let _ = watcher.unwatch(&path);
+                            watch_set.remove(&path);
                         }
                     }
-                    Ok(WatcherCmd::Remove(path)) => {
-                        let _ = watcher.unwatch(&path);
-                        watch_set.remove(&path);
-                    }
-                    Err(_) => {}
                 }
 
                 thread::sleep(std::time::Duration::from_millis(200));

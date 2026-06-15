@@ -80,6 +80,10 @@ pub fn evaluate(condition: &Condition, path: &Path) -> Result<bool> {
         }
 
         ConditionKind::Contents => {
+            const MAX_CONTENT_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
+            if meta.len() > MAX_CONTENT_BYTES {
+                return Ok(false);
+            }
             let text = std::fs::read_to_string(path).unwrap_or_default();
             Ok(match_string(&condition.operator, &text, &condition.value))
         }

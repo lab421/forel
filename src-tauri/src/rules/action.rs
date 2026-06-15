@@ -1,11 +1,14 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
 use super::model::{Action, ActionKind};
 
 /// Executes the action on the file at `path`.
-pub fn execute(action: &Action, path: &Path) -> Result<()> {
+///
+/// Returns the file's new path. For actions that move or rename the file this
+/// will differ from `path`; for all other actions it equals `path`.
+pub fn execute(action: &Action, path: &Path) -> Result<PathBuf> {
     match &action.kind {
         ActionKind::MoveToFolder => {
             let dest_dir = action
@@ -13,10 +16,14 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
                 .get("destination")
                 .and_then(|v| v.as_str())
                 .context("MoveToFolder requires 'destination' param")?;
+            let dest_dir = Path::new(dest_dir);
+            std::fs::create_dir_all(dest_dir)
+                .with_context(|| format!("create destination dir {}", dest_dir.display()))?;
             let file_name = path.file_name().context("no file name")?;
-            let dest = Path::new(dest_dir).join(file_name);
+            let dest = unique_dest(dest_dir, file_name);
             std::fs::rename(path, &dest)
                 .with_context(|| format!("move {} → {}", path.display(), dest.display()))?;
+            Ok(dest)
         },
 
         ActionKind::CopyToFolder => {
@@ -25,10 +32,14 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
                 .get("destination")
                 .and_then(|v| v.as_str())
                 .context("CopyToFolder requires 'destination' param")?;
+            let dest_dir = Path::new(dest_dir);
+            std::fs::create_dir_all(dest_dir)
+                .with_context(|| format!("create destination dir {}", dest_dir.display()))?;
             let file_name = path.file_name().context("no file name")?;
-            let dest = Path::new(dest_dir).join(file_name);
+            let dest = unique_dest(dest_dir, file_name);
             std::fs::copy(path, &dest)
                 .with_context(|| format!("copy {} → {}", path.display(), dest.display()))?;
+            Ok(path.to_path_buf())
         },
 
         ActionKind::Rename => {
@@ -41,14 +52,15 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
             let dest = path.with_file_name(new_name);
             std::fs::rename(path, &dest)
                 .with_context(|| format!("rename {} → {}", path.display(), dest.display()))?;
+            Ok(dest)
         },
 
         ActionKind::MoveToTrash => {
-            // On macOS, move to ~/.Trash
             let file_name = path.file_name().context("no file name")?;
-            let trash = dirs_next()?;
-            let dest = trash.join(file_name);
+            let trash = trash_dir()?;
+            let dest = unique_dest(&trash, file_name);
             std::fs::rename(path, &dest)?;
+            Ok(dest)
         },
 
         ActionKind::Delete => {
@@ -57,18 +69,21 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
             } else {
                 std::fs::remove_file(path)?;
             }
+            Ok(path.to_path_buf())
         },
 
         ActionKind::AddTag => {
             for tag in param_tags(action) {
                 apply_file_tag(path, tag, true)?;
             }
+            Ok(path.to_path_buf())
         },
 
         ActionKind::RemoveTag => {
             for tag in param_tags(action) {
                 apply_file_tag(path, tag, false)?;
             }
+            Ok(path.to_path_buf())
         },
 
         ActionKind::SetColorLabel => {
@@ -78,6 +93,7 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             set_color_label(path, color)?;
+            Ok(path.to_path_buf())
         },
 
         ActionKind::RunScript => {
@@ -86,14 +102,17 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
                 .get("script")
                 .and_then(|v| v.as_str())
                 .context("RunScript requires 'script' param")?;
-            std::process::Command::new("bash")
+            let status = std::process::Command::new("bash")
                 .args(["-c", script])
                 .env("FOREL_FILE", path)
-                .spawn()?;
+                .status()
+                .context("failed to launch bash")?;
+            if !status.success() {
+                bail!("script exited with status {status}");
+            }
+            Ok(path.to_path_buf())
         },
     }
-
-    Ok(())
 }
 
 pub fn preview(action: &Action, path: &Path) -> Result<String> {
@@ -280,21 +299,46 @@ fn apply_rename_pattern(pattern: &str, path: &Path) -> Result<String> {
         bail!("rename pattern produced empty filename");
     }
 
-    if ext.is_empty() || pattern.contains("{extension}") {
+    // Append the original extension only when the pattern did not place it
+    // explicitly (via the {extension} token or by typing it literally).
+    let already_has_ext = result.to_lowercase().ends_with(&format!(".{}", ext.to_lowercase()));
+    if ext.is_empty() || pattern.contains("{extension}") || already_has_ext {
         Ok(result)
     } else {
         Ok(format!("{result}.{ext}"))
     }
 }
 
+/// Returns a destination path that does not yet exist, appending ` (N)` to the
+/// stem when the intended name is already taken.
+fn unique_dest(dir: &Path, file_name: &std::ffi::OsStr) -> PathBuf {
+    let candidate = dir.join(file_name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let stem = Path::new(file_name).file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let ext = Path::new(file_name).extension().and_then(|s| s.to_str());
+    for i in 1u64.. {
+        let new_name = match ext {
+            Some(e) => format!("{stem} ({i}).{e}"),
+            None => format!("{stem} ({i})"),
+        };
+        let candidate = dir.join(&new_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    dir.join(file_name)
+}
+
 #[cfg(target_os = "macos")]
-fn dirs_next() -> Result<std::path::PathBuf> {
+fn trash_dir() -> Result<PathBuf> {
     let home = std::env::var("HOME").context("HOME not set")?;
-    Ok(std::path::PathBuf::from(home).join(".Trash"))
+    Ok(PathBuf::from(home).join(".Trash"))
 }
 
 #[cfg(not(target_os = "macos"))]
-fn dirs_next() -> Result<std::path::PathBuf> {
+fn trash_dir() -> Result<PathBuf> {
     bail!("trash is only implemented on macOS")
 }
 

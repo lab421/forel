@@ -71,16 +71,9 @@ function actionTags(actions: Action[], kind: ActionKind): Set<string> {
   );
 }
 
-function validateRule(rule: Rule, others: Rule[]): string | null {
-  const colorActions = rule.actions.filter((a) => a.kind === "set_color_label");
-  if (colorActions.length > 1) {
+function validateRule(rule: Rule): string | null {
+  if (rule.actions.filter((a) => a.kind === "set_color_label").length > 1) {
     return "A rule can set only one color label.";
-  }
-  if (
-    colorActions.length === 1 &&
-    others.some((r) => r.actions.some((a) => a.kind === "set_color_label"))
-  ) {
-    return "Another rule in this folder already sets a color label — a file can only have one.";
   }
 
   if (rule.actions.filter((a) => TERMINAL_ACTION_KINDS.includes(a.kind)).length > 1) {
@@ -94,6 +87,21 @@ function validateRule(rule: Rule, others: Rule[]): string | null {
     return `Tag "${conflictTag}" is both added and removed by this rule.`;
   }
 
+  for (const action of rule.actions) {
+    if (
+      (action.kind === "move_to_folder" || action.kind === "copy_to_folder") &&
+      !action.params.destination
+    ) {
+      return "A folder action requires a destination path.";
+    }
+    if (action.kind === "rename" && !action.params.pattern) {
+      return "A rename action requires a pattern.";
+    }
+    if (action.kind === "run_script" && !action.params.script) {
+      return "A script action requires a script.";
+    }
+  }
+
   return null;
 }
 
@@ -104,15 +112,12 @@ function operatorsFor(kind: ConditionKind): Operator[] {
 }
 
 export default function RuleEditor({ rule, onClose }: Props) {
-  const { updateRule, runRule, rules } = useForelStore();
+  const { updateRule, runRule } = useForelStore();
   const [draft, setDraft] = useState<Rule>(structuredClone(rule));
   const [error, setError] = useState<string | null>(null);
 
   const save = async () => {
-    const problem = validateRule(
-      draft,
-      rules.filter((r) => r.id !== draft.id),
-    );
+    const problem = validateRule(draft);
     if (problem) {
       setError(problem);
       return;

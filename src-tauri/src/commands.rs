@@ -83,9 +83,30 @@ pub fn toggle_watched_folder(
     state: State<AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    db::toggle_folder(&conn, &id, enabled).map_err(|e| e.to_string())?;
-    drop(conn);
+    let path: Option<String> = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        db::toggle_folder(&conn, &id, enabled).map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT path FROM watched_folders WHERE id=?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .ok()
+    };
+
+    if let Some(p) = path {
+        if let Ok(watcher) = state.watcher.lock() {
+            if let Some(w) = watcher.as_ref() {
+                let cmd = if enabled {
+                    WatcherCmd::Add(p.into())
+                } else {
+                    WatcherCmd::Remove(p.into())
+                };
+                let _ = w.tx.send(cmd);
+            }
+        }
+    }
+
     tray::rebuild(&app);
     Ok(())
 }

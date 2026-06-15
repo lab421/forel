@@ -1,8 +1,8 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::{
     action, condition,
-    model::{ConditionMatch, Rule},
+    model::{ActionKind, ConditionMatch, Rule},
 };
 use serde::Serialize;
 #[derive(Debug, Clone, Serialize)]
@@ -100,15 +100,24 @@ fn execute_actions(rule: &Rule, path: &Path) {
     let mut sorted = rule.actions.clone();
     sorted.sort_by_key(|a| a.position);
 
+    let mut current: PathBuf = path.to_path_buf();
     for act in &sorted {
-        if let Err(e) = action::execute(act, path) {
-            log::error!(
+        let is_terminal = matches!(
+            act.kind,
+            ActionKind::MoveToFolder | ActionKind::MoveToTrash | ActionKind::Delete
+        );
+        match action::execute(act, &current) {
+            Ok(new_path) => current = new_path,
+            Err(e) => log::error!(
                 "action '{:?}' in rule '{}' failed on {}: {}",
                 act.kind,
                 rule.name,
-                path.display(),
+                current.display(),
                 e
-            );
+            ),
+        }
+        if is_terminal {
+            break;
         }
     }
 }
