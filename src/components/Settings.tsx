@@ -10,6 +10,8 @@ import {
   X,
 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { getVersion } from "@tauri-apps/api/app";
+import { useEffect, useState } from "react";
 import { useForelStore } from "../store";
 import { Theme, useSettings } from "../store/settings";
 import { UpdateStatus } from "../types";
@@ -19,6 +21,13 @@ const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
   { value: "light", label: "Light", icon: Sun },
   { value: "dark", label: "Dark", icon: Moon },
 ];
+
+// "0.1.0-alpha.1" -> "Version 0.1.0 · alpha.1"; "0.1.0" -> "Version 0.1.0"
+function formatVersion(version: string): string {
+  if (!version) return "";
+  const [base, ...pre] = version.split("-");
+  return pre.length > 0 ? `Version ${base} · ${pre.join("-")}` : `Version ${base}`;
+}
 
 function updateLabel(status: UpdateStatus) {
   switch (status) {
@@ -47,6 +56,10 @@ export default function Settings({
   onOpenHistory: () => void;
 }) {
   const { theme, setTheme } = useSettings();
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    void getVersion().then(setVersion);
+  }, []);
   const updateStatus = useForelStore((s) => s.updateStatus);
   const updateInfo = useForelStore((s) => s.updateInfo);
   const checkForUpdates = useForelStore((s) => s.checkForUpdates);
@@ -154,7 +167,7 @@ export default function Settings({
         <section className="settings-section">
           <div className="settings-about">
             <span className="settings-about-name">Forel</span>
-            <span className="settings-about-version">Version 0.1.0 · alpha</span>
+            <span className="settings-about-version">{formatVersion(version)}</span>
             <span className="settings-about-desc">
               Open-source file automation for macOS.
             </span>

@@ -170,7 +170,7 @@ jobs:
         with:
           files: dist/release/*
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: false
           body: |
             ## Forel ${{ github.ref_name }}
 
