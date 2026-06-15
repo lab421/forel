@@ -132,7 +132,6 @@ export const useForelStore = create<ForelState>((set, get) => ({
     set((s) => ({
       rules: s.rules.map((r) => (r.id === ruleId ? { ...r, enabled } : r)),
     }));
-    if (enabled) await invoke<string[]>("run_rule", { ruleId });
   },
 
   runRule: async (ruleId) => {

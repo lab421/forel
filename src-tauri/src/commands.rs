@@ -144,9 +144,14 @@ pub fn create_rule(
 
 #[tauri::command]
 pub fn update_rule(rule: Rule, state: State<AppState>, app: AppHandle) -> Result<(), String> {
+    let should_run = rule.enabled && !state.paused.load(Ordering::Relaxed);
+    let rule_id = rule.id.clone();
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         db::update_rule(&conn, &rule).map_err(|e| e.to_string())?;
+    }
+    if should_run {
+        apply_rule(&rule_id, &state)?;
     }
     tray::rebuild(&app);
     Ok(())
@@ -173,16 +178,23 @@ pub fn toggle_rule(
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         db::toggle_rule(&conn, &rule_id, enabled).map_err(|e| e.to_string())?;
     }
+    if enabled && !state.paused.load(Ordering::Relaxed) {
+        apply_rule(&rule_id, &state)?;
+    }
     tray::rebuild(&app);
     Ok(())
 }
 
-/// Applies a single enabled rule to all files in its configured scope.
 #[tauri::command]
 pub fn run_rule(rule_id: String, state: State<AppState>) -> Result<Vec<String>, String> {
+    apply_rule(&rule_id, &state)
+}
+
+/// Applies a single enabled rule to all files in its configured scope.
+fn apply_rule(rule_id: &str, state: &AppState) -> Result<Vec<String>, String> {
     let (folder_path, rule) = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let folder_id = db::rule_folder_id(&conn, &rule_id).map_err(|e| e.to_string())?;
+        let folder_id = db::rule_folder_id(&conn, rule_id).map_err(|e| e.to_string())?;
         let path: String = conn
             .query_row(
                 "SELECT path FROM watched_folders WHERE id=?1",
