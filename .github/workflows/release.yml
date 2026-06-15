@@ -1,8 +1,13 @@
 name: Release
 
-# Publishes two .dmg files (Intel + Apple Silicon) to a GitHub Release
-# whenever a version tag is pushed, e.g.:
+# Publishes two .dmg files plus Tauri updater artifacts whenever a version tag
+# is pushed, e.g.:
 #   git tag v0.1.0 && git push origin v0.1.0
+#
+# Required repository secret:
+#   TAURI_SIGNING_PRIVATE_KEY
+# Optional repository secret when the key has a password:
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 
 on:
   push:
@@ -10,7 +15,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write # required to create the release and upload assets
+  contents: write
 
 jobs:
   build:
@@ -21,8 +26,6 @@ jobs:
             suffix: darwin-arm64
           - target: x86_64-apple-darwin
             suffix: darwin-x86_64
-    # Both builds run on the arm64 runner (macos-14).
-    # The x86_64 build cross-compiles via Rust's x86_64-apple-darwin target.
     runs-on: macos-14
     steps:
       - name: Checkout
@@ -54,39 +57,93 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
-      - name: Build .app (${{ matrix.suffix }})
-        run: pnpm tauri build --target ${{ matrix.target }} --bundles app --ci
+      - name: Build DMG and updater archive (${{ matrix.suffix }})
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles app,dmg --ci
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - name: Create .dmg (${{ matrix.suffix }})
+      - name: Stage release files (${{ matrix.suffix }})
         run: |
+          set -euo pipefail
           mkdir -p dist/release
-          app="src-tauri/target/${{ matrix.target }}/release/bundle/macos/Forel.app"
-          if [ ! -d "$app" ]; then
-            echo "No app bundle found for target ${{ matrix.target }}"
+
+          dmg="$(find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -name "*.dmg" -print -quit)"
+          if [ -z "$dmg" ]; then
+            echo "No DMG found for target ${{ matrix.target }}"
             exit 1
           fi
-          staging="$(mktemp -d)"
-          cp -R "$app" "$staging/"
-          ln -s /Applications "$staging/Applications"
-          hdiutil create \
-            -volname "Forel" \
-            -srcfolder "$staging" \
-            -ov -format UDZO \
-            "dist/release/Forel-${GITHUB_REF_NAME}-${{ matrix.suffix }}.dmg"
-          rm -rf "$staging"
+          cp "$dmg" "dist/release/Forel-${GITHUB_REF_NAME}-${{ matrix.suffix }}.dmg"
+          hdiutil verify "dist/release/Forel-${GITHUB_REF_NAME}-${{ matrix.suffix }}.dmg"
+
+          updater_archive="$(find "src-tauri/target/${{ matrix.target }}/release/bundle" -name "*.app.tar.gz" -print -quit)"
+          if [ -z "$updater_archive" ] || [ ! -f "${updater_archive}.sig" ]; then
+            echo "No signed updater archive found for target ${{ matrix.target }}"
+            exit 1
+          fi
+
+          cp "$updater_archive" "dist/release/Forel-${GITHUB_REF_NAME}-${{ matrix.suffix }}.app.tar.gz"
+          cp "${updater_archive}.sig" "dist/release/Forel-${GITHUB_REF_NAME}-${{ matrix.suffix }}.app.tar.gz.sig"
+
+      - name: Upload release files (${{ matrix.suffix }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.suffix }}
+          path: dist/release/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release files
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/release
+          merge-multiple: true
+
+      - name: Create latest.json
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          pub_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          arm_sig="$(cat "dist/release/Forel-${GITHUB_REF_NAME}-darwin-arm64.app.tar.gz.sig")"
+          intel_sig="$(cat "dist/release/Forel-${GITHUB_REF_NAME}-darwin-x86_64.app.tar.gz.sig")"
+
+          cat > dist/release/latest.json <<EOF
+          {
+            "version": "$version",
+            "notes": "See the GitHub release notes for Forel ${GITHUB_REF_NAME}.",
+            "pub_date": "$pub_date",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "$arm_sig",
+                "url": "https://github.com/lguichard/forel/releases/download/${GITHUB_REF_NAME}/Forel-${GITHUB_REF_NAME}-darwin-arm64.app.tar.gz"
+              },
+              "darwin-x86_64": {
+                "signature": "$intel_sig",
+                "url": "https://github.com/lguichard/forel/releases/download/${GITHUB_REF_NAME}/Forel-${GITHUB_REF_NAME}-darwin-x86_64.app.tar.gz"
+              }
+            }
+          }
+          EOF
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/release/Forel-${{ github.ref_name }}-${{ matrix.suffix }}.dmg
+          files: dist/release/*
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           body: |
             ## Forel ${{ github.ref_name }}
 
-            Two builds available — download the one that matches your Mac:
-            - `Forel-${{ github.ref_name }}-darwin-arm64.dmg` → Apple Silicon (M1 / M2 / M3 / M4)
-            - `Forel-${{ github.ref_name }}-darwin-x86_64.dmg` → Intel
+            Two builds available. Download the one that matches your Mac:
+            - `Forel-${{ github.ref_name }}-darwin-arm64.dmg` -> Apple Silicon (M1 / M2 / M3 / M4)
+            - `Forel-${{ github.ref_name }}-darwin-x86_64.dmg` -> Intel
 
             Requires **macOS 14 Sonoma or later**.
 
@@ -94,4 +151,6 @@ jobs:
             1. Download the correct .dmg for your Mac.
             2. Open it and drag **Forel** into **Applications**.
             3. First launch: the app is ad-hoc signed (not notarized), so right-click
-               **Forel.app → Open** and confirm. (Or run `xattr -cr /Applications/Forel.app`.)
+               **Forel.app -> Open** and confirm. (Or run `xattr -cr /Applications/Forel.app`.)
+
+            The `.app.tar.gz`, `.sig`, and `latest.json` files are used by Forel's built-in updater.

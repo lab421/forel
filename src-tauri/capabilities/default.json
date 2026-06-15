@@ -14,6 +14,9 @@
     "fs:allow-remove",
     "dialog:default",
     "dialog:allow-open",
+    "process:allow-restart",
+    "updater:allow-check",
+    "updater:allow-download-and-install",
     "core:tray:default"
   ]
 }

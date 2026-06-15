@@ -1,4 +1,5 @@
 import { Settings as SettingsIcon } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import RuleList from "./components/RuleList";
 import Settings from "./components/Settings";
@@ -9,11 +10,24 @@ import "./App.css";
 
 export default function App() {
   const fetchFolders = useForelStore((s) => s.fetchFolders);
+  const checkForUpdates = useForelStore((s) => s.checkForUpdates);
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     void fetchFolders();
   }, [fetchFolders]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void listen("tray:check-updates", () => {
+      setShowSettings(true);
+      void checkForUpdates();
+    }).then((cleanup) => {
+      unlisten = cleanup;
+    });
+
+    return () => unlisten?.();
+  }, [checkForUpdates]);
 
   // ⌘, opens Settings, like a native macOS app.
   useEffect(() => {
