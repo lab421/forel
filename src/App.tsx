@@ -20,6 +20,12 @@ export default function App() {
   }, [fetchFolders]);
 
   useEffect(() => {
+    void checkForUpdates();
+    const id = setInterval(() => void checkForUpdates(), 4 * 60 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [checkForUpdates]);
+
+  useEffect(() => {
     let unlisten: (() => void) | undefined;
     void listen("tray:check-updates", () => {
       setShowSettings(true);
