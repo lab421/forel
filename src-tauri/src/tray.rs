@@ -1,7 +1,7 @@
 use std::sync::atomic::Ordering;
 
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{IconMenuItem, IconMenuItemBuilder, Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     AppHandle, Manager,
 };
@@ -12,6 +12,7 @@ const TRAY_ID: &str = "forel_tray";
 
 enum TrayItem {
     Plain(MenuItem<tauri::Wry>),
+    Icon(IconMenuItem<tauri::Wry>),
     Sep(PredefinedMenuItem<tauri::Wry>),
 }
 
@@ -19,61 +20,45 @@ impl TrayItem {
     fn as_menu_item(&self) -> &dyn tauri::menu::IsMenuItem<tauri::Wry> {
         match self {
             TrayItem::Plain(i) => i,
+            TrayItem::Icon(i) => i,
             TrayItem::Sep(i) => i,
         }
     }
 }
 
-/// Breathing room around the content, as a fraction of its longest side.
-const TRAY_MARGIN_RATIO: u32 = 10; // 1/10 = 10% on each side
+const STATUS_ICON_SIZE: u32 = 16;
 
-/// Builds the tray icon from the high-res source. The generated app icon has
-/// asymmetric transparent padding (the artwork sits in the upper portion of
-/// the canvas), which makes the menu-bar icon look off-center. This trims that
-/// padding and re-centers the artwork in a square canvas at full resolution —
-/// macOS then scales the large image down to the menu-bar height, so it lines
-/// up with the native icons next to it.
 fn tray_icon() -> tauri::image::Image<'static> {
-    let src = tauri::include_image!("icons/icon.png");
-    let sw = src.width();
-    let sh = src.height();
-    let rgba = src.rgba();
+    tauri::include_image!("icons/tray-icon.png")
+}
 
-    // Bounding box of non-transparent content.
-    let (mut x0, mut y0, mut x1, mut y1) = (sw, sh, 0u32, 0u32);
-    for y in 0..sh {
-        for x in 0..sw {
-            if rgba[((y * sw + x) * 4 + 3) as usize] > 16 {
-                x0 = x0.min(x);
-                y0 = y0.min(y);
-                x1 = x1.max(x);
-                y1 = y1.max(y);
+fn status_icon(paused: bool) -> tauri::image::Image<'static> {
+    let mut rgba = vec![0u8; (STATUS_ICON_SIZE * STATUS_ICON_SIZE * 4) as usize];
+    let color = if paused {
+        [255, 69, 58, 255]
+    } else {
+        [52, 199, 89, 255]
+    };
+    fill_circle(&mut rgba, STATUS_ICON_SIZE, 8, 8, 4, color);
+    tauri::image::Image::new_owned(rgba, STATUS_ICON_SIZE, STATUS_ICON_SIZE)
+}
+
+fn fill_circle(rgba: &mut [u8], size: u32, cx: i32, cy: i32, radius: i32, color: [u8; 4]) {
+    let r2 = radius * radius;
+    for y in (cy - radius).max(0)..=(cy + radius).min(size.cast_signed() - 1) {
+        for x in (cx - radius).max(0)..=(cx + radius).min(size.cast_signed() - 1) {
+            let dx = x - cx;
+            let dy = y - cy;
+            if dx * dx + dy * dy <= r2 {
+                set_pixel(rgba, size, x.cast_unsigned(), y.cast_unsigned(), color);
             }
         }
     }
-    if x1 < x0 || y1 < y0 {
-        return src; // fully transparent — nothing to trim
-    }
+}
 
-    let content_w = x1 - x0 + 1;
-    let content_h = y1 - y0 + 1;
-
-    // Square canvas = longest content side + symmetric margin.
-    let side = content_w.max(content_h) + 2 * (content_w.max(content_h) / TRAY_MARGIN_RATIO);
-    let off_x = (side - content_w) / 2;
-    let off_y = (side - content_h) / 2;
-
-    // Copy the trimmed content into the center of a transparent square.
-    let mut dst = vec![0u8; (side * side * 4) as usize];
-    for cy in 0..content_h {
-        for cx in 0..content_w {
-            let si = (((y0 + cy) * sw + (x0 + cx)) * 4) as usize;
-            let di = (((off_y + cy) * side + (off_x + cx)) * 4) as usize;
-            dst[di..di + 4].copy_from_slice(&rgba[si..si + 4]);
-        }
-    }
-
-    tauri::image::Image::new_owned(dst, side, side)
+fn set_pixel(rgba: &mut [u8], size: u32, x: u32, y: u32, color: [u8; 4]) {
+    let i = ((y * size + x) * 4) as usize;
+    rgba[i..i + 4].copy_from_slice(&color);
 }
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
@@ -82,6 +67,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
 
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
+        .icon_as_template(true)
         .menu(&menu)
         .tooltip("Forel")
         .show_menu_on_left_click(true)
@@ -94,7 +80,7 @@ pub fn rebuild(app: &AppHandle) {
     if let Ok(menu) = build_menu(app) {
         if let Some(tray) = app.tray_by_id(TRAY_ID) {
             let _ = tray.set_menu(Some(menu));
-            let _ = tray.set_icon(Some(tray_icon()));
+            let _ = tray.set_icon_with_as_template(Some(tray_icon()), true);
         }
     }
 }
@@ -108,7 +94,7 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                 let _ = w.show();
                 let _ = w.set_focus();
             }
-        }
+        },
         "quit" => app.exit(0),
         "toggle_watch" => {
             let state = app.state::<AppState>();
@@ -123,7 +109,11 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                 if now_paused {
                     folders.into_iter().map(|f| f.path).collect()
                 } else {
-                    folders.into_iter().filter(|f| f.enabled).map(|f| f.path).collect()
+                    folders
+                        .into_iter()
+                        .filter(|f| f.enabled)
+                        .map(|f| f.path)
+                        .collect()
                 }
             };
 
@@ -142,8 +132,8 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             }
 
             rebuild(app);
-        }
-        _ => {}
+        },
+        _ => {},
     }
 }
 
@@ -155,26 +145,41 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     // Primary action at top (mirrors Postgres.app pattern)
     items.push(TrayItem::Plain(MenuItem::with_id(
-        app, "open", "Open Forel", true, None::<&str>,
+        app,
+        "open",
+        "Open Forel",
+        true,
+        None::<&str>,
     )?));
     items.push(TrayItem::Sep(PredefinedMenuItem::separator(app)?));
 
     // Status row + toggle — descriptive text forces a decent menu width
     let (status_label, action_label) = if paused {
-        ("🔴  File watching is paused", "Start Watching")
+        ("File watching is paused", "Start Watching")
     } else {
-        ("🟢  File watching is active", "Stop Watching")
+        ("File watching is active", "Stop Watching")
     };
 
+    items.push(TrayItem::Icon(
+        IconMenuItemBuilder::with_id("status", status_label)
+            .enabled(false)
+            .icon(status_icon(paused))
+            .build(app)?,
+    ));
     items.push(TrayItem::Plain(MenuItem::with_id(
-        app, "status", status_label, false, None::<&str>,
-    )?));
-    items.push(TrayItem::Plain(MenuItem::with_id(
-        app, "toggle_watch", action_label, true, None::<&str>,
+        app,
+        "toggle_watch",
+        action_label,
+        true,
+        None::<&str>,
     )?));
     items.push(TrayItem::Sep(PredefinedMenuItem::separator(app)?));
     items.push(TrayItem::Plain(MenuItem::with_id(
-        app, "quit", "Quit Forel", true, None::<&str>,
+        app,
+        "quit",
+        "Quit Forel",
+        true,
+        None::<&str>,
     )?));
 
     let refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
