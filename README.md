@@ -180,7 +180,7 @@ forel/
 - [ ] Native notifications on rule actions
 - [ ] Activity logs
 - [ ] Preferences: launch at login
-- [ ] Automatic updates
+- [x] Automatic updates
 - [ ] AI features
 
 ---

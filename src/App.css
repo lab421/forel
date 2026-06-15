@@ -461,6 +461,52 @@ input, select, textarea { font-family: inherit; font-size: 13px; color: var(--te
 .settings-label { display: flex; flex-direction: column; gap: 2px; }
 .settings-label-title { font-size: 13px; font-weight: 500; }
 .settings-label-sub { font-size: 11px; color: var(--text-secondary); }
+.settings-update-row { align-items: flex-start; }
+.settings-update-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.settings-update-btn,
+.settings-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+.settings-update-btn { padding: 0 9px; }
+.settings-icon-btn { width: 28px; }
+.settings-update-btn:hover:not(:disabled),
+.settings-icon-btn:hover:not(:disabled) {
+  background: var(--bg-control-hover);
+}
+.settings-update-btn.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.settings-update-btn.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.settings-update-btn:disabled,
+.settings-icon-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.spinning {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 .settings-about { display: flex; flex-direction: column; gap: 3px; }
 .settings-about-name { font-size: 14px; font-weight: 600; }
 .settings-about-version { font-size: 11px; color: var(--text-secondary); }

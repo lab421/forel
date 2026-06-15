@@ -83,6 +83,23 @@ export interface PreviewResult {
   matches: FilePreview[];
 }
 
+export interface UpdateInfo {
+  current_version: string;
+  latest_version: string;
+  has_update: boolean;
+  release_url: string;
+  release_name: string;
+}
+
+export type UpdateStatus =
+  | "idle"
+  | "checking"
+  | "up-to-date"
+  | "available"
+  | "installing"
+  | "installed"
+  | "error";
+
 // Labels used in the UI
 export const CONDITION_KIND_LABELS: Record<ConditionKind, string> = {
   name: "Name",

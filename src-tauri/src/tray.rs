@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use tauri::{
     menu::{IconMenuItem, IconMenuItemBuilder, Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Manager,
+    AppHandle, Emitter, Manager,
 };
 
 use crate::{db, state::AppState, watcher::WatcherCmd};
@@ -96,6 +96,13 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             }
         },
         "quit" => app.exit(0),
+        "check_updates" => {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+            let _ = app.emit("tray:check-updates", ());
+        },
         "toggle_watch" => {
             let state = app.state::<AppState>();
             let was_paused = state.paused.load(Ordering::Relaxed);
@@ -174,6 +181,13 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         None::<&str>,
     )?));
     items.push(TrayItem::Sep(PredefinedMenuItem::separator(app)?));
+    items.push(TrayItem::Plain(MenuItem::with_id(
+        app,
+        "check_updates",
+        "Check for Updates...",
+        true,
+        None::<&str>,
+    )?));
     items.push(TrayItem::Plain(MenuItem::with_id(
         app,
         "quit",

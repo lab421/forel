@@ -1,12 +1,29 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import { create } from "zustand";
-import { PreviewResult, Rule, WatchedFolder } from "../types";
+import {
+  PreviewResult,
+  Rule,
+  UpdateInfo,
+  UpdateStatus,
+  WatchedFolder,
+} from "../types";
+
+const releaseUrl = (version: string) =>
+  `https://github.com/lguichard/forel/releases/tag/${
+    version.startsWith("v") ? version : `v${version}`
+  }`;
 
 interface ForelState {
   folders: WatchedFolder[];
   selectedFolderId: string | null;
   rules: Rule[];
   loading: boolean;
+  updateStatus: UpdateStatus;
+  updateInfo: UpdateInfo | null;
+  pendingUpdate: Update | null;
 
   // Folder actions
   fetchFolders: () => Promise<void>;
@@ -24,6 +41,10 @@ interface ForelState {
   runRule: (ruleId: string) => Promise<string[]>;
   runRulesNow: (folderId: string) => Promise<string[]>;
   previewRules: (folderId: string) => Promise<PreviewResult>;
+
+  // Update actions
+  checkForUpdates: () => Promise<void>;
+  installUpdate: () => Promise<void>;
 }
 
 export const useForelStore = create<ForelState>((set, get) => ({
@@ -31,6 +52,9 @@ export const useForelStore = create<ForelState>((set, get) => ({
   selectedFolderId: null,
   rules: [],
   loading: false,
+  updateStatus: "idle",
+  updateInfo: null,
+  pendingUpdate: null,
 
   fetchFolders: async () => {
     const folders = await invoke<WatchedFolder[]>("get_watched_folders");
@@ -109,5 +133,58 @@ export const useForelStore = create<ForelState>((set, get) => ({
 
   previewRules: async (folderId) => {
     return invoke<PreviewResult>("preview_rules", { folderId });
+  },
+
+  checkForUpdates: async () => {
+    set({ updateStatus: "checking" });
+    try {
+      const currentVersion = await getVersion();
+      const update = await check();
+
+      if (!update) {
+        set({
+          updateStatus: "up-to-date",
+          updateInfo: {
+            current_version: currentVersion,
+            latest_version: currentVersion,
+            has_update: false,
+            release_url: releaseUrl(currentVersion),
+            release_name: `Forel ${currentVersion}`,
+          },
+          pendingUpdate: null,
+        });
+        return;
+      }
+
+      set({
+        updateStatus: "available",
+        updateInfo: {
+          current_version: update.currentVersion,
+          latest_version: update.version,
+          has_update: true,
+          release_url: releaseUrl(update.version),
+          release_name: `Forel ${update.version}`,
+        },
+        pendingUpdate: update,
+      });
+    } catch (error) {
+      console.error("Failed to check for updates", error);
+      set({ updateStatus: "error", pendingUpdate: null });
+    }
+  },
+
+  installUpdate: async () => {
+    const update = get().pendingUpdate;
+    if (!update) return;
+
+    set({ updateStatus: "installing" });
+    try {
+      await update.downloadAndInstall();
+      set({ updateStatus: "installed", pendingUpdate: null });
+      await relaunch();
+    } catch (error) {
+      console.error("Failed to install update", error);
+      set({ updateStatus: "error" });
+    }
   },
 }));
