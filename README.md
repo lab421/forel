@@ -27,16 +27,14 @@
 
 ---
 
-> **Hazel costs $42 and can't read your files.**
-> Forel is free, open source, and sorts by content — 100% on-device.
+> **Free, open source, and 100% on-device.**
+> Forel sorts your files by rules you define — they never leave your Mac.
 
 ---
 
-## The problem with file automation in 2026
+## Why Forel
 
-You've been paying for Hazel for years. It's a great tool — but you're paying $42 for something that could be free.
-
-Forel does the same job: watch folders, apply rules, move files automatically. It's open source, community-driven, and costs nothing.
+Forel is a free, open-source, community-driven take on folder automation for macOS. Define rules once — watch folders, match files, and move, rename, tag, or label them automatically — then let Forel run quietly in your menu bar.
 
 ---
 
@@ -58,18 +56,13 @@ And everything happens **on your Mac**. No cloud. No API keys. No subscription. 
 
 ---
 
-## Why Forel instead of Hazel?
+## Highlights
 
-|                          | Hazel         | Forel        |
-|--------------------------|---------------|---------------|
-| Price                    | $42 one-time  | **Free**      |
-| Open source              | ✗             | ✅            |
-| Sorts by file **content**| ✗             | ✅            |
-| Privacy — no cloud       | optional      | **always**    |
-| macOS menu bar app       | ✅            | ✅            |
-| Community-driven         | ✗             | ✅            |
-
-Hazel built the category. Forel makes it free for everyone.
+- **Free & open source** — no license fee, no subscription, MIT-licensed.
+- **100% on-device** — no cloud, no API keys, no account. Your files never leave your Mac.
+- **Rule-based** — match by name, extension, kind, size, date, tags, color label, or content.
+- **Native menu-bar app** — runs quietly in the background; toggle rules without opening the window.
+- **Community-driven** — built in the open, contributions welcome.
 
 ---
 
@@ -191,11 +184,12 @@ forel/
 - [x] Actions: move, copy, rename, trash, delete, tag, open with, run script
 - [x] SQLite persistence
 - [x] macOS menu bar icon with live rule toggle
-- [ ] On-device content classification (v0.2)
-- [ ] Image content recognition (v0.3)
-- [ ] Shortcuts app integration (v0.4)
-- [ ] iCloud Drive support (v0.5)
-- [ ] CLI companion tool (v1.0)
+- [ ] Action history & undo
+- [ ] Native notifications on rule actions
+- [ ] Activity logs
+- [ ] Preferences: launch at login
+- [ ] Automatic updates
+- [ ] AI features
 
 ---
 
@@ -222,6 +216,6 @@ MIT — see [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-Made with ☕ · Tauri + Rust + React · Inspired by the gap Hazel left unfilled
+Made with ☕ · Tauri + Rust + React · Inspired by file automation workflows popularized by tools like Hazel.
 
 </div>

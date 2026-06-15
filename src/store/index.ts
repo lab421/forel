@@ -21,6 +21,7 @@ interface ForelState {
   updateRule: (rule: Rule) => Promise<void>;
   deleteRule: (ruleId: string) => Promise<void>;
   toggleRule: (ruleId: string, enabled: boolean) => Promise<void>;
+  runRule: (ruleId: string) => Promise<string[]>;
   runRulesNow: (folderId: string) => Promise<string[]>;
   previewRules: (folderId: string) => Promise<PreviewResult>;
 }
@@ -95,6 +96,11 @@ export const useForelStore = create<ForelState>((set, get) => ({
     set((s) => ({
       rules: s.rules.map((r) => (r.id === ruleId ? { ...r, enabled } : r)),
     }));
+    if (enabled) await invoke<string[]>("run_rule", { ruleId });
+  },
+
+  runRule: async (ruleId) => {
+    return invoke<string[]>("run_rule", { ruleId });
   },
 
   runRulesNow: async (folderId) => {

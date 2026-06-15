@@ -17,7 +17,7 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
             let dest = Path::new(dest_dir).join(file_name);
             std::fs::rename(path, &dest)
                 .with_context(|| format!("move {} → {}", path.display(), dest.display()))?;
-        }
+        },
 
         ActionKind::CopyToFolder => {
             let dest_dir = action
@@ -27,8 +27,9 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
                 .context("CopyToFolder requires 'destination' param")?;
             let file_name = path.file_name().context("no file name")?;
             let dest = Path::new(dest_dir).join(file_name);
-            std::fs::copy(path, &dest).with_context(|| format!("copy {} → {}", path.display(), dest.display()))?;
-        }
+            std::fs::copy(path, &dest)
+                .with_context(|| format!("copy {} → {}", path.display(), dest.display()))?;
+        },
 
         ActionKind::Rename => {
             let pattern = action
@@ -40,7 +41,7 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
             let dest = path.with_file_name(new_name);
             std::fs::rename(path, &dest)
                 .with_context(|| format!("rename {} → {}", path.display(), dest.display()))?;
-        }
+        },
 
         ActionKind::MoveToTrash => {
             // On macOS, move to ~/.Trash
@@ -48,7 +49,7 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
             let trash = dirs_next()?;
             let dest = trash.join(file_name);
             std::fs::rename(path, &dest)?;
-        }
+        },
 
         ActionKind::Delete => {
             if path.is_dir() {
@@ -56,31 +57,19 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
             } else {
                 std::fs::remove_file(path)?;
             }
-        }
+        },
 
         ActionKind::AddTag => {
-            let tags: Vec<&str> = action
-                .params
-                .get("tags")
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
-                .unwrap_or_default();
-            for tag in tags {
+            for tag in param_tags(action) {
                 apply_file_tag(path, tag, true)?;
             }
-        }
+        },
 
         ActionKind::RemoveTag => {
-            let tags: Vec<&str> = action
-                .params
-                .get("tags")
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
-                .unwrap_or_default();
-            for tag in tags {
+            for tag in param_tags(action) {
                 apply_file_tag(path, tag, false)?;
             }
-        }
+        },
 
         ActionKind::SetColorLabel => {
             let color = action
@@ -89,7 +78,7 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             set_color_label(path, color)?;
-        }
+        },
 
         ActionKind::RunScript => {
             let script = action
@@ -101,7 +90,7 @@ pub fn execute(action: &Action, path: &Path) -> Result<()> {
                 .args(["-c", script])
                 .env("FOREL_FILE", path)
                 .spawn()?;
-        }
+        },
     }
 
     Ok(())
@@ -118,7 +107,7 @@ pub fn preview(action: &Action, path: &Path) -> Result<String> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             format!("Move to {}", Path::new(dest_dir).join(file_name).display())
-        }
+        },
         ActionKind::CopyToFolder => {
             let dest_dir = action
                 .params
@@ -126,7 +115,7 @@ pub fn preview(action: &Action, path: &Path) -> Result<String> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             format!("Copy to {}", Path::new(dest_dir).join(file_name).display())
-        }
+        },
         ActionKind::Rename => {
             let pattern = action
                 .params
@@ -135,35 +124,37 @@ pub fn preview(action: &Action, path: &Path) -> Result<String> {
                 .unwrap_or("");
             let new_name = apply_rename_pattern(pattern, path)?;
             format!("Rename to {new_name}")
-        }
+        },
         ActionKind::MoveToTrash => "Move to Trash".to_string(),
         ActionKind::Delete => "Delete permanently".to_string(),
         ActionKind::AddTag => {
-            let tags: Vec<&str> = action
-                .params
-                .get("tags")
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
-                .unwrap_or_default();
+            let tags = param_tags(action);
             if tags.is_empty() {
                 "Add tag".to_string()
+            } else if action.params.get("tag").is_some() && tags.len() == 1 {
+                format!("Add tag '{}'", tags[0])
             } else {
-                format!("Add tag{}: {}", if tags.len() > 1 { "s" } else { "" }, tags.join(", "))
+                format!(
+                    "Add tag{}: {}",
+                    if tags.len() > 1 { "s" } else { "" },
+                    tags.join(", ")
+                )
             }
-        }
+        },
         ActionKind::RemoveTag => {
-            let tags: Vec<&str> = action
-                .params
-                .get("tags")
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
-                .unwrap_or_default();
+            let tags = param_tags(action);
             if tags.is_empty() {
                 "Remove tag".to_string()
+            } else if action.params.get("tag").is_some() && tags.len() == 1 {
+                format!("Remove tag '{}'", tags[0])
             } else {
-                format!("Remove tag{}: {}", if tags.len() > 1 { "s" } else { "" }, tags.join(", "))
+                format!(
+                    "Remove tag{}: {}",
+                    if tags.len() > 1 { "s" } else { "" },
+                    tags.join(", ")
+                )
             }
-        }
+        },
         ActionKind::SetColorLabel => {
             let color = action
                 .params
@@ -175,7 +166,7 @@ pub fn preview(action: &Action, path: &Path) -> Result<String> {
             } else {
                 format!("Set color label to {color}")
             }
-        }
+        },
         ActionKind::RunScript => {
             let script = action
                 .params
@@ -188,8 +179,64 @@ pub fn preview(action: &Action, path: &Path) -> Result<String> {
             } else {
                 format!("Run script: {first_line}")
             }
-        }
+        },
     })
+}
+
+pub fn would_change(action: &Action, path: &Path) -> bool {
+    match &action.kind {
+        ActionKind::SetColorLabel => {
+            let target = action
+                .params
+                .get("color")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_lowercase();
+            current_color_name(path) != target
+        },
+        ActionKind::AddTag => {
+            let existing = read_file_tags(path);
+            param_tags(action)
+                .iter()
+                .any(|tag| !existing.iter().any(|existing_tag| existing_tag == tag))
+        },
+        ActionKind::RemoveTag => {
+            let existing = read_file_tags(path);
+            param_tags(action)
+                .iter()
+                .any(|tag| existing.iter().any(|existing_tag| existing_tag == tag))
+        },
+        ActionKind::Rename => {
+            let pattern = action
+                .params
+                .get("pattern")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            apply_rename_pattern(pattern, path).map_or(true, |new_name| {
+                path.file_name()
+                    .and_then(|s| s.to_str())
+                    .is_none_or(|current_name| current_name != new_name)
+            })
+        },
+        ActionKind::MoveToFolder
+        | ActionKind::CopyToFolder
+        | ActionKind::MoveToTrash
+        | ActionKind::Delete
+        | ActionKind::RunScript => true,
+    }
+}
+
+fn param_tags(action: &Action) -> Vec<&str> {
+    if let Some(tags) = action.params.get("tags").and_then(|v| v.as_array()) {
+        return tags.iter().filter_map(|v| v.as_str()).collect();
+    }
+
+    action
+        .params
+        .get("tag")
+        .and_then(|v| v.as_str())
+        .into_iter()
+        .collect()
 }
 
 // Precision loss is intentional: we only show one decimal place.
@@ -305,6 +352,16 @@ fn color_index(name: &str) -> Option<u8> {
         "orange" => Some(7),
         _ => None,
     }
+}
+
+fn current_color_name(path: &Path) -> String {
+    read_file_tags(path)
+        .into_iter()
+        .find_map(|tag| {
+            let name = tag.split('\n').next().unwrap_or(&tag).trim();
+            color_index(name).map(|_| name.to_lowercase())
+        })
+        .unwrap_or_default()
 }
 
 /// Sets the macOS colour label on `path`, replacing any existing colour label.

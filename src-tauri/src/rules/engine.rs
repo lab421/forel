@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use serde::Serialize;
 use super::{
     action, condition,
     model::{ConditionMatch, Rule},
 };
+use serde::Serialize;
 #[derive(Debug, Clone, Serialize)]
 pub struct RulePreview {
     pub rule_id: String,
@@ -47,10 +47,14 @@ pub fn preview_file(path: &Path, rules: &[Rule]) -> Option<FilePreview> {
         if rule_matches(rule, path) {
             let mut sorted = rule.actions.clone();
             sorted.sort_by_key(|a| a.position);
-            let actions = sorted
+            let actions: Vec<String> = sorted
                 .iter()
+                .filter(|act| action::would_change(act, path))
                 .map(|act| action::preview(act, path).unwrap_or_else(|e| e.to_string()))
                 .collect();
+            if actions.is_empty() {
+                continue;
+            }
 
             matched_rules.push(RulePreview {
                 rule_id: rule.id.clone(),
@@ -77,7 +81,7 @@ pub fn preview_file(path: &Path, rules: &[Rule]) -> Option<FilePreview> {
 
 fn rule_matches(rule: &Rule, path: &Path) -> bool {
     if rule.conditions.is_empty() {
-        return false;
+        return true;
     }
 
     let results: Vec<bool> = rule
@@ -216,8 +220,34 @@ mod tests {
 
         assert_eq!(
             evaluate_file(&file, &rules),
-            vec!["all matched".to_string(), "any matched".to_string()]
+            vec![
+                "all matched".to_string(),
+                "any matched".to_string(),
+                "empty".to_string(),
+            ]
         );
+    }
+
+    #[test]
+    fn preview_file_hides_already_applied_actions() {
+        let dir = TestDir::new();
+        let file = dir.file("photo.jpg", "img");
+        let mut matching_rule = rule(
+            "label jpgs",
+            true,
+            ConditionMatch::All,
+            vec![condition(ConditionKind::Extension, Operator::Is, "jpg")],
+        );
+        matching_rule.actions = vec![
+            action(ActionKind::SetColorLabel, json!({ "color": "Yellow" }), 1),
+            action(ActionKind::AddTag, json!({ "tags": ["Sorted"] }), 2),
+        ];
+
+        let before = preview_file(&file, &[matching_rule.clone()]).expect("preview before apply");
+        assert_eq!(before.rules[0].actions.len(), 2);
+
+        evaluate_file(&file, &[matching_rule.clone()]);
+        assert!(preview_file(&file, &[matching_rule]).is_none());
     }
 
     #[test]

@@ -112,16 +112,6 @@ pub fn toggle_folder(conn: &Connection, id: &str, enabled: bool) -> Result<()> {
 
 // ---------- Rules ----------
 
-pub fn list_all_rules_with_folder(conn: &Connection) -> Result<Vec<(WatchedFolder, Vec<Rule>)>> {
-    let folders = list_folders(conn)?;
-    let mut result = Vec::new();
-    for folder in folders {
-        let rules = list_rules(conn, &folder.id)?;
-        result.push((folder, rules));
-    }
-    Ok(result)
-}
-
 pub fn list_rules(conn: &Connection, folder_id: &str) -> Result<Vec<Rule>> {
     let mut stmt = conn.prepare(
         "SELECT id, folder_id, name, enabled, condition_match, priority, created_at
@@ -155,6 +145,15 @@ pub fn list_rules(conn: &Connection, folder_id: &str) -> Result<Vec<Rule>> {
     }
 
     Ok(rules)
+}
+
+pub fn rule_folder_id(conn: &Connection, rule_id: &str) -> Result<String> {
+    conn.query_row(
+        "SELECT folder_id FROM rules WHERE id=?1",
+        params![rule_id],
+        |row| row.get(0),
+    )
+    .context("find rule folder")
 }
 
 pub fn insert_rule(conn: &Connection, rule: &Rule) -> Result<()> {

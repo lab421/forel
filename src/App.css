@@ -539,9 +539,26 @@ input, select, textarea { font-family: inherit; font-size: 13px; color: var(--te
 
 .editor-footer {
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 12px 16px;
+}
+.editor-footer-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.editor-warning {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.editor-error {
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 /* ---- Condition / Action rows ---- */

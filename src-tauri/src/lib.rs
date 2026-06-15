@@ -83,6 +83,7 @@ pub fn run() {
             commands::update_rule,
             commands::delete_rule,
             commands::toggle_rule,
+            commands::run_rule,
             commands::run_rules_now,
             commands::preview_rules,
             commands::get_macos_tags,

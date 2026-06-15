@@ -57,6 +57,46 @@ const KIND_OPTIONS: { value: string; label: string }[] = [
 
 const SIZE_UNITS = ["bytes", "KB", "MB", "GB"] as const;
 
+const TERMINAL_ACTION_KINDS: ActionKind[] = [
+  "move_to_folder",
+  "move_to_trash",
+  "delete",
+];
+
+function actionTags(actions: Action[], kind: ActionKind): Set<string> {
+  return new Set(
+    actions
+      .filter((a) => a.kind === kind)
+      .flatMap((a) => (Array.isArray(a.params.tags) ? (a.params.tags as string[]) : [])),
+  );
+}
+
+function validateRule(rule: Rule, others: Rule[]): string | null {
+  const colorActions = rule.actions.filter((a) => a.kind === "set_color_label");
+  if (colorActions.length > 1) {
+    return "A rule can set only one color label.";
+  }
+  if (
+    colorActions.length === 1 &&
+    others.some((r) => r.actions.some((a) => a.kind === "set_color_label"))
+  ) {
+    return "Another rule in this folder already sets a color label — a file can only have one.";
+  }
+
+  if (rule.actions.filter((a) => TERMINAL_ACTION_KINDS.includes(a.kind)).length > 1) {
+    return "A rule can only move, trash, or delete a file once — these actions are mutually exclusive.";
+  }
+
+  const added = actionTags(rule.actions, "add_tag");
+  const removed = actionTags(rule.actions, "remove_tag");
+  const conflictTag = [...added].find((tag) => removed.has(tag));
+  if (conflictTag) {
+    return `Tag "${conflictTag}" is both added and removed by this rule.`;
+  }
+
+  return null;
+}
+
 function operatorsFor(kind: ConditionKind): Operator[] {
   if (kind === "size_bytes") return NUMBER_OPERATORS;
   if (kind === "kind" || kind === "color_label") return PRESENCE_OPERATORS;
@@ -64,11 +104,23 @@ function operatorsFor(kind: ConditionKind): Operator[] {
 }
 
 export default function RuleEditor({ rule, onClose }: Props) {
-  const { updateRule } = useForelStore();
+  const { updateRule, runRule, rules } = useForelStore();
   const [draft, setDraft] = useState<Rule>(structuredClone(rule));
+  const [error, setError] = useState<string | null>(null);
 
   const save = async () => {
+    const problem = validateRule(
+      draft,
+      rules.filter((r) => r.id !== draft.id),
+    );
+    if (problem) {
+      setError(problem);
+      return;
+    }
+
+    setError(null);
     await updateRule(draft);
+    if (draft.enabled) await runRule(draft.id);
     onClose();
   };
 
@@ -174,7 +226,7 @@ export default function RuleEditor({ rule, onClose }: Props) {
           ))}
 
           {draft.conditions.length === 0 && (
-            <p className="editor-empty">No conditions — rule will never match.</p>
+            <p className="editor-empty">No conditions — rule matches every file in the folder.</p>
           )}
         </section>
 
@@ -202,12 +254,23 @@ export default function RuleEditor({ rule, onClose }: Props) {
         </section>
 
         <div className="editor-footer">
-          <button className="btn btn-secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn btn-primary" onClick={save}>
-            Save
-          </button>
+          {error ? (
+            <p className="editor-error">{error}</p>
+          ) : (
+            <p className="editor-warning">
+              {draft.enabled
+                ? "This rule is active. Saving runs it now on every existing file in the folder."
+                : "This rule is inactive. Enable it in the list to apply it to the folder."}
+            </p>
+          )}
+          <div className="editor-footer-actions">
+            <button className="btn btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={save}>
+              Save
+            </button>
+          </div>
         </div>
       </div>
     </div>

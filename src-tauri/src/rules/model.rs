@@ -46,7 +46,7 @@ impl Rule {
             id: Uuid::new_v4().to_string(),
             folder_id,
             name,
-            enabled: true,
+            enabled: false,
             condition_match: ConditionMatch::All,
             conditions: vec![],
             actions: vec![],
@@ -122,4 +122,3 @@ pub struct Action {
     pub params: serde_json::Value,
     pub position: i64,
 }
-

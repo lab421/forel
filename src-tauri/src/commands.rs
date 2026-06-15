@@ -149,6 +149,41 @@ pub fn toggle_rule(
     Ok(())
 }
 
+/// Applies a single enabled rule to all files in its folder.
+#[tauri::command]
+pub fn run_rule(rule_id: String, state: State<AppState>) -> Result<Vec<String>, String> {
+    let (folder_path, rule) = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let folder_id = db::rule_folder_id(&conn, &rule_id).map_err(|e| e.to_string())?;
+        let path: String = conn
+            .query_row(
+                "SELECT path FROM watched_folders WHERE id=?1",
+                rusqlite::params![folder_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let rules = db::list_rules(&conn, &folder_id).map_err(|e| e.to_string())?;
+        let rule = rules.into_iter().find(|rule| rule.id == rule_id);
+        (path, rule)
+    };
+
+    let Some(rule) = rule.filter(|rule| rule.enabled) else {
+        return Ok(Vec::new());
+    };
+
+    let mut matched = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&folder_path) {
+        for entry in entries.flatten() {
+            matched.extend(crate::rules::engine::evaluate_file(
+                &entry.path(),
+                std::slice::from_ref(&rule),
+            ));
+        }
+    }
+
+    Ok(matched)
+}
+
 /// Manually triggers rule evaluation for all files in the folder.
 #[tauri::command]
 pub fn run_rules_now(folder_id: String, state: State<AppState>) -> Result<Vec<String>, String> {

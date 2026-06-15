@@ -1,7 +1,7 @@
 use std::sync::atomic::Ordering;
 
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     AppHandle, Manager,
 };
@@ -12,7 +12,6 @@ const TRAY_ID: &str = "forel_tray";
 
 enum TrayItem {
     Plain(MenuItem<tauri::Wry>),
-    Check(CheckMenuItem<tauri::Wry>),
     Sep(PredefinedMenuItem<tauri::Wry>),
 }
 
@@ -20,7 +19,6 @@ impl TrayItem {
     fn as_menu_item(&self) -> &dyn tauri::menu::IsMenuItem<tauri::Wry> {
         match self {
             TrayItem::Plain(i) => i,
-            TrayItem::Check(i) => i,
             TrayItem::Sep(i) => i,
         }
     }
@@ -145,38 +143,13 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
 
             rebuild(app);
         }
-        rule_id => {
-            // Toggle individual rule
-            let state = app.state::<AppState>();
-            let toggled = {
-                let conn = state.db.lock().unwrap();
-                let current: Option<bool> = conn
-                    .query_row(
-                        "SELECT enabled FROM rules WHERE id=?1",
-                        rusqlite::params![rule_id],
-                        |r| r.get(0),
-                    )
-                    .ok();
-                if let Some(enabled) = current {
-                    let _ = db::toggle_rule(&conn, rule_id, !enabled);
-                    true
-                } else {
-                    false
-                }
-            };
-            if toggled {
-                rebuild(app);
-            }
-        }
+        _ => {}
     }
 }
 
 fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let state = app.state::<AppState>();
     let paused = state.paused.load(Ordering::Relaxed);
-
-    let conn = state.db.lock().unwrap();
-    let folders_with_rules = db::list_all_rules_with_folder(&conn).unwrap_or_default();
 
     let mut items: Vec<TrayItem> = Vec::new();
 
@@ -199,45 +172,6 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     items.push(TrayItem::Plain(MenuItem::with_id(
         app, "toggle_watch", action_label, true, None::<&str>,
     )?));
-    items.push(TrayItem::Sep(PredefinedMenuItem::separator(app)?));
-
-    // Rules grouped by folder
-    let mut has_rules = false;
-    for (folder, rules) in &folders_with_rules {
-        if rules.is_empty() {
-            continue;
-        }
-        let folder_name = std::path::Path::new(&folder.path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(&folder.path)
-            .to_string();
-        items.push(TrayItem::Plain(MenuItem::with_id(
-            app,
-            format!("folder_{}", folder.id),
-            folder_name,
-            false,
-            None::<&str>,
-        )?));
-        for rule in rules {
-            has_rules = true;
-            items.push(TrayItem::Check(CheckMenuItem::with_id(
-                app,
-                &rule.id,
-                &rule.name,
-                true,
-                rule.enabled,
-                None::<&str>,
-            )?));
-        }
-    }
-
-    if !has_rules {
-        items.push(TrayItem::Plain(MenuItem::with_id(
-            app, "no_rules", "No rules configured", false, None::<&str>,
-        )?));
-    }
-
     items.push(TrayItem::Sep(PredefinedMenuItem::separator(app)?));
     items.push(TrayItem::Plain(MenuItem::with_id(
         app, "quit", "Quit Forel", true, None::<&str>,
