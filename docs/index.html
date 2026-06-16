@@ -13,58 +13,64 @@
   </head>
   <body>
     <header class="site-header" aria-label="Main navigation">
-      <a class="brand" href="#top" aria-label="Forel home">
-        <img src="assets/forel-icon.png" alt="" />
-        <span>Forel</span>
-      </a>
-      <nav class="nav-links" aria-label="Page sections">
-        <a href="#automation">Automation</a>
-        <a href="#privacy">Privacy</a>
-        <a href="#open-source">Open source</a>
-      </nav>
-      <a class="header-cta" href="https://github.com/lguichard/forel/releases">Download</a>
+      <div class="container header-inner">
+        <a class="brand" href="#top" aria-label="Forel home">
+          <img src="assets/forel-icon.png" alt="" />
+          <span>Forel</span>
+        </a>
+        <nav class="nav-links" aria-label="Page sections">
+          <a href="#automation">Automation</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#open-source">Open source</a>
+        </nav>
+        <a class="header-cta" href="https://github.com/lguichard/forel/releases">Download</a>
+      </div>
     </header>
 
     <main id="top">
       <section class="hero" aria-labelledby="hero-title">
-        <img
-          class="hero-backdrop"
-          src="assets/app-screen-1.png"
-          alt="Forel main window showing watched folders and rules"
-        />
-        <div class="hero-shade" aria-hidden="true"></div>
-        <div class="hero-content">
-          <img class="hero-icon" src="assets/forel-icon.png" alt="" />
-          <p class="eyebrow">Free and open source for macOS</p>
-          <h1 id="hero-title">Forel</h1>
-          <p class="hero-copy">
-            The Hazel alternative for macOS. Watch folders, match files with clear rules,
-            and move, rename, tag, or label them automatically on your Mac.
-          </p>
-          <div class="hero-actions">
-            <a class="button button-primary" href="https://github.com/lguichard/forel/releases">
-              Download
-            </a>
-            <a class="button button-secondary" href="https://github.com/lguichard/forel">
-              View on GitHub
-            </a>
+        <div class="container hero-inner">
+          <div class="hero-content">
+            <img class="hero-icon" src="assets/forel-icon.png" alt="" />
+            <p class="eyebrow">Free and open source for macOS</p>
+            <h1 id="hero-title">Forel</h1>
+            <p class="hero-copy">
+              The Hazel alternative for macOS. Watch folders, match files with clear rules,
+              and move, rename, tag, or label them automatically on your Mac.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="https://github.com/lguichard/forel/releases">
+                Download
+              </a>
+              <a class="button button-secondary" href="https://github.com/lguichard/forel">
+                View on GitHub
+              </a>
+            </div>
+            <p class="hero-note">macOS 14+ · 100% on-device · MIT licensed</p>
           </div>
-          <p class="hero-note">macOS 14+ · 100% on-device · MIT licensed</p>
+          <div class="hero-shot">
+            <img
+              src="assets/app-screen-1.png"
+              alt="Forel main window showing watched folders and rules"
+            />
+          </div>
         </div>
       </section>
 
       <section class="intro-strip" aria-label="Forel summary">
-        <div class="intro-item">
-          <strong>No cloud</strong>
-          <span>Your files never leave your Mac.</span>
-        </div>
-        <div class="intro-item">
-          <strong>Rule-based</strong>
-          <span>Match by name, extension, kind, size, tags, color label, or content.</span>
-        </div>
-        <div class="intro-item">
-          <strong>Menu bar native</strong>
-          <span>Runs quietly in the background after setup.</span>
+        <div class="container intro-grid">
+          <div class="intro-item">
+            <strong>No cloud</strong>
+            <span>Your files never leave your Mac.</span>
+          </div>
+          <div class="intro-item">
+            <strong>Rule-based</strong>
+            <span>Match by name, extension, kind, size, tags, color label, or content.</span>
+          </div>
+          <div class="intro-item">
+            <strong>Menu bar native</strong>
+            <span>Runs quietly in the background after setup.</span>
+          </div>
         </div>
       </section>
 
@@ -180,8 +186,10 @@
     </main>
 
     <footer class="site-footer">
-      <span>Forel · MIT licensed · macOS 14+</span>
-      <a href="https://github.com/lguichard/forel">GitHub</a>
+      <div class="container">
+        <span>Forel · MIT licensed · macOS 14+</span>
+        <a href="https://github.com/lguichard/forel">GitHub</a>
+      </div>
     </footer>
   </body>
 </html>
