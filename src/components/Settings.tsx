@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
+import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useEffect, useState } from "react";
 import { useForelStore } from "../store";
 import { Theme, useSettings } from "../store/settings";
@@ -61,6 +62,15 @@ export default function Settings({
   useEffect(() => {
     void getVersion().then(setVersion);
   }, []);
+  const [autostart, setAutostart] = useState(false);
+  useEffect(() => {
+    void isEnabled().then(setAutostart);
+  }, []);
+  const toggleAutostart = async (next: boolean) => {
+    if (next) await enable();
+    else await disable();
+    setAutostart(await isEnabled());
+  };
   const updateStatus = useForelStore((s) => s.updateStatus);
   const updateInfo = useForelStore((s) => s.updateInfo);
   const checkForUpdates = useForelStore((s) => s.checkForUpdates);
@@ -101,6 +111,25 @@ export default function Settings({
                 </button>
               ))}
             </div>
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <div className="settings-row">
+            <div className="settings-label">
+              <span className="settings-label-title">Launch at login</span>
+              <span className="settings-label-sub">
+                Start Forel in the menu bar when you log in.
+              </span>
+            </div>
+            <label className="switch" title={autostart ? "Enabled" : "Disabled"}>
+              <input
+                type="checkbox"
+                checked={autostart}
+                onChange={(e) => void toggleAutostart(e.target.checked)}
+              />
+              <span className="switch-slider" />
+            </label>
           </div>
         </section>
 

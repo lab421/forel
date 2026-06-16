@@ -26,6 +26,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
         .setup(|app| {
             let data_dir = app.path().app_data_dir().expect("app data dir unavailable");
             std::fs::create_dir_all(&data_dir)?;
@@ -70,8 +74,15 @@ pub fn run() {
             // System tray icon
             tray::setup(app.handle())?;
 
-            // Hide window on close instead of quitting
+            // Show the window unless launched at login (LaunchAgent passes --minimized),
+            // in which case Forel stays silently in the menu bar.
+            let launched_at_login = std::env::args().any(|a| a == "--minimized");
             let win = app.get_webview_window("main").unwrap();
+            if !launched_at_login {
+                let _ = win.show();
+            }
+
+            // Hide window on close instead of quitting
             let win_clone = win.clone();
             win.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
