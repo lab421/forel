@@ -1,6 +1,7 @@
-use std::path::Path;
+use std::{path::Path, time::SystemTime};
 
 use anyhow::Result;
+use chrono::{DateTime, Duration, Local, Months, NaiveDate, TimeZone};
 
 use super::model::{Condition, ConditionKind, Operator};
 
@@ -87,6 +88,115 @@ pub fn evaluate(condition: &Condition, path: &Path) -> Result<bool> {
             let text = std::fs::read_to_string(path).unwrap_or_default();
             Ok(match_string(&condition.operator, &text, &condition.value))
         },
+
+        ConditionKind::CreatedAt => Ok(match meta.created() {
+            Ok(t) => match_date(&condition.operator, t, &condition.value),
+            Err(_) => false,
+        }),
+
+        ConditionKind::DateModified => Ok(match meta.modified() {
+            Ok(t) => match_date(&condition.operator, t, &condition.value),
+            Err(_) => false,
+        }),
+
+        ConditionKind::DateAdded => Ok(match date_added(path) {
+            Some(t) => match_date(&condition.operator, t, &condition.value),
+            None => false,
+        }),
+    }
+}
+
+/// macOS "Date Added" (when the file was added to its current folder). Not exposed
+/// by `stat`, so it is read via `getattrlist` with `ATTR_CMN_ADDEDTIME`. Returns
+/// `None` if the volume does not track it.
+fn date_added(path: &Path) -> Option<SystemTime> {
+    use std::os::unix::ffi::OsStrExt;
+
+    #[repr(C)]
+    struct AttrList {
+        bitmapcount: u16,
+        reserved: u16,
+        commonattr: u32,
+        volattr: u32,
+        dirattr: u32,
+        fileattr: u32,
+        forkattr: u32,
+    }
+
+    const ATTR_BIT_MAP_COUNT: u16 = 5;
+    const ATTR_CMN_ADDEDTIME: u32 = 0x1000_0000;
+
+    let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut list = AttrList {
+        bitmapcount: ATTR_BIT_MAP_COUNT,
+        reserved: 0,
+        commonattr: ATTR_CMN_ADDEDTIME,
+        volattr: 0,
+        dirattr: 0,
+        fileattr: 0,
+        forkattr: 0,
+    };
+
+    // getattrlist packs the result as: u32 length + timespec (2×i64), no padding.
+    let mut buf = [0u8; 4 + 16];
+    let rc = unsafe {
+        libc::getattrlist(
+            c_path.as_ptr(),
+            std::ptr::addr_of_mut!(list).cast(),
+            buf.as_mut_ptr().cast(),
+            buf.len(),
+            0,
+        )
+    };
+    if rc != 0 {
+        return None;
+    }
+
+    let secs = u64::try_from(i64::from_ne_bytes(buf[4..12].try_into().ok()?)).ok()?;
+    if secs == 0 {
+        return None;
+    }
+    let nsecs = u32::try_from(i64::from_ne_bytes(buf[12..20].try_into().ok()?)).unwrap_or(0);
+    Some(SystemTime::UNIX_EPOCH + std::time::Duration::new(secs, nsecs))
+}
+
+/// Matches a file timestamp against a date operator. Keyed on the operator (not
+/// the condition kind), so it is reusable by any future date condition.
+/// `before`/`after` take a calendar date ("YYYY-MM-DD"); `older_than`/`within_last`
+/// take a relative duration ("30 days"). Invalid values never match.
+fn match_date(operator: &Operator, file_time: SystemTime, value: &str) -> bool {
+    let file_dt = DateTime::<Local>::from(file_time);
+    match operator {
+        Operator::Before => parse_date(value).is_some_and(|day| file_dt < day),
+        Operator::After => parse_date(value).is_some_and(|day| file_dt >= day + Duration::days(1)),
+        Operator::OlderThan => cutoff(value).is_some_and(|c| file_dt < c),
+        Operator::WithinLast => cutoff(value).is_some_and(|c| file_dt >= c),
+        _ => false,
+    }
+}
+
+/// Parses "YYYY-MM-DD" into midnight local time on that day.
+fn parse_date(value: &str) -> Option<DateTime<Local>> {
+    let day = NaiveDate::parse_from_str(value.trim(), "%Y-%m-%d").ok()?;
+    Local
+        .from_local_datetime(&day.and_hms_opt(0, 0, 0)?)
+        .single()
+}
+
+/// Parses a relative duration ("30 days", "2 weeks", "6 months", "1 years") into
+/// the cutoff instant `now - duration`. Months/years use calendar arithmetic.
+fn cutoff(value: &str) -> Option<DateTime<Local>> {
+    let s = value.trim();
+    let split = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+    let (num, unit) = s.split_at(split);
+    let n: i64 = num.trim().parse().ok()?;
+    let now = Local::now();
+    match unit.trim().to_lowercase().as_str() {
+        "day" | "days" => Some(now - Duration::days(n)),
+        "week" | "weeks" => Some(now - Duration::weeks(n)),
+        "month" | "months" => now.checked_sub_months(Months::new(u32::try_from(n).ok()?)),
+        "year" | "years" => now.checked_sub_months(Months::new(u32::try_from(n).ok()? * 12)),
+        _ => None,
     }
 }
 
@@ -295,6 +405,97 @@ mod tests {
             &file
         )
         .expect("evaluate missing blue label"));
+    }
+
+    #[test]
+    fn created_at_condition_handles_absolute_and_relative_operators() {
+        use chrono::{Duration, Local};
+
+        let dir = TestDir::new();
+        let file = dir.file("fresh.txt", "new"); // created ~now
+
+        let tomorrow = (Local::now() + Duration::days(1))
+            .format("%Y-%m-%d")
+            .to_string();
+        let yesterday = (Local::now() - Duration::days(1))
+            .format("%Y-%m-%d")
+            .to_string();
+
+        // Relative
+        assert!(evaluate(
+            &condition(ConditionKind::CreatedAt, Operator::WithinLast, "1 day"),
+            &file
+        )
+        .expect("within last 1 day"));
+        assert!(!evaluate(
+            &condition(ConditionKind::CreatedAt, Operator::OlderThan, "1 year"),
+            &file
+        )
+        .expect("not older than 1 year"));
+
+        // Absolute (whole-day semantics)
+        assert!(evaluate(
+            &condition(ConditionKind::CreatedAt, Operator::Before, &tomorrow),
+            &file
+        )
+        .expect("before tomorrow"));
+        assert!(!evaluate(
+            &condition(ConditionKind::CreatedAt, Operator::After, &tomorrow),
+            &file
+        )
+        .expect("not after tomorrow"));
+        assert!(evaluate(
+            &condition(ConditionKind::CreatedAt, Operator::After, &yesterday),
+            &file
+        )
+        .expect("after yesterday"));
+
+        // Invalid value never matches
+        assert!(!evaluate(
+            &condition(ConditionKind::CreatedAt, Operator::WithinLast, ""),
+            &file
+        )
+        .expect("empty duration"));
+        assert!(!evaluate(
+            &condition(ConditionKind::CreatedAt, Operator::OlderThan, "5 decades"),
+            &file
+        )
+        .expect("unknown unit"));
+    }
+
+    #[test]
+    fn date_modified_condition_matches_recent_file() {
+        let dir = TestDir::new();
+        let file = dir.file("fresh.txt", "new"); // modified ~now
+
+        assert!(evaluate(
+            &condition(ConditionKind::DateModified, Operator::WithinLast, "1 day"),
+            &file
+        )
+        .expect("modified within last 1 day"));
+        assert!(!evaluate(
+            &condition(ConditionKind::DateModified, Operator::OlderThan, "1 year"),
+            &file
+        )
+        .expect("not modified over 1 year ago"));
+    }
+
+    #[test]
+    fn date_added_condition_matches_recently_added_file() {
+        let dir = TestDir::new();
+        let file = dir.file("added.txt", "new"); // added to folder ~now
+
+        // The per-user temp dir is on an APFS volume that tracks added time.
+        assert!(evaluate(
+            &condition(ConditionKind::DateAdded, Operator::WithinLast, "1 day"),
+            &file
+        )
+        .expect("added within last 1 day"));
+        assert!(!evaluate(
+            &condition(ConditionKind::DateAdded, Operator::OlderThan, "1 year"),
+            &file
+        )
+        .expect("not added over 1 year ago"));
     }
 
     #[test]

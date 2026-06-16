@@ -483,6 +483,9 @@ fn condition_kind_to_str(k: &ConditionKind) -> &'static str {
         ConditionKind::Tags => "tags",
         ConditionKind::ColorLabel => "color_label",
         ConditionKind::Contents => "contents",
+        ConditionKind::CreatedAt => "created_at",
+        ConditionKind::DateModified => "date_modified",
+        ConditionKind::DateAdded => "date_added",
     }
 }
 
@@ -494,6 +497,9 @@ fn parse_condition_kind(s: &str) -> ConditionKind {
         "tags" => ConditionKind::Tags,
         "color_label" => ConditionKind::ColorLabel,
         "contents" => ConditionKind::Contents,
+        "created_at" => ConditionKind::CreatedAt,
+        "date_modified" => ConditionKind::DateModified,
+        "date_added" => ConditionKind::DateAdded,
         _ => ConditionKind::Name,
     }
 }
@@ -509,6 +515,10 @@ fn operator_to_str(op: &Operator) -> &'static str {
         Operator::MatchesRegex => "matches_regex",
         Operator::GreaterThan => "greater_than",
         Operator::LessThan => "less_than",
+        Operator::Before => "before",
+        Operator::After => "after",
+        Operator::OlderThan => "older_than",
+        Operator::WithinLast => "within_last",
     }
 }
 
@@ -522,6 +532,10 @@ fn parse_operator(s: &str) -> Operator {
         "matches_regex" => Operator::MatchesRegex,
         "greater_than" => Operator::GreaterThan,
         "less_than" => Operator::LessThan,
+        "before" => Operator::Before,
+        "after" => Operator::After,
+        "older_than" => Operator::OlderThan,
+        "within_last" => Operator::WithinLast,
         _ => Operator::Is,
     }
 }

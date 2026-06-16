@@ -70,6 +70,9 @@ pub enum ConditionKind {
     Tags,
     ColorLabel,
     Contents,
+    CreatedAt,
+    DateModified,
+    DateAdded,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -84,6 +87,10 @@ pub enum Operator {
     MatchesRegex,
     GreaterThan,
     LessThan,
+    Before,
+    After,
+    OlderThan,
+    WithinLast,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -42,6 +42,16 @@ const STRING_OPERATORS: Operator[] = [
 ];
 const NUMBER_OPERATORS: Operator[] = ["is", "is_not", "greater_than", "less_than"];
 const PRESENCE_OPERATORS: Operator[] = ["is", "is_not"];
+const DATE_OPERATORS: Operator[] = ["before", "after", "older_than", "within_last"];
+
+// Condition kinds whose value is a date. They all share DATE_OPERATORS and the
+// DateValue editor — adding a new date condition only needs an entry here.
+const DATE_CONDITION_KINDS: ConditionKind[] = [
+  "created_at",
+  "date_modified",
+  "date_added",
+];
+const DURATION_UNITS = ["days", "weeks", "months", "years"] as const;
 
 const KIND_OPTIONS: { value: string; label: string }[] = [
   { value: "image",        label: "Image" },
@@ -117,6 +127,7 @@ function scopeLabel(depth: number | null) {
 function operatorsFor(kind: ConditionKind): Operator[] {
   if (kind === "size_bytes") return NUMBER_OPERATORS;
   if (kind === "kind" || kind === "color_label") return PRESENCE_OPERATORS;
+  if (DATE_CONDITION_KINDS.includes(kind)) return DATE_OPERATORS;
   return STRING_OPERATORS;
 }
 
@@ -397,9 +408,14 @@ function ConditionRow({
         onChange={(e) => {
           const kind = e.target.value as ConditionKind;
           let defaultValue = "";
+          let defaultOp = operatorsFor(kind)[0];
           if (kind === "kind") defaultValue = KIND_OPTIONS[0].value;
           else if (kind === "color_label") defaultValue = COLOR_LABELS[0];
-          onChange({ kind, operator: operatorsFor(kind)[0], value: defaultValue });
+          else if (DATE_CONDITION_KINDS.includes(kind)) {
+            defaultOp = "within_last";
+            defaultValue = "7 days";
+          }
+          onChange({ kind, operator: defaultOp, value: defaultValue });
         }}
       >
         {(Object.keys(CONDITION_KIND_LABELS) as ConditionKind[]).map((k) => (
@@ -441,6 +457,12 @@ function ConditionRow({
         <TagPicker value={condition.value} onChange={(v) => onChange({ value: v })} />
       ) : condition.kind === "size_bytes" ? (
         <SizeValue value={condition.value} onChange={(v) => onChange({ value: v })} />
+      ) : DATE_CONDITION_KINDS.includes(condition.kind) ? (
+        <DateValue
+          operator={currentOp}
+          value={condition.value}
+          onChange={(v) => onChange({ value: v })}
+        />
       ) : (
         <input
           className="condition-value"
@@ -486,6 +508,60 @@ function SizeValue({
       />
       <select value={unit} onChange={(e) => emit(num, e.target.value)}>
         {SIZE_UNITS.map((u) => (
+          <option key={u} value={u}>
+            {u}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// ---------- Date value (absolute date or relative duration) ----------
+//
+// Keyed on the operator, not the condition kind, so it is reused by every date
+// condition: before/after take a calendar date, older_than/within_last a duration.
+
+function DateValue({
+  operator,
+  value,
+  onChange,
+}: {
+  operator: Operator;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  if (operator === "before" || operator === "after") {
+    return (
+      <input
+        className="condition-value"
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    );
+  }
+
+  // Relative duration, stored as "<number> <unit>" (e.g. "30 days").
+  const match = value.trim().match(/^(\d*)\s*(days|weeks|months|years)?$/i);
+  const num = match?.[1] ?? "";
+  const rawUnit = match?.[2]?.toLowerCase();
+  const unit = DURATION_UNITS.find((u) => u === rawUnit) ?? "days";
+
+  const emit = (n: string, u: string) => onChange(n ? `${n} ${u}` : "");
+
+  return (
+    <div className="size-value">
+      <input
+        className="condition-value"
+        type="number"
+        min={1}
+        value={num}
+        placeholder="0"
+        onChange={(e) => emit(e.target.value, unit)}
+      />
+      <select value={unit} onChange={(e) => emit(num, e.target.value)}>
+        {DURATION_UNITS.map((u) => (
           <option key={u} value={u}>
             {u}
           </option>

@@ -208,6 +208,155 @@ fn rename_rule_renames_file() {
     );
 }
 
+/// A freshly created file matches a "created within the last N days" rule and the
+/// action runs; the same file does not match "older than N years".
+#[test]
+fn created_at_rule_matches_recent_file_and_skips_old_window() {
+    let src = TempDir::new();
+    let dst = TempDir::new();
+    let file = src.file("recent.pdf"); // created ~now
+
+    let recent_rule = make_rule(
+        "folder",
+        "archive recent",
+        vec![make_condition(
+            "",
+            ConditionKind::CreatedAt,
+            Operator::WithinLast,
+            "7 days",
+        )],
+        vec![make_action(
+            "",
+            ActionKind::MoveToFolder,
+            json!({ "destination": dst.path.to_string_lossy() }),
+            0,
+        )],
+    );
+
+    let (matched, history) =
+        engine::evaluate_file(&file, 0, &[recent_rule], "batch-date-1");
+
+    assert_eq!(matched, vec!["archive recent"]);
+    assert_eq!(history.len(), 1);
+    assert!(!file.exists(), "recent file must be moved");
+    assert!(dst.path.join("recent.pdf").exists());
+
+    // A fresh file is not "older than 1 year", so this rule must not touch it.
+    let kept = src.file("kept.pdf");
+    let old_rule = make_rule(
+        "folder",
+        "archive old",
+        vec![make_condition(
+            "",
+            ConditionKind::CreatedAt,
+            Operator::OlderThan,
+            "1 years",
+        )],
+        vec![make_action(
+            "",
+            ActionKind::MoveToFolder,
+            json!({ "destination": dst.path.to_string_lossy() }),
+            0,
+        )],
+    );
+
+    let (matched, history) = engine::evaluate_file(&kept, 0, &[old_rule], "batch-date-2");
+
+    assert!(matched.is_empty());
+    assert!(history.is_empty());
+    assert!(kept.exists(), "fresh file must not match older-than-1-year");
+}
+
+/// Date-modified and date-added conditions match a freshly created file through
+/// the full engine pipeline (they reuse the same date operators as created_at).
+#[test]
+fn date_modified_and_date_added_rules_match_recent_file() {
+    for kind in [ConditionKind::DateModified, ConditionKind::DateAdded] {
+        let src = TempDir::new();
+        let dst = TempDir::new();
+        let file = src.file("recent.pdf"); // modified & added ~now
+
+        let rule = make_rule(
+            "folder",
+            "archive recent",
+            vec![make_condition("", kind.clone(), Operator::WithinLast, "7 days")],
+            vec![make_action(
+                "",
+                ActionKind::MoveToFolder,
+                json!({ "destination": dst.path.to_string_lossy() }),
+                0,
+            )],
+        );
+
+        let (matched, history) = engine::evaluate_file(&file, 0, &[rule], "batch-date-recent");
+
+        assert_eq!(matched, vec!["archive recent"], "kind {kind:?} should match");
+        assert_eq!(history.len(), 1);
+        assert!(!file.exists(), "kind {kind:?}: file must be moved");
+        assert!(dst.path.join("recent.pdf").exists());
+    }
+}
+
+/// A `before`/`after` rule sorts a fresh file using calendar-date boundaries.
+#[test]
+fn created_at_rule_handles_absolute_before_and_after() {
+    use chrono::{Duration, Local};
+
+    let src = TempDir::new();
+    let dst = TempDir::new();
+    let file = src.file("today.pdf"); // created ~now
+
+    let tomorrow = (Local::now() + Duration::days(1))
+        .format("%Y-%m-%d")
+        .to_string();
+
+    // "is before tomorrow" must match a file created today.
+    let before_rule = make_rule(
+        "folder",
+        "before tomorrow",
+        vec![make_condition(
+            "",
+            ConditionKind::CreatedAt,
+            Operator::Before,
+            &tomorrow,
+        )],
+        vec![make_action(
+            "",
+            ActionKind::MoveToFolder,
+            json!({ "destination": dst.path.to_string_lossy() }),
+            0,
+        )],
+    );
+
+    let (matched, _) = engine::evaluate_file(&file, 0, &[before_rule], "batch-date-3");
+    assert_eq!(matched, vec!["before tomorrow"]);
+    assert!(dst.path.join("today.pdf").exists());
+
+    // "is after tomorrow" must not match a file created today.
+    let kept = src.file("kept.pdf");
+    let after_rule = make_rule(
+        "folder",
+        "after tomorrow",
+        vec![make_condition(
+            "",
+            ConditionKind::CreatedAt,
+            Operator::After,
+            &tomorrow,
+        )],
+        vec![make_action(
+            "",
+            ActionKind::MoveToFolder,
+            json!({ "destination": dst.path.to_string_lossy() }),
+            0,
+        )],
+    );
+
+    let (matched, history) = engine::evaluate_file(&kept, 0, &[after_rule], "batch-date-4");
+    assert!(matched.is_empty());
+    assert!(history.is_empty());
+    assert!(kept.exists());
+}
+
 /// After a move, deserialising the stored Undo and calling `revert` puts the
 /// file back at its original path.
 #[test]
