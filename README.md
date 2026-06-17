@@ -76,6 +76,19 @@ And everything happens **on your Mac**. No cloud. No API keys. No subscription. 
 
 ## Installation
 
+### Homebrew
+
+```bash
+brew install --cask forel-app/tap/forel
+```
+
+or
+
+```bash
+brew tap forel-app/tap
+brew install --cask forel
+```
+
 ### Manual
 
 Download the latest release `.dmg` from the [Releases](https://github.com/forel-app/forel/releases) page, open it, and drag Forel to your Applications folder.

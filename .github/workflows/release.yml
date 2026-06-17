@@ -1,5 +1,8 @@
 name: Release
 
+# Required to publish the Homebrew cask to forel-app/homebrew-tap:
+#   HOMEBREW_TAP_TOKEN (a PAT with `contents: write` on that repo)
+
 on:
   push:
     tags:
@@ -100,3 +103,71 @@ jobs:
           prerelease: false
           make_latest: true
           body: ${{ steps.notes.outputs.BODY }}
+
+  homebrew:
+    needs: publish
+    runs-on: macos-14
+    steps:
+      - name: Download release files
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/release
+          merge-multiple: true
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: forel-app/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update Cask
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          arm_sha="$(shasum -a 256 "dist/release/Forel-${GITHUB_REF_NAME}-darwin-arm64.dmg" | cut -d ' ' -f1)"
+          intel_sha="$(shasum -a 256 "dist/release/Forel-${GITHUB_REF_NAME}-darwin-x86_64.dmg" | cut -d ' ' -f1)"
+
+          cat > homebrew-tap/Casks/forel.rb <<EOF
+          cask "forel" do
+            arch arm: "arm64", intel: "x86_64"
+
+            version "${version}"
+            sha256 arm:   "${arm_sha}",
+                   intel: "${intel_sha}"
+
+            url "https://github.com/forel-app/forel/releases/download/v#{version}/Forel-v#{version}-darwin-#{arch}.dmg"
+            name "Forel"
+            desc "File-automation app that watches folders and runs rules"
+            homepage "https://github.com/forel-app/forel"
+
+            livecheck do
+              url :url
+              strategy :github_latest
+              regex(/^v?(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)\$/i)
+            end
+
+            depends_on macos: :sonoma
+
+            app "Forel.app"
+
+            zap trash: [
+              "~/Library/Application Support/com.forel.app",
+              "~/Library/Caches/com.forel.app",
+            ]
+          end
+          EOF
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          cd homebrew-tap
+          git config user.name "forel-release-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add Casks/forel.rb
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "forel ${GITHUB_REF_NAME#v}"
+          git push
