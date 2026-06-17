@@ -213,12 +213,17 @@ struct AccentColorPicker: View {
 /// main-window headers.
 struct BrandMark: View {
     var size: CGFloat = 34
-    var glyphSize: CGFloat = 16
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.26, style: .continuous).fill(Color.black)
-            Image(systemName: "wand.and.stars").font(.system(size: glyphSize)).foregroundStyle(.white)
+        Group {
+            if let appIcon = AppIcons.appIcon {
+                Image(nsImage: appIcon)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
+            } else {
+                RoundedRectangle(cornerRadius: size * 0.26, style: .continuous).fill(Color.black)
+            }
         }
         .frame(width: size, height: size)
     }

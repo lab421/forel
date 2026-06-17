@@ -62,13 +62,18 @@ final class StatusBarController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    /// Menu bar glyph with a colour dot composited in the bottom-right corner.
+    /// Menu bar glyph: the white Forel leaf, with a colour dot composited in
+    /// the bottom-right corner. Always white (not template-tinted), per the
+    /// app's dark menu-bar styling.
     private static func glyph(paused: Bool, size: CGFloat = 18) -> NSImage {
         let image = NSImage(size: NSSize(width: size, height: size))
         image.lockFocus()
-        NSColor.labelColor.setFill()
-        let bodyRect = NSRect(x: 2, y: 2, width: size - 4, height: size - 4)
-        NSBezierPath(roundedRect: bodyRect, xRadius: 3, yRadius: 3).fill()
+        if let tray = AppIcons.trayGlyph {
+            tray.draw(in: NSRect(x: 0, y: 0, width: size, height: size), from: .zero, operation: .sourceOver, fraction: 1)
+        } else {
+            NSColor.white.setFill()
+            NSBezierPath(roundedRect: NSRect(x: 2, y: 2, width: size - 4, height: size - 4), xRadius: 3, yRadius: 3).fill()
+        }
         image.unlockFocus()
 
         let dotSize: CGFloat = size / 3

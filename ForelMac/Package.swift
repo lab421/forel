@@ -21,7 +21,8 @@ let package = Package(
             dependencies: [
                 "ForelCore",
                 .product(name: "Sparkle", package: "Sparkle"),
-            ]
+            ],
+            resources: [.copy("Resources")]
         ),
         .testTarget(
             name: "ForelCoreTests",

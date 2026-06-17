@@ -20,6 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Running as a bare dev executable (no packaged .app/Info.plist) shows
+        // a generic Dock icon otherwise; set it explicitly from the bundled artwork.
+        if let appIcon = AppIcons.appIcon {
+            NSApp.applicationIconImage = appIcon
+        }
+
         if let window = NSApp.windows.first {
             window.delegate = self
         }
