@@ -8,31 +8,33 @@
 
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&logo=apple)](https://www.apple.com/macos/)
 [![Swift 6](https://img.shields.io/badge/Swift-6-orange?style=flat-square&logo=swift)](https://www.swift.org)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-ffdd00?style=flat-square&logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/lionelguic9)
+[![Downloads](https://img.shields.io/github/downloads/forel-app/forel/total?style=flat-square)](https://github.com/forel-app/forel/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-
-[Download](#installation) · [Contributing](#contributing)
-
 <br/>
+
+This project is built and maintained for free, on personal time. A ⭐ on the repo is the simplest way to say thanks and helps Forel get discovered by others who might need it. For anyone who wants to go further, you can support the work with a [buy me a coffee](https://buymeacoffee.com/lionelguic9) ☕ 
+
+
 
 <img src="assets/app-screen-new-1.png" alt="Forel — main view" width="49%" /> <img src="assets/app-screen-new-2.png" alt="Forel — rule editor" width="49%" />
 
 </div>
 
-> [!WARNING]
-> Forel is currently in **beta**. Expect bugs, missing features, and breaking changes between versions.
 
----
+> **Free, open source, and 100% on-device, local, no account, no subscription, no telemetry.**
 
-> **Free, open source, and 100% on-device.**
-> Forel sorts your files by rules you define — they never leave your Mac.
+**Install with [Homebrew](https://brew.sh):**
 
----
+```sh
+brew install --cask forel-app/tap/forel
+```
 
 ## Why Forel
 
-Forel is a free, open-source, community-driven take on folder automation for macOS. Define rules once — watch folders, match files, and move, rename, tag, or label them automatically — then let Forel run quietly in your menu bar.
+Forel is a free, open-source, community-driven take on folder automation for macOS.
+
+Define rules once watch folders, match files, and move, rename, tag, or label them automatically then let Forel run quietly in your menu bar.
 
 ---
 
@@ -168,6 +170,10 @@ forel/
 - [ ] Rules based metadata files
 - [ ] Automatic cleaning database
 - [ ] AI features
+
+---
+> [!WARNING]
+> Forel is currently in **beta**. Expect bugs, missing features, and breaking changes between versions.
 
 ---
 
