@@ -62,12 +62,14 @@ jobs:
           body: |
             ## Forel ${{ github.ref_name }}
 
-            Download the DMG that matches your Mac:
-            - `Forel-${{ github.ref_name }}-darwin-arm64.dmg` for Apple Silicon
+            Two builds available. Download the one that matches your Mac:
+            - `Forel-${{ github.ref_name }}-darwin-arm64.dmg` Apple Silicon (M1 / M2 / M3 / M4)
             - `Forel-${{ github.ref_name }}-darwin-x86_64.dmg` for Intel
 
             Requires **macOS 14 Sonoma or later**.
 
-            1. Download the correct DMG.
+            1. Download the correct .dmg for your Mac.
             2. Open it and drag **Forel** into **Applications**.
-            3. Launch the app from Applications or from the menu bar after installation.
+            3. First launch: the app is ad-hoc signed (not notarized), so right-click
+               **Forel.app -> Open** and confirm. (Or run `xattr -cr /Applications/Forel.app`.)
+
