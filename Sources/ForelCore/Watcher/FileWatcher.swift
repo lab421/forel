@@ -91,13 +91,17 @@ public final class FileWatcher: @unchecked Sendable {
     }
 
     fileprivate func handleEvents(paths: [String], flags: [FSEventStreamEventFlags]) {
+        lock.lock()
+        let handler = onEvent
+        lock.unlock()
+
         for (index, path) in paths.enumerated() {
             let flag = flags[index]
             let isCreateOrRename = flag & UInt32(kFSEventStreamEventFlagItemCreated) != 0
                 || flag & UInt32(kFSEventStreamEventFlagItemRenamed) != 0
             guard isCreateOrRename else { continue }
             if (path as NSString).lastPathComponent == ".DS_Store" { continue }
-            onEvent(path)
+            handler(path)
         }
     }
 }

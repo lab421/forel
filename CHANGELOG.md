@@ -7,7 +7,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Fixed
 - Fixed rules getting stuck when chained after a rename.
-- Fixed the update checker sometimes offering an older alpha release 
+- Fixed the update checker sometimes offering an older alpha release
+- Hardened folder-watching against a rare internal timing issue (no
+  user-visible change).
 
 ## [0.1.0-beta.1] - 2026-06-17
 
