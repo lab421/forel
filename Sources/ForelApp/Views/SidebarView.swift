@@ -6,15 +6,7 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ViewHeader(title: "Forel", subtitle: "File automation") {
-                Button {
-                    model.detailRoute = .settings
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-                .buttonStyle(IconButtonStyle())
-                .help("Settings")
-            }
+            ViewHeader(title: "Forel", subtitle: "File automation")
 
             HStack {
                 SectionLabel(title: "Watched Folders")
@@ -40,6 +32,14 @@ struct SidebarView: View {
             .scrollIndicators(.never)
 
             Spacer(minLength: 0)
+
+            HStack {
+                FooterLink(title: "Settings", systemImage: "gearshape") {
+                    model.detailRoute = .settings
+                }
+                .help("Settings")
+                Spacer()
+            }
         }
         .padding(16)
         .frame(minWidth: 250)

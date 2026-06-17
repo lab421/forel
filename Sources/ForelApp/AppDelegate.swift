@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         if let window = NSApp.windows.first {
             window.delegate = self
+            window.title = "Forel"
         }
         if model != nil {
             setUpStatusBar()

@@ -12,7 +12,7 @@ struct ForelMacApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup("Forel") {
             ContentView()
                 .environmentObject(model)
                 .environmentObject(updater)
