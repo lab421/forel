@@ -44,8 +44,7 @@ pub fn run() {
 
             let db = Arc::new(Mutex::new(conn));
 
-            let watcher_handle = watcher::start(Arc::clone(&db))
-                .expect("watcher failed to start");
+            let watcher_handle = watcher::start(Arc::clone(&db)).expect("watcher failed to start");
 
             // Restore paused state and start watching enabled folders
             let was_paused = {
@@ -108,6 +107,7 @@ pub fn run() {
             commands::update_rule,
             commands::delete_rule,
             commands::toggle_rule,
+            commands::reorder_rules,
             commands::run_rule,
             commands::run_rules_now,
             commands::preview_rules,

@@ -187,6 +187,21 @@ pub fn toggle_rule(
 }
 
 #[tauri::command]
+pub fn reorder_rules(
+    folder_id: String,
+    rule_ids: Vec<String>,
+    state: State<AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        db::reorder_rules(&conn, &folder_id, &rule_ids).map_err(|e| e.to_string())?;
+    }
+    tray::rebuild(&app);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn run_rule(rule_id: String, state: State<AppState>) -> Result<Vec<String>, String> {
     apply_rule(&rule_id, &state)
 }

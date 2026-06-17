@@ -42,6 +42,7 @@ interface ForelState {
   updateRule: (rule: Rule) => Promise<void>;
   deleteRule: (ruleId: string) => Promise<void>;
   toggleRule: (ruleId: string, enabled: boolean) => Promise<void>;
+  reorderRules: (folderId: string, ruleIds: string[]) => Promise<void>;
   runRule: (ruleId: string) => Promise<string[]>;
   runRulesNow: (folderId: string) => Promise<number>;
   previewRules: (folderId: string) => Promise<PreviewResult>;
@@ -132,6 +133,26 @@ export const useForelStore = create<ForelState>((set, get) => ({
     set((s) => ({
       rules: s.rules.map((r) => (r.id === ruleId ? { ...r, enabled } : r)),
     }));
+  },
+
+  reorderRules: async (folderId, ruleIds) => {
+    const previous = get().rules;
+    const byId = new Map(previous.map((rule) => [rule.id, rule]));
+    const next = ruleIds
+      .map((id, index) => {
+        const rule = byId.get(id);
+        return rule ? { ...rule, priority: index } : null;
+      })
+      .filter((rule): rule is Rule => rule !== null);
+
+    set({ rules: next });
+
+    try {
+      await invoke("reorder_rules", { folderId, ruleIds });
+    } catch (error) {
+      set({ rules: previous });
+      throw error;
+    }
   },
 
   runRule: async (ruleId) => {

@@ -333,6 +333,7 @@ pub fn insert_rule(conn: &Connection, rule: &Rule) -> Result<()> {
     } else {
         "all"
     };
+    let priority = next_rule_priority(conn, &rule.folder_id)?;
     conn.execute(
         "INSERT INTO rules (id, folder_id, name, enabled, condition_match, recursion_depth, priority, created_at)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
@@ -343,11 +344,20 @@ pub fn insert_rule(conn: &Connection, rule: &Rule) -> Result<()> {
             i64::from(rule.enabled),
             match_str,
             rule.recursion_depth.unwrap_or(-1),
-            rule.priority,
+            priority,
             rule.created_at
         ],
     )?;
     Ok(())
+}
+
+fn next_rule_priority(conn: &Connection, folder_id: &str) -> Result<i64> {
+    conn.query_row(
+        "SELECT COALESCE(MAX(priority) + 1, 0) FROM rules WHERE folder_id=?1",
+        params![folder_id],
+        |row| row.get(0),
+    )
+    .context("next rule priority")
 }
 
 pub fn update_rule(conn: &Connection, rule: &Rule) -> Result<()> {
@@ -403,6 +413,44 @@ pub fn toggle_rule(conn: &Connection, id: &str, enabled: bool) -> Result<()> {
         "UPDATE rules SET enabled=?1 WHERE id=?2",
         params![i64::from(enabled), id],
     )?;
+    Ok(())
+}
+
+pub fn reorder_rules(conn: &Connection, folder_id: &str, rule_ids: &[String]) -> Result<()> {
+    let current_rules = list_rules(conn, folder_id)?;
+    if current_rules.len() != rule_ids.len() {
+        anyhow::bail!("reorder must include every rule in the folder");
+    }
+
+    let current: std::collections::HashSet<&str> =
+        current_rules.iter().map(|rule| rule.id.as_str()).collect();
+    let requested: std::collections::HashSet<&str> = rule_ids.iter().map(String::as_str).collect();
+
+    if requested.len() != rule_ids.len() {
+        anyhow::bail!("reorder contains duplicate rule ids");
+    }
+    if requested != current {
+        anyhow::bail!("reorder contains unknown or missing rule ids");
+    }
+
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+
+    let result = (|| -> Result<()> {
+        for (index, rule_id) in rule_ids.iter().enumerate() {
+            conn.execute(
+                "UPDATE rules SET priority=?1 WHERE id=?2 AND folder_id=?3",
+                params![i64::try_from(index)?, rule_id, folder_id],
+            )?;
+        }
+        Ok(())
+    })();
+
+    if let Err(err) = result {
+        let _ = conn.execute_batch("ROLLBACK");
+        return Err(err);
+    }
+
+    conn.execute_batch("COMMIT")?;
     Ok(())
 }
 
@@ -805,6 +853,78 @@ mod tests {
         insert_history_entries(&conn, &[history_entry("b", ActionKind::Rename, true)])
             .expect("insert into migrated table");
         assert_eq!(list_history(&conn).expect("list").len(), 1);
+    }
+
+    #[test]
+    fn insert_rule_appends_to_folder_order() {
+        let conn = connection();
+        let folder = folder();
+        insert_folder(&conn, &folder).expect("insert folder");
+
+        insert_rule(&conn, &rule(&folder.id, "first")).expect("insert first");
+        insert_rule(&conn, &rule(&folder.id, "second")).expect("insert second");
+        insert_rule(&conn, &rule(&folder.id, "third")).expect("insert third");
+
+        let loaded = list_rules(&conn, &folder.id).expect("list rules");
+        let orders: Vec<i64> = loaded.iter().map(|rule| rule.priority).collect();
+        assert_eq!(orders, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn reorder_rules_persists_requested_order() {
+        let conn = connection();
+        let folder = folder();
+        insert_folder(&conn, &folder).expect("insert folder");
+
+        let first = rule(&folder.id, "first");
+        let second = rule(&folder.id, "second");
+        let third = rule(&folder.id, "third");
+        insert_rule(&conn, &first).expect("insert first");
+        insert_rule(&conn, &second).expect("insert second");
+        insert_rule(&conn, &third).expect("insert third");
+
+        reorder_rules(
+            &conn,
+            &folder.id,
+            &[third.id.clone(), first.id.clone(), second.id.clone()],
+        )
+        .expect("reorder rules");
+
+        let loaded = list_rules(&conn, &folder.id).expect("list reordered rules");
+        let names: Vec<&str> = loaded.iter().map(|rule| rule.name.as_str()).collect();
+        let orders: Vec<i64> = loaded.iter().map(|rule| rule.priority).collect();
+        assert_eq!(names, vec!["third", "first", "second"]);
+        assert_eq!(orders, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn reorder_rules_rejects_invalid_rule_sets() {
+        let conn = connection();
+        let primary_folder = folder();
+        let other_folder = folder();
+        insert_folder(&conn, &primary_folder).expect("insert folder");
+        insert_folder(&conn, &other_folder).expect("insert other folder");
+
+        let first = rule(&primary_folder.id, "first");
+        let second = rule(&primary_folder.id, "second");
+        let other = rule(&other_folder.id, "other");
+        insert_rule(&conn, &first).expect("insert first");
+        insert_rule(&conn, &second).expect("insert second");
+        insert_rule(&conn, &other).expect("insert other");
+
+        assert!(reorder_rules(&conn, &primary_folder.id, std::slice::from_ref(&first.id)).is_err());
+        assert!(reorder_rules(
+            &conn,
+            &primary_folder.id,
+            &[first.id.clone(), first.id.clone()]
+        )
+        .is_err());
+        assert!(reorder_rules(
+            &conn,
+            &primary_folder.id,
+            &[first.id.clone(), other.id.clone()]
+        )
+        .is_err());
     }
 
     #[test]

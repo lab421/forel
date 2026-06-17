@@ -270,18 +270,39 @@ input, select, textarea { font-family: inherit; font-size: 13px; color: var(--te
   border: 1px solid var(--border);
   margin-bottom: 7px;
   background: var(--bg-elevated);
+  cursor: grab;
   transition: border-color 0.12s, background 0.12s;
 }
 .rule-row:hover { border-color: var(--border-strong); }
+.rule-dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+.rule-drag-over {
+  border-color: var(--accent);
+  background: var(--bg-control);
+}
 .rule-disabled { opacity: 0.55; }
 
 .rule-order {
-  width: 18px;
+  width: 22px;
   align-self: stretch;
   display: flex;
   flex-direction: column;
   align-items: center;
   flex-shrink: 0;
+  user-select: none;
+}
+.rule-drag-handle {
+  margin-bottom: 3px;
+  color: var(--text-secondary);
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 0.12s;
+}
+.rule-row:hover .rule-drag-handle,
+.rule-dragging .rule-drag-handle {
+  opacity: 0.9;
 }
 .rule-order-badge {
   width: 18px;
