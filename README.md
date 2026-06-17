@@ -78,9 +78,10 @@ And everything happens **on your Mac**. No cloud. No API keys. No subscription. 
 
 ## Installation
 
-### Homebrew (coming soon)
+### Homebrew
 
 ```bash
+brew tap forel-app/forel
 brew install --cask forel
 ```
 
