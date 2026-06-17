@@ -10,8 +10,8 @@ permissions:
 
 jobs:
   build:
-    fail-fast: false
     strategy:
+      fail-fast: false
       matrix:
         include:
           - runs_on: macos-14
@@ -35,13 +35,17 @@ jobs:
           swift --version
 
       - name: Build and package
-        run: ./build.sh package ${{ matrix.arch }} ${{ github.ref_name }}
+        id: package
+        run: |
+          set -euo pipefail
+          ./build.sh package ${{ matrix.arch }} ${{ github.ref_name }}
+          echo "dmg_path=dist/release/Forel-${{ github.ref_name }}-${{ matrix.suffix }}.dmg" >> "$GITHUB_OUTPUT"
 
       - name: Upload release artifact (${{ matrix.suffix }})
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.suffix }}
-          path: dist/release/Forel-${{ github.ref_name }}-${{ matrix.suffix }}.dmg
+          path: ${{ steps.package.outputs.dmg_path }}
           if-no-files-found: error
 
   publish:
