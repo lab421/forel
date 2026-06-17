@@ -13,12 +13,44 @@ public struct ScopedPath: Sendable {
 public struct RulePreview: Sendable {
     public let ruleId: String
     public let ruleName: String
-    public let actions: [String]
+    public let conditions: [ConditionPreview]
+    public let actions: [ActionPreview]
 
-    public init(ruleId: String, ruleName: String, actions: [String]) {
+    public init(ruleId: String, ruleName: String, conditions: [ConditionPreview], actions: [ActionPreview]) {
         self.ruleId = ruleId
         self.ruleName = ruleName
+        self.conditions = conditions
         self.actions = actions
+    }
+}
+
+public struct ConditionPreview: Sendable {
+    public let kind: ConditionKind
+    public let operator_: Operator
+    public let value: String
+    public let matched: Bool
+
+    public init(kind: ConditionKind, operator_: Operator, value: String, matched: Bool) {
+        self.kind = kind
+        self.operator_ = operator_
+        self.value = value
+        self.matched = matched
+    }
+}
+
+public struct ActionPreview: Hashable, Sendable {
+    public let kind: ActionKind
+    public let description: String
+    public let sourcePath: String
+    public let targetPath: String?
+    public let status: DryRunStatus
+
+    public init(kind: ActionKind, description: String, sourcePath: String, targetPath: String?, status: DryRunStatus) {
+        self.kind = kind
+        self.description = description
+        self.sourcePath = sourcePath
+        self.targetPath = targetPath
+        self.status = status
     }
 }
 
@@ -104,22 +136,74 @@ public enum RuleEngine {
     }
 
     public static func previewFile(path: String, depth: Int, rules: [Rule]) -> FilePreview? {
-        var matchedRules: [RulePreview] = []
+        struct PendingFile {
+            let path: String
+            let depth: Int
+            let startRuleIndex: Int
+        }
 
-        for rule in rules where rule.enabled {
-            guard ruleMatches(rule, path: path, depth: depth) else { continue }
-            let sorted = rule.actions.sorted { $0.position < $1.position }
-            let actions = sorted
-                .filter { ActionExecutor.wouldChange($0, path: path) }
-                .map { action -> String in
-                    (try? ActionExecutor.preview(action, path: path)) ?? "preview unavailable"
+        var matchedRules: [RulePreview] = []
+        var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0)]
+
+        while !pending.isEmpty {
+            let target = pending.removeFirst()
+            var currentPath = target.path
+            var currentDepth = target.depth
+
+            for ruleIndex in target.startRuleIndex..<rules.count {
+                let rule = rules[ruleIndex]
+                guard rule.enabled, ruleInScope(rule, depth: currentDepth) else { continue }
+                let conditions = conditionPreviews(rule, path: currentPath)
+                guard conditionResultsMatch(conditions.map(\.matched), rule.conditionMatch) else { continue }
+
+                let result = previewActions(rule, path: currentPath)
+                if !result.actions.isEmpty {
+                    matchedRules.append(
+                        RulePreview(
+                            ruleId: rule.id,
+                            ruleName: rule.name,
+                            conditions: conditions,
+                            actions: result.actions
+                        )
+                    )
                 }
-            if actions.isEmpty { continue }
-            matchedRules.append(RulePreview(ruleId: rule.id, ruleName: rule.name, actions: actions))
+
+                for copiedPath in result.copiedPaths {
+                    pending.append(PendingFile(path: copiedPath, depth: currentDepth, startRuleIndex: ruleIndex + 1))
+                }
+
+                if result.isTerminal { break }
+
+                if result.finalPath != currentPath {
+                    currentPath = result.finalPath
+                    // Preview is intentionally pure: when simulating a rename
+                    // to a path that does not exist yet, keep the current depth.
+                    currentDepth = target.depth
+                }
+            }
         }
 
         guard !matchedRules.isEmpty else { return nil }
         return FilePreview(path: path, name: (path as NSString).lastPathComponent, rules: matchedRules)
+    }
+
+    private static func conditionPreviews(_ rule: Rule, path: String) -> [ConditionPreview] {
+        rule.conditions.map { condition in
+            ConditionPreview(
+                kind: condition.kind,
+                operator_: condition.operator,
+                value: condition.value,
+                matched: ConditionEvaluator.evaluate(condition, path: path)
+            )
+        }
+    }
+
+    private static func conditionResultsMatch(_ results: [Bool], _ match: ConditionMatch) -> Bool {
+        if results.isEmpty { return true }
+        switch match {
+        case .all: return results.allSatisfy { $0 }
+        case .any: return results.contains(true)
+        }
     }
 
     private static func ruleMatches(_ rule: Rule, path: String, depth: Int) -> Bool {
@@ -127,10 +211,7 @@ public enum RuleEngine {
         if rule.conditions.isEmpty { return true }
 
         let results = rule.conditions.map { ConditionEvaluator.evaluate($0, path: path) }
-        switch rule.conditionMatch {
-        case .all: return results.allSatisfy { $0 }
-        case .any: return results.contains(true)
-        }
+        return conditionResultsMatch(results, rule.conditionMatch)
     }
 
     private static func ruleInScope(_ rule: Rule, depth: Int) -> Bool {
@@ -227,5 +308,53 @@ public enum RuleEngine {
             }
         }
         return (history, copiedPaths, current, stoppedOnTerminal)
+    }
+
+    private static func previewActions(_ rule: Rule, path: String) -> (actions: [ActionPreview], copiedPaths: [String], finalPath: String, isTerminal: Bool) {
+        let sorted = rule.actions.sorted { $0.position < $1.position }
+
+        var actions: [ActionPreview] = []
+        var copiedPaths: [String] = []
+        var current = path
+        var stoppedOnTerminal = false
+
+        for action in sorted {
+            do {
+                let plan = try ActionExecutor.plan(action, path: current)
+                actions.append(
+                    ActionPreview(
+                        kind: plan.kind,
+                        description: plan.description,
+                        sourcePath: plan.sourcePath,
+                        targetPath: plan.targetPath,
+                        status: plan.status
+                    )
+                )
+
+                if plan.status == .wouldRun {
+                    if let copiedPath = plan.copiedPath {
+                        copiedPaths.append(copiedPath)
+                    }
+                    current = plan.finalPath
+                }
+
+                if plan.isTerminal {
+                    stoppedOnTerminal = true
+                    break
+                }
+            } catch {
+                actions.append(
+                    ActionPreview(
+                        kind: action.kind,
+                        description: "Preview unavailable: \(error)",
+                        sourcePath: current,
+                        targetPath: nil,
+                        status: .wouldSkip
+                    )
+                )
+            }
+        }
+
+        return (actions, copiedPaths, current, stoppedOnTerminal)
     }
 }

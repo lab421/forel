@@ -5,7 +5,7 @@ public enum ConditionEvaluator {
     /// Returns true if the file at `path` satisfies the condition.
     public static func evaluate(_ condition: Condition, path: String) -> Bool {
         let url = URL(fileURLWithPath: path)
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path) else { return false }
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
 
         switch condition.kind {
         case .name:
@@ -18,6 +18,7 @@ public enum ConditionEvaluator {
             return matchString(condition.operator, ext, value)
 
         case .kind:
+            guard let attrs else { return false }
             let detected = detectKind(path: path, attrs: attrs)
             switch condition.operator {
             case .is: return detected == condition.value
@@ -26,6 +27,7 @@ public enum ConditionEvaluator {
             }
 
         case .sizeBytes:
+            guard let attrs else { return false }
             let size = (attrs[.size] as? UInt64) ?? 0
             let threshold = parseSize(condition.value)
             switch condition.operator {
@@ -62,6 +64,7 @@ public enum ConditionEvaluator {
             }
 
         case .contents:
+            guard let attrs else { return false }
             let maxContentBytes: UInt64 = 10 * 1024 * 1024
             let size = (attrs[.size] as? UInt64) ?? 0
             if size > maxContentBytes { return false }
@@ -69,10 +72,12 @@ public enum ConditionEvaluator {
             return matchString(condition.operator, text, condition.value)
 
         case .createdAt:
+            guard let attrs else { return false }
             guard let created = attrs[.creationDate] as? Date else { return false }
             return matchDate(condition.operator, created, condition.value)
 
         case .dateModified:
+            guard let attrs else { return false }
             guard let modified = attrs[.modificationDate] as? Date else { return false }
             return matchDate(condition.operator, modified, condition.value)
 

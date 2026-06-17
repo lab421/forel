@@ -99,7 +99,7 @@ struct RuleListView: View {
             Button {
                 previewResult = model.preview()
             } label: {
-                Label("Preview", systemImage: "eye")
+                Label("Preview (Dry Run)", systemImage: "eye")
             }
             .buttonStyle(SecondaryButtonStyle())
             .disabled(model.selectedFolderId == nil)
@@ -215,7 +215,7 @@ private struct PreviewSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ViewHeader(
-                title: "Preview",
+                title: "Preview (Dry Run)",
                 subtitle: "\(result.filesScanned) scanned · \(result.matches.count) would change"
             )
 
@@ -231,10 +231,39 @@ private struct PreviewSheet: View {
                                 Text(rulePreview.ruleName)
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(ForelTheme.secondaryText)
-                                ForEach(rulePreview.actions, id: \.self) { action in
+                                ForEach(Array(rulePreview.conditions.enumerated()), id: \.offset) { _, condition in
                                     HStack(spacing: 6) {
-                                        Image(systemName: "arrow.turn.down.right").font(.system(size: 9)).foregroundStyle(ForelTheme.secondaryText)
-                                        Text(action).font(.system(size: 11)).foregroundStyle(ForelTheme.primaryText)
+                                        Image(systemName: condition.matched ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                            .font(.system(size: 9))
+                                            .foregroundStyle(condition.matched ? ForelTheme.accent : .red.opacity(0.85))
+                                        Text(condition.label)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(ForelTheme.secondaryText)
+                                            .lineLimit(1)
+                                    }
+                                    .padding(.leading, 6)
+                                }
+                                ForEach(rulePreview.actions, id: \.self) { action in
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: action.statusIcon)
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(action.statusColor)
+                                            Text(action.description)
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(ForelTheme.primaryText)
+                                            Text(action.statusLabel)
+                                                .font(.system(size: 10, weight: .medium))
+                                                .foregroundStyle(action.statusColor)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(Capsule().fill(action.statusColor.opacity(0.12)))
+                                        }
+                                        if let targetPath = action.targetPath {
+                                            Text("\((action.sourcePath as NSString).lastPathComponent) -> \((targetPath as NSString).lastPathComponent)")
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(ForelTheme.secondaryText)
+                                        }
                                     }
                                     .padding(.leading, 6)
                                 }
@@ -263,7 +292,79 @@ private struct PreviewSheet: View {
             }
         }
         .padding(16)
-        .frame(width: 480, height: 460)
+        .frame(width: 860, height: 680)
         .background(ForelTheme.background)
+    }
+}
+
+private extension ConditionPreview {
+    var label: String {
+        "\(kind.label) \(`operator_`.label) \(value)"
+    }
+}
+
+private extension ConditionKind {
+    var label: String {
+        switch self {
+        case .name: return "Name"
+        case .extension_: return "Extension"
+        case .kind: return "Kind"
+        case .sizeBytes: return "Size"
+        case .tags: return "Tags"
+        case .colorLabel: return "Color label"
+        case .contents: return "Contents"
+        case .createdAt: return "Date created"
+        case .dateModified: return "Date modified"
+        case .dateAdded: return "Date added"
+        }
+    }
+}
+
+private extension Operator {
+    var label: String {
+        switch self {
+        case .is: return "is"
+        case .isNot: return "is not"
+        case .contains: return "contains"
+        case .doesNotContain: return "does not contain"
+        case .startsWith: return "starts with"
+        case .endsWith: return "ends with"
+        case .matchesRegex: return "matches regex"
+        case .greaterThan: return "greater than"
+        case .lessThan: return "less than"
+        case .before: return "is before"
+        case .after: return "is after"
+        case .olderThan: return "is older than"
+        case .withinLast: return "is within the last"
+        }
+    }
+}
+
+private extension ActionPreview {
+    var statusLabel: String {
+        switch status {
+        case .wouldRun: return "Would run"
+        case .wouldSkip: return "Would skip"
+        case .blockedByConflict: return "Blocked by conflict"
+        case .needsConfirmation: return "Needs confirmation"
+        }
+    }
+
+    var statusIcon: String {
+        switch status {
+        case .wouldRun: return "arrow.turn.down.right"
+        case .wouldSkip: return "minus.circle"
+        case .blockedByConflict: return "exclamationmark.triangle.fill"
+        case .needsConfirmation: return "questionmark.circle.fill"
+        }
+    }
+
+    @MainActor var statusColor: Color {
+        switch status {
+        case .wouldRun: return ForelTheme.accent
+        case .wouldSkip: return ForelTheme.secondaryText
+        case .blockedByConflict: return .orange
+        case .needsConfirmation: return .purple
+        }
     }
 }

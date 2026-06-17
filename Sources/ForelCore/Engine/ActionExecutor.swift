@@ -71,6 +71,44 @@ public struct Applied {
     public let undo: Undo
 }
 
+public enum DryRunStatus: String, Codable, Equatable, Sendable {
+    case wouldRun = "would_run"
+    case wouldSkip = "would_skip"
+    case blockedByConflict = "blocked_by_conflict"
+    case needsConfirmation = "needs_confirmation"
+}
+
+public struct ActionPlan: Equatable, Sendable {
+    public let kind: ActionKind
+    public let description: String
+    public let sourcePath: String
+    public let targetPath: String?
+    public let status: DryRunStatus
+    public let finalPath: String
+    public let copiedPath: String?
+    public let isTerminal: Bool
+
+    public init(
+        kind: ActionKind,
+        description: String,
+        sourcePath: String,
+        targetPath: String?,
+        status: DryRunStatus,
+        finalPath: String,
+        copiedPath: String?,
+        isTerminal: Bool
+    ) {
+        self.kind = kind
+        self.description = description
+        self.sourcePath = sourcePath
+        self.targetPath = targetPath
+        self.status = status
+        self.finalPath = finalPath
+        self.copiedPath = copiedPath
+        self.isTerminal = isTerminal
+    }
+}
+
 public enum ActionExecutor {
     /// Executes the action on the file at `path`, returning the new path and an
     /// `Undo` describing how to reverse it.
@@ -192,40 +230,134 @@ public enum ActionExecutor {
     }
 
     public static func preview(_ action: Action, path: String) throws -> String {
+        try plan(action, path: path).description
+    }
+
+    public static func plan(_ action: Action, path: String) throws -> ActionPlan {
         let fileName = (path as NSString).lastPathComponent
 
         switch action.kind {
         case .moveToFolder:
             let destDir = action.params["destination"]?.stringValue ?? ""
-            return "Move to \((destDir as NSString).appendingPathComponent(fileName))"
+            let target = (destDir as NSString).appendingPathComponent(fileName)
+            return ActionPlan(
+                kind: action.kind,
+                description: "Move to \(target)",
+                sourcePath: path,
+                targetPath: target,
+                status: conflictStatus(target),
+                finalPath: target,
+                copiedPath: nil,
+                isTerminal: true
+            )
         case .copyToFolder:
             let destDir = action.params["destination"]?.stringValue ?? ""
-            return "Copy to \((destDir as NSString).appendingPathComponent(fileName))"
+            let target = (destDir as NSString).appendingPathComponent(fileName)
+            return ActionPlan(
+                kind: action.kind,
+                description: "Copy to \(target)",
+                sourcePath: path,
+                targetPath: target,
+                status: conflictStatus(target),
+                finalPath: path,
+                copiedPath: target,
+                isTerminal: false
+            )
         case .rename:
             let pattern = action.params["pattern"]?.stringValue ?? ""
             let newName = try applyRenamePattern(pattern, path: path)
-            return "Rename to \(newName)"
+            let target = ((path as NSString).deletingLastPathComponent as NSString).appendingPathComponent(newName)
+            return ActionPlan(
+                kind: action.kind,
+                description: "Rename to \(newName)",
+                sourcePath: path,
+                targetPath: target,
+                status: target == path ? .wouldSkip : conflictStatus(target),
+                finalPath: target,
+                copiedPath: nil,
+                isTerminal: false
+            )
         case .moveToTrash:
-            return "Move to Trash"
+            let target = (try trashDir() as NSString).appendingPathComponent(fileName)
+            return ActionPlan(
+                kind: action.kind,
+                description: "Move to Trash",
+                sourcePath: path,
+                targetPath: target,
+                status: conflictStatus(target),
+                finalPath: target,
+                copiedPath: nil,
+                isTerminal: true
+            )
         case .delete:
-            return "Delete (move to Trash)"
+            let target = (try trashDir() as NSString).appendingPathComponent(fileName)
+            return ActionPlan(
+                kind: action.kind,
+                description: "Delete (move to Trash)",
+                sourcePath: path,
+                targetPath: target,
+                status: conflictStatus(target),
+                finalPath: target,
+                copiedPath: nil,
+                isTerminal: true
+            )
         case .addTag:
             let tags = paramTags(action)
-            if tags.isEmpty { return "Add tag" }
-            if action.params["tag"] != nil && tags.count == 1 { return "Add tag '\(tags[0])'" }
-            return "Add tag\(tags.count > 1 ? "s" : ""): \(tags.joined(separator: ", "))"
+            let description: String
+            if tags.isEmpty { description = "Add tag" }
+            else if action.params["tag"] != nil && tags.count == 1 { description = "Add tag '\(tags[0])'" }
+            else { description = "Add tag\(tags.count > 1 ? "s" : ""): \(tags.joined(separator: ", "))" }
+            return ActionPlan(
+                kind: action.kind,
+                description: description,
+                sourcePath: path,
+                targetPath: nil,
+                status: wouldChange(action, path: path) ? .wouldRun : .wouldSkip,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: false
+            )
         case .removeTag:
             let tags = paramTags(action)
-            if tags.isEmpty { return "Remove tag" }
-            if action.params["tag"] != nil && tags.count == 1 { return "Remove tag '\(tags[0])'" }
-            return "Remove tag\(tags.count > 1 ? "s" : ""): \(tags.joined(separator: ", "))"
+            let description: String
+            if tags.isEmpty { description = "Remove tag" }
+            else if action.params["tag"] != nil && tags.count == 1 { description = "Remove tag '\(tags[0])'" }
+            else { description = "Remove tag\(tags.count > 1 ? "s" : ""): \(tags.joined(separator: ", "))" }
+            return ActionPlan(
+                kind: action.kind,
+                description: description,
+                sourcePath: path,
+                targetPath: nil,
+                status: wouldChange(action, path: path) ? .wouldRun : .wouldSkip,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: false
+            )
         case .setColorLabel:
             let color = action.params["color"]?.stringValue ?? ""
-            return color.isEmpty ? "Clear color label" : "Set color label to \(color)"
+            return ActionPlan(
+                kind: action.kind,
+                description: color.isEmpty ? "Clear color label" : "Set color label to \(color)",
+                sourcePath: path,
+                targetPath: nil,
+                status: wouldChange(action, path: path) ? .wouldRun : .wouldSkip,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: false
+            )
         case .runScript:
             let script = action.params["script"]?.stringValue ?? ""
             let firstLine = script.split(separator: "\n").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
-            return firstLine.isEmpty ? "Run script" : "Run script: \(firstLine)"
+            return ActionPlan(
+                kind: action.kind,
+                description: firstLine.isEmpty ? "Run script" : "Run script: \(firstLine)",
+                sourcePath: path,
+                targetPath: nil,
+                status: .wouldRun,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: false
+            )
         }
     }
 
@@ -257,6 +389,10 @@ public enum ActionExecutor {
             return [tag]
         }
         return []
+    }
+
+    private static func conflictStatus(_ target: String) -> DryRunStatus {
+        FileManager.default.fileExists(atPath: target) ? .blockedByConflict : .wouldRun
     }
 
     private static func formatFileSize(_ bytes: UInt64) -> String {

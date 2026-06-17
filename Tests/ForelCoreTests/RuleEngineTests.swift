@@ -35,11 +35,13 @@ import Foundation
 
         let before = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
         #expect(before?.rules[0].actions.count == 2)
+        #expect(before?.rules[0].actions.map(\.status) == [.wouldRun, .wouldRun])
 
         let (_, history) = RuleEngine.evaluateFile(path: file, depth: 0, rules: [rule], batchId: "batch")
         #expect(history.count == 2)
         #expect(history.allSatisfy { $0.reversible })
-        #expect(RuleEngine.previewFile(path: file, depth: 0, rules: [rule]) == nil)
+        let after = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+        #expect(after?.rules[0].actions.map(\.status) == [.wouldSkip, .wouldSkip])
     }
 
     @Test func previewFileReturnsOrderedActionsWithoutExecutingThem() throws {
@@ -48,8 +50,8 @@ import Foundation
         let destination = dir.dir("Processed")
         var rule = makeRule(name: "archive invoice", conditions: [makeCondition(.extension_, .is, "pdf")])
         rule.actions = [
-            makeAction(.addTag, .object(["tag": .string("Reviewed")]), position: 2),
-            makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 1),
+            makeAction(.addTag, .object(["tag": .string("Reviewed")]), position: 1),
+            makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 2),
         ]
 
         let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
@@ -58,10 +60,85 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("invoice.pdf")))
         #expect(preview?.name == "invoice.pdf")
         #expect(preview?.rules[0].ruleName == "archive invoice")
-        #expect(preview?.rules[0].actions == [
-            "Move to \((destination as NSString).appendingPathComponent("invoice.pdf"))",
+        #expect(preview?.rules[0].actions.map(\.description) == [
             "Add tag 'Reviewed'",
+            "Move to \((destination as NSString).appendingPathComponent("invoice.pdf"))",
         ])
+        #expect(preview?.rules[0].actions.map(\.sourcePath) == [file, file])
+        #expect(preview?.rules[0].actions[1].targetPath == (destination as NSString).appendingPathComponent("invoice.pdf"))
+        #expect(preview?.rules[0].actions.map(\.status) == [.wouldRun, .wouldRun])
+    }
+
+    @Test func previewFileShowsConditionResults() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.pdf", contents: "paid")
+        let rule = makeRule(
+            name: "maybe invoice",
+            conditionMatch: .any,
+            conditions: [
+                makeCondition(.name, .contains, "receipt"),
+                makeCondition(.extension_, .is, "pdf"),
+            ],
+            actions: [makeAction(.addTag, .object(["tag": .string("Reviewed")]))]
+        )
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+
+        #expect(preview?.rules[0].conditions.map(\.matched) == [false, true])
+        #expect(preview?.rules[0].conditions.map(\.kind) == [.name, .extension_])
+    }
+
+    @Test func previewFileDetectsDestinationConflictWithoutMutatingFiles() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.pdf", contents: "paid")
+        let destination = dir.dir("Processed")
+        let conflict = (destination as NSString).appendingPathComponent("invoice.pdf")
+        try "existing".write(toFile: conflict, atomically: true, encoding: .utf8)
+        let rule = makeRule(
+            name: "archive invoice",
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(destination)]))]
+        )
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+
+        #expect(preview?.rules[0].actions[0].status == .blockedByConflict)
+        #expect(preview?.rules[0].actions[0].targetPath == conflict)
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect((try String(contentsOfFile: conflict, encoding: .utf8)) == "existing")
+    }
+
+    @Test func previewFileFollowsSimulatedRenameThroughFollowingRules() throws {
+        let dir = TempDir()
+        let file = dir.file("draft.pdf", contents: "content")
+        let archivedDir = dir.dir("Archived")
+        let renameRule = makeRule(
+            name: "Rename to final",
+            actions: [makeAction(.rename, .object(["pattern": .string("final.pdf")]))]
+        )
+        let archiveRenamedRule = makeRule(
+            name: "Archive final",
+            conditions: [makeCondition(.name, .contains, "final")],
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(archivedDir)]))]
+        )
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [renameRule, archiveRenamedRule])
+        let renamed = (dir.path as NSString).appendingPathComponent("final.pdf")
+
+        #expect(preview?.rules.map(\.ruleName) == ["Rename to final", "Archive final"])
+        #expect(preview?.rules[1].conditions.map(\.matched) == [true])
+        #expect(preview?.rules[1].actions[0].sourcePath == renamed)
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(!FileManager.default.fileExists(atPath: renamed))
+
+        let result = RuleEngine.evaluateFile(
+            path: file,
+            depth: 0,
+            rules: [renameRule, archiveRenamedRule],
+            batchId: "batch",
+            root: dir.path
+        )
+        #expect(preview?.rules.map(\.ruleName) == result.matched)
+        #expect(preview?.rules.flatMap { $0.actions.map(\.kind) } == result.history.map(\.actionKind))
     }
 
     @Test func recursionDepthBlocksNestedMatchesButAllowsDirectChildren() throws {

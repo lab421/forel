@@ -85,7 +85,7 @@ struct QuickPanelView: View {
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
-            .padding(.top, 2)
+            .padding(.top, 14)
             .frame(width: 320)
         }
         .padding(1)

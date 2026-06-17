@@ -5,13 +5,26 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- Dry Run now shows detailed per-file rule previews, including matched
+  conditions, planned actions, source/target paths, and statuses such as
+  "would run", "would skip", and "blocked by conflict".
+- Dry Run now detects destination conflicts for move, copy, rename, trash,
+  and delete previews without modifying files.
+
 ### Changed
 - New installs now start at login by default, and start with watching
   paused until you've set up your folders and rules.
+- The old Preview action is now presented as Dry Run in the UI.
+- The Dry Run window is larger to make rule details easier to inspect.
+- The menu bar panel has more top padding so its header is not cramped under
+  the popover arrow.
 
 ### Fixed
 - Fixed the "Update available" banner text getting cut off in the menu bar
   panel.
+- Dry Run now follows simulated rename paths when evaluating following rules,
+  matching the real execution order more closely.
 
 ## [0.1.0-beta.2] - 2026-06-17
 
