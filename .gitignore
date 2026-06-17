@@ -1,26 +1,28 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# SwiftPM
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+*.xcodeproj
+*.xcworkspace
 
-node_modules
-dist
-dist-ssr
-*.local
+# Local editor state
+.DS_Store
+.vscode/*
+!.vscode/launch.json
+
+# Legacy Tauri archive
+tauri/.tauri/
+tauri/node_modules/
+tauri/dist/
+tauri/.pnpm-store/
+tauri/.vite/
+tauri/src-tauri/target/
+tauri/src-tauri/gen/schemas/
+
+# Local workspace leftovers
+dist/
+node_modules/
 .pnpm-store/
 .tauri/
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+.vite/

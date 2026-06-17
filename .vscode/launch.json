@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:forel}",
+            "name": "Debug ForelApp",
+            "target": "ForelApp",
+            "configuration": "debug"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:forel}",
+            "name": "Release ForelApp",
+            "target": "ForelApp",
+            "configuration": "release"
+        }
+    ]
+}

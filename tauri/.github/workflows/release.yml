@@ -1,0 +1,251 @@
+name: Release
+
+# Publishes two .dmg files plus Tauri updater artifacts whenever a version tag
+# is pushed, e.g.:
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Required repository secret:
+#   TAURI_SIGNING_PRIVATE_KEY
+# Optional repository secret when the key has a password:
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+# Required to publish the Homebrew cask to forel-app/homebrew-forel:
+#   HOMEBREW_TAP_TOKEN (a PAT with `contents: write` on that repo)
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            suffix: darwin-arm64
+          - target: x86_64-apple-darwin
+            suffix: darwin-x86_64
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.target }}
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare updater signing key
+        run: |
+          set -euo pipefail
+          key_path="$RUNNER_TEMP/tauri-updater.key"
+          decoded_key_path="$RUNNER_TEMP/tauri-updater.key.decoded"
+
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is missing."
+            exit 1
+          fi
+
+          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > "$key_path"
+          if base64 -D -i "$key_path" -o "$decoded_key_path" 2>/dev/null \
+            && head -n 1 "$decoded_key_path" | grep -q 'secret key'; then
+            :
+          else
+            printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" | perl -pe 's/\\n/\n/g' > "$key_path"
+            if base64 -D -i "$key_path" -o "$decoded_key_path" 2>/dev/null \
+              && head -n 1 "$decoded_key_path" | grep -q 'secret key'; then
+              :
+            elif head -n 1 "$key_path" | grep -q 'secret key'; then
+              base64 -i "$key_path" -o "$RUNNER_TEMP/tauri-updater.key.encoded"
+              mv "$RUNNER_TEMP/tauri-updater.key.encoded" "$key_path"
+            else
+              echo "TAURI_SIGNING_PRIVATE_KEY is not a valid Tauri updater private key."
+              echo "Store the full .key file content in this secret, not the .pub file."
+              exit 1
+            fi
+          fi
+
+          echo "TAURI_SIGNING_PRIVATE_KEY=$key_path" >> "$GITHUB_ENV"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
+      - name: Build DMG and updater archive (${{ matrix.suffix }})
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles app,dmg --ci
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Stage release files (${{ matrix.suffix }})
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release
+
+          dmg="$(find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -name "*.dmg" -print -quit)"
+          if [ -z "$dmg" ]; then
+            echo "No DMG found for target ${{ matrix.target }}"
+            exit 1
+          fi
+          cp "$dmg" "dist/release/Forel-${GITHUB_REF_NAME}-${{ matrix.suffix }}.dmg"
+          hdiutil verify "dist/release/Forel-${GITHUB_REF_NAME}-${{ matrix.suffix }}.dmg"
+
+          updater_archive="$(find "src-tauri/target/${{ matrix.target }}/release/bundle" -name "*.app.tar.gz" -print -quit)"
+          if [ -z "$updater_archive" ] || [ ! -f "${updater_archive}.sig" ]; then
+            echo "No signed updater archive found for target ${{ matrix.target }}"
+            exit 1
+          fi
+
+          cp "$updater_archive" "dist/release/Forel-${GITHUB_REF_NAME}-${{ matrix.suffix }}.app.tar.gz"
+          cp "${updater_archive}.sig" "dist/release/Forel-${GITHUB_REF_NAME}-${{ matrix.suffix }}.app.tar.gz.sig"
+
+      - name: Upload release files (${{ matrix.suffix }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.suffix }}
+          path: dist/release/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release files
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/release
+          merge-multiple: true
+
+      - name: Create latest.json
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          pub_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          arm_sig="$(cat "dist/release/Forel-${GITHUB_REF_NAME}-darwin-arm64.app.tar.gz.sig")"
+          intel_sig="$(cat "dist/release/Forel-${GITHUB_REF_NAME}-darwin-x86_64.app.tar.gz.sig")"
+
+          cat > dist/release/latest.json <<EOF
+          {
+            "version": "$version",
+            "notes": "See the GitHub release notes for Forel ${GITHUB_REF_NAME}.",
+            "pub_date": "$pub_date",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "$arm_sig",
+                "url": "https://github.com/forel-app/forel/releases/download/${GITHUB_REF_NAME}/Forel-${GITHUB_REF_NAME}-darwin-arm64.app.tar.gz"
+              },
+              "darwin-x86_64": {
+                "signature": "$intel_sig",
+                "url": "https://github.com/forel-app/forel/releases/download/${GITHUB_REF_NAME}/Forel-${GITHUB_REF_NAME}-darwin-x86_64.app.tar.gz"
+              }
+            }
+          }
+          EOF
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/release/*
+          generate_release_notes: true
+          prerelease: false
+          body: |
+            ## Forel ${{ github.ref_name }}
+
+            Two builds available. Download the one that matches your Mac:
+            - `Forel-${{ github.ref_name }}-darwin-arm64.dmg` -> Apple Silicon (M1 / M2 / M3 / M4)
+            - `Forel-${{ github.ref_name }}-darwin-x86_64.dmg` -> Intel
+
+            Requires **macOS 14 Sonoma or later**.
+
+            ### Install
+            1. Download the correct .dmg for your Mac.
+            2. Open it and drag **Forel** into **Applications**.
+            3. First launch: the app is ad-hoc signed (not notarized), so right-click
+               **Forel.app -> Open** and confirm. (Or run `xattr -cr /Applications/Forel.app`.)
+
+            The `.app.tar.gz`, `.sig`, and `latest.json` files are used by Forel's built-in updater.
+
+  homebrew:
+    needs: publish
+    runs-on: macos-14
+    steps:
+      - name: Download release files
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/release
+          merge-multiple: true
+
+      - name: Checkout homebrew-forel tap
+        uses: actions/checkout@v4
+        with:
+          repository: forel-app/homebrew-forel
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-forel
+
+      - name: Update Cask
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          arm_sha="$(shasum -a 256 "dist/release/Forel-${GITHUB_REF_NAME}-darwin-arm64.dmg" | cut -d ' ' -f1)"
+          intel_sha="$(shasum -a 256 "dist/release/Forel-${GITHUB_REF_NAME}-darwin-x86_64.dmg" | cut -d ' ' -f1)"
+
+          cat > homebrew-forel/Casks/forel.rb <<EOF
+          cask "forel" do
+            arch arm: "arm64", intel: "x86_64"
+
+            version "${version}"
+            sha256 arm:   "${arm_sha}",
+                   intel: "${intel_sha}"
+
+            url "https://github.com/forel-app/forel/releases/download/${GITHUB_REF_NAME}/Forel-${GITHUB_REF_NAME}-darwin-#{arch}.dmg"
+            name "Forel"
+            desc "macOS file-automation app that watches folders and runs rules"
+            homepage "https://github.com/forel-app/forel"
+
+            app "Forel.app"
+
+            zap trash: [
+              "~/Library/Application Support/com.forel.app",
+              "~/Library/Caches/com.forel.app",
+            ]
+          end
+          EOF
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          cd homebrew-forel
+          git config user.name "forel-release-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add Casks/forel.rb
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "forel ${GITHUB_REF_NAME#v}"
+          git push
