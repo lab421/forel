@@ -20,6 +20,8 @@ struct ContentView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+        .preferredColorScheme(.dark)
+        .tint(ForelTheme.accent)
     }
 
     private var errorBinding: Binding<Bool> {
