@@ -197,6 +197,44 @@ import Foundation
         #expect(FinderTags.read(file) == ["Matched"])
     }
 
+    @Test func evaluateFileRecordsSkippedActions() throws {
+        let dir = TempDir()
+        let file = dir.file("same.txt", contents: "content")
+        let rule = makeRule(
+            name: "No-op rename",
+            actions: [makeAction(.rename, .object(["pattern": .string("same.txt")]))]
+        )
+
+        let result = RuleEngine.evaluateFile(path: file, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(result.history.count == 1)
+        #expect(result.history[0].status == .skipped)
+        #expect(result.history[0].originalPath == file)
+        #expect(result.history[0].resultPath == file)
+        #expect(result.history[0].reversible == false)
+        #expect(result.history[0].message == "Skipped because the action would not change this file.")
+        #expect(FileManager.default.fileExists(atPath: file))
+    }
+
+    @Test func evaluateFileRecordsFailedActions() throws {
+        let dir = TempDir()
+        let file = dir.file("script.txt", contents: "content")
+        let rule = makeRule(
+            name: "Failing script",
+            actions: [makeAction(.runScript, .object(["script": .string("exit 7")]))]
+        )
+
+        let result = RuleEngine.evaluateFile(path: file, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(result.history.count == 1)
+        #expect(result.history[0].status == .failed)
+        #expect(result.history[0].originalPath == file)
+        #expect(result.history[0].resultPath == file)
+        #expect(result.history[0].reversible == false)
+        #expect(result.history[0].message?.contains("script exited with status 7") == true)
+        #expect(FileManager.default.fileExists(atPath: file))
+    }
+
     @Test func copiedFilesContinueThroughFollowingRulesWithoutRepeatingCopyRule() throws {
         let dir = TempDir()
         let file = dir.file("document.pdf", contents: "content")

@@ -37,16 +37,7 @@ struct HistoryView: View {
                                     .buttonStyle(SecondaryButtonStyle())
                                 }
                             }
-                            VStack(spacing: 0) {
-                                ForEach(Array(batch.entries.enumerated()), id: \.element.id) { index, entry in
-                                    HistoryRow(entry: entry)
-                                    if index != batch.entries.count - 1 {
-                                        Divider().overlay(ForelTheme.divider).padding(.leading, 14)
-                                    }
-                                }
-                            }
-                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ForelTheme.surface))
-                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
+                            BatchHistorySection(entries: batch.entries)
                         }
                     }
 
@@ -105,6 +96,59 @@ struct HistoryView: View {
     }
 }
 
+private struct HistoryFileGroup: Identifiable {
+    let id: String
+    var paths: Set<String>
+    var entries: [HistoryEntry]
+
+    var title: String {
+        let path = entries.first?.originalPath ?? id
+        return (path as NSString).lastPathComponent
+    }
+}
+
+private struct BatchHistorySection: View {
+    let entries: [HistoryEntry]
+
+    private var groups: [HistoryFileGroup] {
+        var groups: [HistoryFileGroup] = []
+        for entry in entries {
+            let touched = Set([entry.originalPath, entry.resultPath])
+            if let index = groups.firstIndex(where: { !$0.paths.isDisjoint(with: touched) }) {
+                groups[index].paths.formUnion(touched)
+                groups[index].entries.append(entry)
+            } else {
+                groups.append(HistoryFileGroup(id: entry.id, paths: touched, entries: [entry]))
+            }
+        }
+        return groups
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ForEach(groups) { group in
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(group.title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(ForelTheme.secondaryText)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
+                        .padding(.bottom, 2)
+
+                    ForEach(Array(group.entries.enumerated()), id: \.element.id) { index, entry in
+                        HistoryRow(entry: entry)
+                        if index != group.entries.count - 1 {
+                            Divider().overlay(ForelTheme.divider).padding(.leading, 46)
+                        }
+                    }
+                }
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ForelTheme.surface))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
+            }
+        }
+    }
+}
+
 private struct HistoryRow: View {
     @EnvironmentObject var model: AppModel
     let entry: HistoryEntry
@@ -121,25 +165,28 @@ private struct HistoryRow: View {
                 Text("\(entry.ruleName) · \(label)")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(ForelTheme.primaryText)
-                Text("\((entry.originalPath as NSString).lastPathComponent) → \((entry.resultPath as NSString).lastPathComponent)")
+                Text("\(entry.originalPath) → \(entry.resultPath)")
                     .font(.system(size: 10))
                     .foregroundStyle(ForelTheme.secondaryText)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                if let message = entry.message, !message.isEmpty {
+                    Text(message)
+                        .font(.system(size: 10))
+                        .foregroundStyle(statusColor)
+                        .lineLimit(2)
+                }
             }
 
             Spacer(minLength: 8)
 
             if entry.status == .undone {
-                Text("Undone")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(ForelTheme.secondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(ForelTheme.surface))
-            } else if entry.reversible {
+                statusBadge
+            } else if entry.status == .applied && entry.reversible {
                 Button("Undo") { model.undo(entry) }
                     .buttonStyle(SecondaryButtonStyle())
+            } else {
+                statusBadge
             }
         }
         .padding(.vertical, 8)
@@ -148,6 +195,34 @@ private struct HistoryRow: View {
 
     private var label: String {
         ConditionEditorLabels.actionKinds.first { $0.0 == entry.actionKind }?.1 ?? entry.actionKind.rawValue
+    }
+
+    private var statusBadge: some View {
+        Text(statusLabel)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(statusColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(statusColor.opacity(0.12)))
+    }
+
+    private var statusLabel: String {
+        switch entry.status {
+        case .applied: return "Applied"
+        case .undone: return "Undone"
+        case .failed: return "Failed"
+        case .skipped: return "Skipped"
+        case .needsConfirmation: return "Needs confirmation"
+        }
+    }
+
+    private var statusColor: Color {
+        switch entry.status {
+        case .applied: return ForelTheme.accent
+        case .undone, .skipped: return ForelTheme.secondaryText
+        case .failed: return ForelTheme.danger
+        case .needsConfirmation: return .orange
+        }
     }
 
     private var icon: String {

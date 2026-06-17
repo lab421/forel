@@ -6,7 +6,7 @@ import Foundation
 /// schema exactly so the existing alpha database at
 /// `~/Library/Application Support/com.forel.app/forel.db` keeps working.
 public final class Database: @unchecked Sendable {
-    public static let currentSchemaVersion: Int64 = 3
+    public static let currentSchemaVersion: Int64 = 4
 
     private let handle: OpaquePointer
     private let lock = NSLock()
@@ -128,6 +128,7 @@ public final class Database: @unchecked Sendable {
                 undo          TEXT NOT NULL,
                 reversible    INTEGER NOT NULL DEFAULT 0,
                 status        TEXT NOT NULL DEFAULT 'applied',
+                message       TEXT,
                 created_at    TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_action_history_batch ON action_history(batch_id);
@@ -150,6 +151,7 @@ public final class Database: @unchecked Sendable {
         if version < 1 { try runMigration(1) { try self.migrateV1AddRecursionDepth() } }
         if version < 2 { try runMigration(2) { try self.migrateV2AddActionHistory() } }
         if version < 3 { try runMigration(3) { try self.migrateV3AddAppSettings() } }
+        if version < 4 { try runMigration(4) { try self.migrateV4AddHistoryMessage() } }
     }
 
     private func runMigration(_ version: Int64, _ apply: () throws -> Void) throws {
@@ -178,6 +180,7 @@ public final class Database: @unchecked Sendable {
                 undo          TEXT NOT NULL,
                 reversible    INTEGER NOT NULL DEFAULT 0,
                 status        TEXT NOT NULL DEFAULT 'applied',
+                message       TEXT,
                 created_at    TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_action_history_batch ON action_history(batch_id);
@@ -188,6 +191,11 @@ public final class Database: @unchecked Sendable {
 
     private func migrateV3AddAppSettings() throws {
         try exec("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);")
+    }
+
+    private func migrateV4AddHistoryMessage() throws {
+        if try tableHasColumn("action_history", "message") { return }
+        try exec("ALTER TABLE action_history ADD COLUMN message TEXT;")
     }
 
     // MARK: - App settings
@@ -226,7 +234,7 @@ public final class Database: @unchecked Sendable {
     // MARK: - Action history
 
     private static let historyColumns =
-        "id, batch_id, rule_id, rule_name, action_kind, original_path, result_path, undo, reversible, status, created_at"
+        "id, batch_id, rule_id, rule_name, action_kind, original_path, result_path, undo, reversible, status, message, created_at"
 
     private func rowToHistoryEntry(_ stmt: SQLiteStatement) -> HistoryEntry {
         HistoryEntry(
@@ -240,7 +248,8 @@ public final class Database: @unchecked Sendable {
             undo: JSONValue.parse(stmt.columnText(7)),
             reversible: stmt.columnBool(8),
             status: HistoryStatus(rawValue: stmt.columnText(9)) ?? .applied,
-            createdAt: stmt.columnText(10)
+            message: stmt.columnTextOrNil(10),
+            createdAt: stmt.columnText(11)
         )
     }
 
@@ -249,8 +258,8 @@ public final class Database: @unchecked Sendable {
             let stmt = try statement(
                 """
                 INSERT INTO action_history
-                (id, batch_id, rule_id, rule_name, action_kind, original_path, result_path, undo, reversible, status, created_at)
-                VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+                (id, batch_id, rule_id, rule_name, action_kind, original_path, result_path, undo, reversible, status, message, created_at)
+                VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
                 """
             )
             stmt.bind(1, entry.id)
@@ -263,7 +272,8 @@ public final class Database: @unchecked Sendable {
             stmt.bind(8, entry.undo.jsonString)
             stmt.bind(9, bool: entry.reversible)
             stmt.bind(10, entry.status.rawValue)
-            stmt.bind(11, entry.createdAt)
+            stmt.bind(11, entry.message)
+            stmt.bind(12, entry.createdAt)
             try stmt.runToCompletion()
         }
     }

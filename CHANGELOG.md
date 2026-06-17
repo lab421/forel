@@ -11,6 +11,8 @@ All notable changes to Forel are documented here. Format loosely follows
   "would run", "would skip", and "blocked by conflict".
 - Dry Run now detects destination conflicts for move, copy, rename, trash,
   and delete previews without modifying files.
+- Action history now records skipped and failed actions, including the reason
+  or error message when available.
 
 ### Changed
 - New installs now start at login by default, and start with watching
@@ -19,6 +21,8 @@ All notable changes to Forel are documented here. Format loosely follows
 - The Dry Run window is larger to make rule details easier to inspect.
 - The menu bar panel has more top padding so its header is not cramped under
   the popover arrow.
+- The History view now groups activity by batch and file, shows full
+  original path -> result path flow, and displays explicit status badges.
 
 ### Fixed
 - Fixed the "Update available" banner text getting cut off in the menu bar

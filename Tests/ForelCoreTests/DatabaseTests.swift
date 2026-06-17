@@ -187,7 +187,7 @@ import SQLite3
         let db = try makeDB()
         let entries = [
             HistoryEntry(batchId: "batch-1", ruleId: "rule", ruleName: "demo", actionKind: .moveToFolder, originalPath: "/from", resultPath: "/to", undo: .object(["kind": .string("none")]), reversible: true),
-            HistoryEntry(batchId: "batch-1", ruleId: "rule", ruleName: "demo", actionKind: .runScript, originalPath: "/from", resultPath: "/to", undo: .object(["kind": .string("none")]), reversible: false),
+            HistoryEntry(batchId: "batch-1", ruleId: "rule", ruleName: "demo", actionKind: .runScript, originalPath: "/from", resultPath: "/to", undo: .object(["kind": .string("none")]), reversible: false, status: .failed, message: "script exited with status 1"),
         ]
         try db.insertHistoryEntries(entries)
 
@@ -198,6 +198,9 @@ import SQLite3
         let reloaded = try db.getHistoryEntry(entries[0].id)
         #expect(reloaded?.status == .undone)
         #expect(reloaded?.reversible == true)
+        let failed = try db.getHistoryEntry(entries[1].id)
+        #expect(failed?.status == .failed)
+        #expect(failed?.message == "script exited with status 1")
 
         try db.clearHistory()
         #expect(try db.listHistory().isEmpty)

@@ -276,6 +276,24 @@ public enum RuleEngine {
         for action in sorted {
             let isTerminal = action.kind == .moveToFolder || action.kind == .moveToTrash || action.kind == .delete
             let original = current
+            if !ActionExecutor.wouldChange(action, path: current) {
+                history.append(
+                    HistoryEntry(
+                        batchId: batchId,
+                        ruleId: rule.id,
+                        ruleName: rule.name,
+                        actionKind: action.kind,
+                        originalPath: original,
+                        resultPath: original,
+                        undo: Undo.none.toJSON(),
+                        reversible: false,
+                        status: .skipped,
+                        message: "Skipped because the action would not change this file."
+                    )
+                )
+                continue
+            }
+
             do {
                 let applied = try ActionExecutor.execute(action, path: current)
                 let resultPath: String
@@ -300,7 +318,20 @@ public enum RuleEngine {
                 )
                 current = applied.newPath
             } catch {
-                // Logged by the caller; a failed action does not abort the rest of the rule run.
+                history.append(
+                    HistoryEntry(
+                        batchId: batchId,
+                        ruleId: rule.id,
+                        ruleName: rule.name,
+                        actionKind: action.kind,
+                        originalPath: original,
+                        resultPath: original,
+                        undo: Undo.none.toJSON(),
+                        reversible: false,
+                        status: .failed,
+                        message: String(describing: error)
+                    )
+                )
             }
             if isTerminal {
                 stoppedOnTerminal = true

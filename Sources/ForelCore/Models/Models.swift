@@ -147,6 +147,9 @@ public struct Rule: Codable, Equatable, Sendable {
 public enum HistoryStatus: String, Codable, Equatable, Sendable {
     case applied
     case undone
+    case failed
+    case skipped
+    case needsConfirmation = "needs_confirmation"
 }
 
 /// A single executed action, recorded so it can be reviewed (log) and reversed
@@ -163,6 +166,7 @@ public struct HistoryEntry: Codable, Equatable, Sendable {
     public var undo: JSONValue
     public var reversible: Bool
     public var status: HistoryStatus
+    public var message: String?
     public var createdAt: String
 
     public init(
@@ -176,6 +180,7 @@ public struct HistoryEntry: Codable, Equatable, Sendable {
         undo: JSONValue,
         reversible: Bool,
         status: HistoryStatus = .applied,
+        message: String? = nil,
         createdAt: String = ISO8601DateFormatter().string(from: Date())
     ) {
         self.id = id
@@ -188,6 +193,7 @@ public struct HistoryEntry: Codable, Equatable, Sendable {
         self.undo = undo
         self.reversible = reversible
         self.status = status
+        self.message = message
         self.createdAt = createdAt
     }
 }
