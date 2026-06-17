@@ -15,6 +15,19 @@ struct RuleListView: View {
             header
             actionBar
 
+            if let runNowMessage = model.runNowMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text(runNowMessage)
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(ForelTheme.success)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Capsule().fill(ForelTheme.success.opacity(0.14)))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             if model.rules.isEmpty {
                 VStack {
                     Spacer(minLength: 0)
@@ -36,6 +49,7 @@ struct RuleListView: View {
                 .scrollIndicators(.never)
             }
         }
+        .animation(.easeInOut(duration: 0.25), value: model.runNowMessage)
         .padding(16)
         .frame(minWidth: 460)
         .background(ForelTheme.background)
@@ -91,10 +105,17 @@ struct RuleListView: View {
             Button {
                 model.runNow()
             } label: {
-                Label("Run Now", systemImage: "play.fill")
+                if model.isRunningNow {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Running…")
+                    }
+                } else {
+                    Label("Run Now", systemImage: "play.fill")
+                }
             }
             .buttonStyle(SecondaryButtonStyle())
-            .disabled(model.selectedFolderId == nil)
+            .disabled(model.selectedFolderId == nil || model.isRunningNow)
 
             Button {
                 previewResult = model.preview()

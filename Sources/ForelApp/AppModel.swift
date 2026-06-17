@@ -24,6 +24,9 @@ final class AppModel: ObservableObject {
     /// re-render with `.id(model.accentVersion)` — `ForelTheme.accent` is a
     /// plain static var, not itself observable.
     @Published var accentVersion: Int = 0
+    @Published private(set) var isRunningNow = false
+    @Published private(set) var runNowMessage: String?
+    private var runNowMessageId: UUID?
 
     let db: Database
     private let coordinator: WatcherCoordinator
@@ -155,20 +158,45 @@ final class AppModel: ObservableObject {
     /// Runs all enabled rules in the selected folder against every file
     /// currently in it (a manual "Run Now"), bounded by each rule's scope.
     func runNow() {
+        guard !isRunningNow else { return }
         guard let folder = folders.first(where: { $0.id == selectedFolderId }) else { return }
         let folderRules = rules
-        let maxDepth = RuleEngine.maxRuleDepth(folderRules)
-        let entries = RuleEngine.walkEntries(root: folder.path, maxDepth: maxDepth)
-        let batchId = UUID().uuidString
-        var allHistory: [HistoryEntry] = []
-        for entry in entries {
-            let (_, history) = RuleEngine.evaluateFile(path: entry.path, depth: entry.depth, rules: folderRules, batchId: batchId, root: folder.path)
-            allHistory.append(contentsOf: history)
+        isRunningNow = true
+        Task {
+            defer { isRunningNow = false }
+            let allHistory = await Task.detached(priority: .userInitiated) {
+                let maxDepth = RuleEngine.maxRuleDepth(folderRules)
+                let entries = RuleEngine.walkEntries(root: folder.path, maxDepth: maxDepth)
+                let batchId = UUID().uuidString
+                var allHistory: [HistoryEntry] = []
+                for entry in entries {
+                    let (_, history) = RuleEngine.evaluateFile(path: entry.path, depth: entry.depth, rules: folderRules, batchId: batchId, root: folder.path)
+                    allHistory.append(contentsOf: history)
+                }
+                return allHistory
+            }.value
+            if !allHistory.isEmpty {
+                try? db.insertHistoryEntries(allHistory)
+            }
+            reloadHistory()
+            showRunNowMessage(
+                allHistory.isEmpty
+                    ? "Run complete — no matching files"
+                    : "Run complete — \(allHistory.count) action\(allHistory.count == 1 ? "" : "s") applied"
+            )
         }
-        if !allHistory.isEmpty {
-            try? db.insertHistoryEntries(allHistory)
+    }
+
+    /// Shows a transient confirmation after a manual run, auto-dismissed a
+    /// few seconds later — unless a newer run has already replaced it.
+    private func showRunNowMessage(_ message: String) {
+        let id = UUID()
+        runNowMessageId = id
+        runNowMessage = message
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            if runNowMessageId == id { runNowMessage = nil }
         }
-        reloadHistory()
     }
 
     func preview() -> PreviewResult {

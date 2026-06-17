@@ -13,6 +13,8 @@ All notable changes to Forel are documented here. Format loosely follows
   and delete previews without modifying files.
 - Action history now records skipped and failed actions, including the reason
   or error message when available.
+- Run Now shows a loading state while it's working and a confirmation
+  message with the result once it's done.
 
 ### Changed
 - New installs now start at login by default, and start with watching
