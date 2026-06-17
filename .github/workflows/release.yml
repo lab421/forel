@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   build:
+    fail-fast: false
     strategy:
       matrix:
         include:
@@ -40,7 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.suffix }}
-          path: dist/release/Forel-${GITHUB_REF_NAME}-${{ matrix.suffix }}.dmg
+          path: dist/release/Forel-${{ github.ref_name }}-${{ matrix.suffix }}.dmg
           if-no-files-found: error
 
   publish:
@@ -72,4 +73,3 @@ jobs:
             2. Open it and drag **Forel** into **Applications**.
             3. First launch: the app is ad-hoc signed (not notarized), so right-click
                **Forel.app -> Open** and confirm. (Or run `xattr -cr /Applications/Forel.app`.)
-
