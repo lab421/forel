@@ -48,14 +48,37 @@ public enum RuleEngine {
     /// Evaluates all enabled rules against `path` and executes matching ones.
     /// Returns the names of rules that matched and the history entries produced
     /// by their actions (grouped under `batchId`).
-    public static func evaluateFile(path: String, depth: Int, rules: [Rule], batchId: String) -> (matched: [String], history: [HistoryEntry]) {
+    public static func evaluateFile(path: String, depth: Int, rules: [Rule], batchId: String, root: String? = nil) -> (matched: [String], history: [HistoryEntry]) {
+        struct PendingFile {
+            let path: String
+            let depth: Int
+            let startRuleIndex: Int
+        }
+
         var matched: [String] = []
         var history: [HistoryEntry] = []
+        var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0)]
 
-        for rule in rules where rule.enabled {
-            if ruleMatches(rule, path: path, depth: depth) {
-                history.append(contentsOf: executeActions(rule, path: path, batchId: batchId))
+        while !pending.isEmpty {
+            let target = pending.removeFirst()
+            for ruleIndex in target.startRuleIndex..<rules.count {
+                let rule = rules[ruleIndex]
+                guard rule.enabled, ruleMatches(rule, path: target.path, depth: target.depth) else { continue }
+
+                let result = executeActions(rule, path: target.path, batchId: batchId)
+                history.append(contentsOf: result.history)
                 matched.append(rule.name)
+
+                for copiedPath in result.copiedPaths {
+                    let copiedDepth: Int
+                    if let root {
+                        guard let depth = pathDepth(root: root, path: copiedPath) else { continue }
+                        copiedDepth = depth
+                    } else {
+                        copiedDepth = target.depth
+                    }
+                    pending.append(PendingFile(path: copiedPath, depth: copiedDepth, startRuleIndex: ruleIndex + 1))
+                }
             }
         }
         return (matched, history)
@@ -143,16 +166,25 @@ public enum RuleEngine {
         }.max()
     }
 
-    private static func executeActions(_ rule: Rule, path: String, batchId: String) -> [HistoryEntry] {
+    private static func executeActions(_ rule: Rule, path: String, batchId: String) -> (history: [HistoryEntry], copiedPaths: [String]) {
         let sorted = rule.actions.sorted { $0.position < $1.position }
 
         var history: [HistoryEntry] = []
+        var copiedPaths: [String] = []
         var current = path
         for action in sorted {
             let isTerminal = action.kind == .moveToFolder || action.kind == .moveToTrash || action.kind == .delete
             let original = current
             do {
                 let applied = try ActionExecutor.execute(action, path: current)
+                let resultPath: String
+                switch applied.undo {
+                case .copy(let copy):
+                    resultPath = copy
+                    copiedPaths.append(copy)
+                default:
+                    resultPath = applied.newPath
+                }
                 history.append(
                     HistoryEntry(
                         batchId: batchId,
@@ -160,7 +192,7 @@ public enum RuleEngine {
                         ruleName: rule.name,
                         actionKind: action.kind,
                         originalPath: original,
-                        resultPath: applied.newPath,
+                        resultPath: resultPath,
                         undo: applied.undo.toJSON(),
                         reversible: applied.undo.isReversible
                     )
@@ -171,6 +203,6 @@ public enum RuleEngine {
             }
             if isTerminal { break }
         }
-        return history
+        return (history, copiedPaths)
     }
 }

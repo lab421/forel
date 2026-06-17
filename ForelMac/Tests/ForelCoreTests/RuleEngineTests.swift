@@ -120,6 +120,50 @@ import Foundation
         #expect(FinderTags.read(file) == ["Matched"])
     }
 
+    @Test func copiedFilesContinueThroughFollowingRulesWithoutRepeatingCopyRule() throws {
+        let dir = TempDir()
+        let file = dir.file("document.pdf", contents: "content")
+        let archivedDir = dir.dir("Archived")
+
+        let labelRule = makeRule(
+            name: "Change color label",
+            actions: [makeAction(.setColorLabel, .object(["color": .string("Blue")]))]
+        )
+        let copyRule = makeRule(
+            name: "Copy",
+            actions: [makeAction(.copyToFolder, .object(["destination": .string(dir.path)]))]
+        )
+        let deleteDuplicateRule = makeRule(
+            name: "Delete duplicates",
+            conditionMatch: .any,
+            conditions: [
+                makeCondition(.name, .contains, "(1)"),
+                makeCondition(.name, .contains, "(2)"),
+            ],
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(archivedDir)]))]
+        )
+
+        let result = RuleEngine.evaluateFile(
+            path: file,
+            depth: 0,
+            rules: [labelRule, copyRule, deleteDuplicateRule],
+            batchId: "batch",
+            root: dir.path
+        )
+
+        let duplicate = (dir.path as NSString).appendingPathComponent("document (1).pdf")
+        let archivedDuplicate = (archivedDir as NSString).appendingPathComponent("document (1).pdf")
+
+        #expect(result.matched == ["Change color label", "Copy", "Delete duplicates"])
+        #expect(result.history.map(\.actionKind) == [.setColorLabel, .copyToFolder, .moveToFolder])
+        #expect(result.history[1].resultPath == duplicate)
+        #expect(result.history[2].originalPath == duplicate)
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(!FileManager.default.fileExists(atPath: duplicate))
+        #expect(FileManager.default.fileExists(atPath: archivedDuplicate))
+        #expect(!FileManager.default.fileExists(atPath: (dir.path as NSString).appendingPathComponent("document (2).pdf")))
+    }
+
     @Test func pathDepthComputesRelativeDepthFromRoot() throws {
         #expect(RuleEngine.pathDepth(root: "/Users/x/Inbox", path: "/Users/x/Inbox/file.txt") == 0)
         #expect(RuleEngine.pathDepth(root: "/Users/x/Inbox", path: "/Users/x/Inbox/Sub/file.txt") == 1)

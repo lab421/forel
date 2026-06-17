@@ -157,7 +157,7 @@ final class AppModel: ObservableObject {
         let batchId = UUID().uuidString
         var allHistory: [HistoryEntry] = []
         for entry in entries {
-            let (_, history) = RuleEngine.evaluateFile(path: entry.path, depth: entry.depth, rules: folderRules, batchId: batchId)
+            let (_, history) = RuleEngine.evaluateFile(path: entry.path, depth: entry.depth, rules: folderRules, batchId: batchId, root: folder.path)
             allHistory.append(contentsOf: history)
         }
         if !allHistory.isEmpty {

@@ -31,7 +31,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
         guard let depth = RuleEngine.pathDepth(root: folder.path, path: path) else { return }
         let batchId = UUID().uuidString
-        let (matched, history) = RuleEngine.evaluateFile(path: path, depth: depth, rules: rules, batchId: batchId)
+        let (matched, history) = RuleEngine.evaluateFile(path: path, depth: depth, rules: rules, batchId: batchId, root: folder.path)
         for ruleName in matched {
             onRuleMatched?(ruleName, path)
         }
