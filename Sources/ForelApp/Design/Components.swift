@@ -2,6 +2,28 @@ import SwiftUI
 import AppKit
 import ForelCore
 
+struct VisualEffectBlur: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .hudWindow
+    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
+    var emphasized: Bool = false
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = .active
+        view.isEmphasized = emphasized
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+        nsView.state = .active
+        nsView.isEmphasized = emphasized
+    }
+}
+
 /// Small caps section header, e.g. "WATCHED FOLDERS".
 struct SectionLabel: View {
     let title: String
@@ -35,7 +57,14 @@ struct GlassCard<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) { content }
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ForelTheme.surface))
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(ForelTheme.surface)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(.ultraThinMaterial.opacity(0.22))
+                }
+            )
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
     }
 }
