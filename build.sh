@@ -7,6 +7,7 @@ Usage:
   ./build.sh [command] [arch] [version]
 
 Commands:
+  dev       Build in debug mode and run ForelApp locally
   build     Build the Swift package in release mode
   test      Run the Swift test suite
   package   Build and package a Forel.app + DMG
@@ -18,6 +19,7 @@ Arguments:
 
 Examples:
   ./build.sh
+  ./build.sh dev
   ./build.sh package
   ./build.sh package arm64 v1.2.3
   ./build.sh release x86_64 v1.2.3
@@ -55,7 +57,7 @@ if [[ $# -gt 0 ]]; then
       usage
       exit 0
       ;;
-    build|test|package|release)
+    dev|build|test|package|release)
       command="$1"
       shift
       ;;
@@ -66,6 +68,11 @@ arch="${1:-$(uname -m)}"
 version="${2:-}"
 
 case "$command" in
+  dev)
+    cd "$repo_root"
+    swift run ForelApp
+    ;;
+
   build)
     cd "$repo_root"
     swift build -c release --arch "$arch"

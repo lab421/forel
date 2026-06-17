@@ -89,7 +89,7 @@ git clone https://github.com/forel-app/forel.git
 cd forel
 swift build
 swift test
-swift run ForelApp
+swift run
 ```
 
 To build and package the app, use the Swift package tooling and the existing release workflow.
