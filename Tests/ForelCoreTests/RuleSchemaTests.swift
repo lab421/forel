@@ -96,9 +96,11 @@ import Foundation
         let dir = TempDir()
         let file = dir.file("doc.pdf", contents: "x")
         try FinderTags.apply(file, tag: "Project", add: true)
+        // Tag names are lowercased before matching, so the regex pattern must be
+        // lowercase too (the evaluator does not case-fold the user's pattern).
         let fixtures: [Operator: String] = [
             .is: "project", .isNot: "other", .contains: "roj", .doesNotContain: "zzz",
-            .startsWith: "pro", .endsWith: "ect", .matchesRegex: "Pro",
+            .startsWith: "pro", .endsWith: "ect", .matchesRegex: "^proj",
         ]
         assertExhaustive(.tags, fixtures)
         for (op, value) in fixtures {
