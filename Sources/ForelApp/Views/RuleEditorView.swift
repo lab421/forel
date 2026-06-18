@@ -238,7 +238,7 @@ private struct ConditionRow: View {
                 }
             }
             .labelsHidden()
-            .frame(width: 160)
+            .frame(width: 160, alignment: .leading)
 
             Picker("", selection: operatorBinding) {
                 ForEach(condition.kind.validOperators, id: \.self) { op in
@@ -246,7 +246,7 @@ private struct ConditionRow: View {
                 }
             }
             .labelsHidden()
-            .frame(width: 170)
+            .frame(width: 170, alignment: .leading)
 
             conditionValue
                 .frame(width: 300, alignment: .leading)

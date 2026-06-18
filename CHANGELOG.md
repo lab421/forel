@@ -32,6 +32,7 @@ All notable changes to Forel are documented here. Format loosely follows
   panel.
 - Dry Run now follows simulated rename paths when evaluating following rules,
   matching the real execution order more closely.
+- Condition rows in the rule editor now align consistently to the left.
 
 ## [0.1.0-beta.2] - 2026-06-17
 
