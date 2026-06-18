@@ -7,6 +7,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Added
 - Added metadata conditions for matching files by download website and download app, backed by macOS where-from metadata.
+- The Contents condition now matches text inside PDFs, Word documents, RTF files, and images (via OCR), and the Dry Run shows which content was read.
 
 ### Changed
 - The rule editor now warns that all-level subfolder scans can slow execution in folders with many files.

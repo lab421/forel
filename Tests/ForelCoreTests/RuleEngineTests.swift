@@ -5,11 +5,11 @@ import Foundation
 @Suite struct RuleEngineTests {
     @Test func evaluateFileMatchesEnabledRulesWithAllOrAnyConditions() throws {
         let dir = TempDir()
-        let file = dir.file("invoice.pdf", contents: "paid")
+        let file = dir.file("invoice.txt", contents: "paid")
         let rules = [
             makeRule(name: "all matched", conditionMatch: .all, conditions: [
                 makeCondition(.name, .contains, "invoice"),
-                makeCondition(.extension_, .is, "pdf"),
+                makeCondition(.extension_, .is, "txt"),
             ]),
             makeRule(name: "any matched", conditionMatch: .any, conditions: [
                 makeCondition(.name, .contains, "receipt"),

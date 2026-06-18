@@ -29,12 +29,16 @@ public struct ConditionPreview: Sendable {
     public let operator_: Operator
     public let value: String
     public let matched: Bool
+    /// Optional secondary line shown in the Dry Run — e.g. for `contents`, which
+    /// extraction strategy was used ("PDF text") or why nothing was read.
+    public let detail: String?
 
-    public init(kind: ConditionKind, operator_: Operator, value: String, matched: Bool) {
+    public init(kind: ConditionKind, operator_: Operator, value: String, matched: Bool, detail: String? = nil) {
         self.kind = kind
         self.operator_ = operator_
         self.value = value
         self.matched = matched
+        self.detail = detail
     }
 }
 
@@ -189,7 +193,25 @@ public enum RuleEngine {
 
     private static func conditionPreviews(_ rule: Rule, path: String) -> [ConditionPreview] {
         rule.conditions.map { condition in
-            ConditionPreview(
+            // `contents` runs the extraction pipeline once and reports which
+            // strategy was used, so the Dry Run can show what was actually read.
+            if condition.kind == .contents {
+                let result = ConditionEvaluator.evaluateContents(condition, path: path)
+                let detail: String
+                if let message = result.message {
+                    detail = "\(result.strategy.label) — \(message)"
+                } else {
+                    detail = result.strategy.label
+                }
+                return ConditionPreview(
+                    kind: condition.kind,
+                    operator_: condition.operator,
+                    value: condition.value,
+                    matched: result.matched,
+                    detail: detail
+                )
+            }
+            return ConditionPreview(
                 kind: condition.kind,
                 operator_: condition.operator,
                 value: condition.value,
