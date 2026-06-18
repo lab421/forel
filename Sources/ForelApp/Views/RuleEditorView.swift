@@ -231,32 +231,51 @@ private struct ConditionRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Picker("", selection: kindBinding) {
-                ForEach(RuleSchema.conditionKinds, id: \.self) { kind in
-                    Text(kind.label).tag(kind)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 12) {
+                Picker("", selection: kindBinding) {
+                    ForEach(Array(RuleSchema.conditionKindGroups.enumerated()), id: \.offset) { _, group in
+                        if let title = group.title {
+                            Section(title) {
+                                ForEach(group.kinds, id: \.self) { kind in
+                                    Text(kind.label).tag(kind)
+                                }
+                            }
+                        } else {
+                            ForEach(group.kinds, id: \.self) { kind in
+                                Text(kind.label).tag(kind)
+                            }
+                        }
+                    }
                 }
-            }
-            .labelsHidden()
-            .frame(width: 160, alignment: .leading)
+                .labelsHidden()
+                .frame(width: 160, alignment: .leading)
 
-            Picker("", selection: operatorBinding) {
-                ForEach(condition.kind.validOperators, id: \.self) { op in
-                    Text(op.label).tag(op)
+                Picker("", selection: operatorBinding) {
+                    ForEach(condition.kind.validOperators, id: \.self) { op in
+                        Text(op.label).tag(op)
+                    }
                 }
-            }
-            .labelsHidden()
-            .frame(width: 170, alignment: .leading)
+                .labelsHidden()
+                .frame(width: 170, alignment: .leading)
 
-            conditionValue
-                .frame(width: 300, alignment: .leading)
-                .frame(minHeight: 32)
+                conditionValue
+                    .frame(width: 300, alignment: .leading)
+                    .frame(minHeight: 32)
 
-            Button(role: .destructive, action: onDelete) {
-                Image(systemName: "minus")
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "minus")
+                }
+                .buttonStyle(IconButtonStyle(role: .destructive))
+                .frame(width: 28)
             }
-            .buttonStyle(IconButtonStyle(role: .destructive))
-            .frame(width: 28)
+
+            if let helpText = condition.kind.helpText {
+                Text(helpText)
+                    .font(.system(size: 10))
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .padding(.leading, 2)
+            }
         }
     }
 

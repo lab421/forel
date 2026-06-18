@@ -115,6 +115,40 @@ import Foundation
         }
     }
 
+    @Test func downloadedFromWebsiteAndRawWhereFromMatchEveryDeclaredOperator() throws {
+        let dir = TempDir()
+        let file = dir.file("report.pdf")
+        try setWhereFroms(file, ["https://example.com/downloads/report.pdf"])
+
+        let fixtures: [Operator: String] = [
+            .is: "https://example.com/downloads/report.pdf", .isNot: "https://other.com/",
+            .contains: "example.com", .doesNotContain: "other.com",
+            .startsWith: "https://example", .endsWith: "report.pdf",
+            .matchesRegex: "^https://example\\.com/.*",
+        ]
+        for kind in [ConditionKind.downloadedFromWebsite, .rawWhereFromMetadata] {
+            assertExhaustive(kind, fixtures)
+            for (op, value) in fixtures {
+                #expect(ConditionEvaluator.evaluate(makeCondition(kind, op, value), path: file), "\(kind) \(op) should match")
+            }
+        }
+    }
+
+    @Test func downloadedWithAppMatchesEveryDeclaredOperator() throws {
+        let dir = TempDir()
+        let file = dir.file("installer.dmg")
+        try setQuarantineAgent(file, agent: "Safari")
+
+        let fixtures: [Operator: String] = [
+            .is: "Safari", .isNot: "Chrome", .contains: "afa", .doesNotContain: "chrome",
+            .startsWith: "Saf", .endsWith: "ari", .matchesRegex: "^Saf.*",
+        ]
+        assertExhaustive(.downloadedWithApp, fixtures)
+        for (op, value) in fixtures {
+            #expect(ConditionEvaluator.evaluate(makeCondition(.downloadedWithApp, op, value), path: file), "downloadedWithApp \(op) should match")
+        }
+    }
+
     @Test func dateKindsMatchEveryDeclaredOperator() throws {
         let dir = TempDir()
         let file = dir.file("old.txt", contents: "x")

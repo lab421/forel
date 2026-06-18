@@ -71,6 +71,9 @@ public extension ConditionKind {
         case .createdAt: return "Date created"
         case .dateModified: return "Date modified"
         case .dateAdded: return "Date added"
+        case .downloadedFromWebsite: return "Downloaded from website"
+        case .downloadedWithApp: return "Downloaded with app"
+        case .rawWhereFromMetadata: return "Raw where-from metadata"
         }
     }
 
@@ -85,7 +88,8 @@ public extension ConditionKind {
             return [.is, .isNot, .greaterThan, .lessThan]
         case .kind, .colorLabel:
             return [.is, .isNot]
-        case .name, .extension_, .tags, .contents:
+        case .name, .extension_, .tags, .contents,
+             .downloadedFromWebsite, .downloadedWithApp, .rawWhereFromMetadata:
             return [.is, .isNot, .contains, .doesNotContain, .startsWith, .endsWith, .matchesRegex]
         }
     }
@@ -102,7 +106,20 @@ public extension ConditionKind {
         case .sizeBytes: return .size
         case .colorLabel: return .colorLabel
         case .createdAt, .dateModified, .dateAdded: return .absoluteDate
-        case .name, .extension_, .tags, .contents: return .text
+        case .name, .extension_, .tags, .contents,
+             .downloadedFromWebsite, .downloadedWithApp, .rawWhereFromMetadata: return .text
+        }
+    }
+
+    /// Short explanatory note shown as a hoverable info icon next to the row,
+    /// for conditions whose behavior isn't obvious from the label alone.
+    /// `nil` for everything that doesn't need one — most conditions don't.
+    var helpText: String? {
+        switch self {
+        case .downloadedFromWebsite, .downloadedWithApp, .rawWhereFromMetadata:
+            return "Uses macOS download metadata. Availability depends on the app that created the file."
+        default:
+            return nil
         }
     }
 }
@@ -210,12 +227,32 @@ public extension ActionKind {
 
 // MARK: - Catalog entry points
 
+/// A labeled group of condition kinds, for rendering the kind picker as
+/// sections (e.g. a "Metadata" group) instead of one flat list.
+public struct ConditionKindGroup: Sendable {
+    /// `nil` for the default, unlabeled group.
+    public let title: String?
+    public let kinds: [ConditionKind]
+
+    public init(title: String?, kinds: [ConditionKind]) {
+        self.title = title
+        self.kinds = kinds
+    }
+}
+
 /// Convenience lists, in display order, for building UI pickers.
 public enum RuleSchema {
-    public static let conditionKinds: [ConditionKind] = [
-        .name, .extension_, .kind, .sizeBytes, .tags, .colorLabel, .contents,
-        .createdAt, .dateModified, .dateAdded,
+    public static let conditionKindGroups: [ConditionKindGroup] = [
+        ConditionKindGroup(title: nil, kinds: [
+            .name, .extension_, .kind, .sizeBytes, .tags, .colorLabel, .contents,
+            .createdAt, .dateModified, .dateAdded,
+        ]),
+        ConditionKindGroup(title: "Metadata", kinds: [
+            .downloadedFromWebsite, .downloadedWithApp, .rawWhereFromMetadata,
+        ]),
     ]
+
+    public static let conditionKinds: [ConditionKind] = conditionKindGroups.flatMap(\.kinds)
 
     public static let actionKinds: [ActionKind] = [
         .moveToFolder, .copyToFolder, .rename, .moveToTrash, .delete,

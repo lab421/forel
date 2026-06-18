@@ -84,6 +84,38 @@ public enum ConditionEvaluator {
         case .dateAdded:
             guard let added = dateAdded(path: path) else { return false }
             return matchDate(condition.operator, added, condition.value)
+
+        case .downloadedFromWebsite:
+            return matchAnyOf(condition.operator, DownloadMetadata.websiteURLs(path), condition.value)
+
+        case .downloadedWithApp:
+            let values = DownloadMetadata.downloadedWithApp(path).map { [$0] } ?? []
+            return matchAnyOf(condition.operator, values, condition.value)
+
+        case .rawWhereFromMetadata:
+            return matchAnyOf(condition.operator, DownloadMetadata.whereFroms(path), condition.value)
+        }
+    }
+
+    /// True if any value in `haystacks` satisfies the operator against
+    /// `needle`. `is not`/`does not contain` are defined as the exact
+    /// negation of `is`/`contains` across the whole list (same pattern as the
+    /// `tags` condition above), which gives the right behavior when the list
+    /// is empty — e.g. a file with no download metadata at all: every
+    /// positive operator is `false`, every negative operator is `true`.
+    private static func matchAnyOf(_ operator_: Operator, _ haystacks: [String], _ needle: String) -> Bool {
+        switch operator_ {
+        case .is: return haystacks.contains { $0 == needle }
+        case .isNot: return !haystacks.contains { $0 == needle }
+        case .contains: return haystacks.contains { $0.contains(needle) }
+        case .doesNotContain: return !haystacks.contains { $0.contains(needle) }
+        case .startsWith: return haystacks.contains { $0.hasPrefix(needle) }
+        case .endsWith: return haystacks.contains { $0.hasSuffix(needle) }
+        case .matchesRegex:
+            guard let re = try? NSRegularExpression(pattern: needle) else { return false }
+            return haystacks.contains { re.firstMatch(in: $0, range: NSRange($0.startIndex..., in: $0)) != nil }
+        default:
+            return false
         }
     }
 

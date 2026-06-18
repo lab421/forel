@@ -4,7 +4,6 @@ import ForelCore
 struct RuleListView: View {
     @EnvironmentObject var model: AppModel
     @State private var editingRule: Rule?
-    @State private var previewResult: PreviewResult?
 
     private var selectedFolder: WatchedFolder? {
         model.folders.first { $0.id == model.selectedFolderId }
@@ -61,8 +60,8 @@ struct RuleListView: View {
                 editingRule = nil
             }
         }
-        .sheet(item: $previewResult) { result in
-            PreviewSheet(result: result) { previewResult = nil }
+        .sheet(item: $model.previewResult) { result in
+            PreviewSheet(result: result) { model.previewResult = nil }
         }
     }
 
@@ -118,12 +117,19 @@ struct RuleListView: View {
             .disabled(model.selectedFolderId == nil || model.isRunningNow)
 
             Button {
-                previewResult = model.preview()
+                model.preview()
             } label: {
-                Label("Preview (Dry Run)", systemImage: "eye")
+                if model.isPreviewing {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Scanning…")
+                    }
+                } else {
+                    Label("Preview (Dry Run)", systemImage: "eye")
+                }
             }
             .buttonStyle(SecondaryButtonStyle())
-            .disabled(model.selectedFolderId == nil)
+            .disabled(model.selectedFolderId == nil || model.isPreviewing)
 
             Spacer()
         }
@@ -321,43 +327,6 @@ private struct PreviewSheet: View {
 private extension ConditionPreview {
     var label: String {
         "\(kind.label) \(`operator_`.label) \(value)"
-    }
-}
-
-private extension ConditionKind {
-    var label: String {
-        switch self {
-        case .name: return "Name"
-        case .extension_: return "Extension"
-        case .kind: return "Kind"
-        case .sizeBytes: return "Size"
-        case .tags: return "Tags"
-        case .colorLabel: return "Color label"
-        case .contents: return "Contents"
-        case .createdAt: return "Date created"
-        case .dateModified: return "Date modified"
-        case .dateAdded: return "Date added"
-        }
-    }
-}
-
-private extension Operator {
-    var label: String {
-        switch self {
-        case .is: return "is"
-        case .isNot: return "is not"
-        case .contains: return "contains"
-        case .doesNotContain: return "does not contain"
-        case .startsWith: return "starts with"
-        case .endsWith: return "ends with"
-        case .matchesRegex: return "matches regex"
-        case .greaterThan: return "greater than"
-        case .lessThan: return "less than"
-        case .before: return "is before"
-        case .after: return "is after"
-        case .olderThan: return "is older than"
-        case .withinLast: return "is within the last"
-        }
     }
 }
 

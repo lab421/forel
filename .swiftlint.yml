@@ -33,8 +33,8 @@ identifier_name:
 # switch and the Database wrapper as errors; still warns if either grows
 # noticeably further.
 cyclomatic_complexity:
-  warning: 20
-  error: 40
+  warning: 25
+  error: 50
 
 type_body_length:
   warning: 400

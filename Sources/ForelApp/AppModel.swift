@@ -27,6 +27,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var isRunningNow = false
     @Published private(set) var runNowMessage: String?
     private var runNowMessageId: UUID?
+    @Published private(set) var isPreviewing = false
+    @Published var previewResult: PreviewResult?
 
     let db: Database
     private let coordinator: WatcherCoordinator
@@ -199,17 +201,29 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func preview() -> PreviewResult {
+    /// Runs Dry Run off the main thread — scanning every file in a large
+    /// folder can take a while, so `isPreviewing` drives a loading state on
+    /// the button instead of freezing the UI. Sets `previewResult` when done,
+    /// which the view presents as a sheet.
+    func preview() {
+        guard !isPreviewing else { return }
         guard let folder = folders.first(where: { $0.id == selectedFolderId }) else {
-            return PreviewResult(filesScanned: 0, matches: [])
+            previewResult = PreviewResult(filesScanned: 0, matches: [])
+            return
         }
         let folderRules = rules
-        let maxDepth = RuleEngine.maxRuleDepth(folderRules)
-        let entries = RuleEngine.walkEntries(root: folder.path, maxDepth: maxDepth)
-        let matches = entries.compactMap { entry in
-            RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: folderRules)
+        isPreviewing = true
+        Task {
+            defer { isPreviewing = false }
+            previewResult = await Task.detached(priority: .userInitiated) {
+                let maxDepth = RuleEngine.maxRuleDepth(folderRules)
+                let entries = RuleEngine.walkEntries(root: folder.path, maxDepth: maxDepth)
+                let matches = entries.compactMap { entry in
+                    RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: folderRules)
+                }
+                return PreviewResult(filesScanned: entries.count, matches: matches)
+            }.value
         }
-        return PreviewResult(filesScanned: entries.count, matches: matches)
     }
 
     func undo(_ entry: HistoryEntry) {

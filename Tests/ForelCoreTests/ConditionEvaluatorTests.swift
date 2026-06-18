@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import Darwin
 @testable import ForelCore
 
 @Suite struct ConditionEvaluatorTests {
@@ -139,5 +140,75 @@ import Foundation
             #expect(ConditionEvaluator.evaluate(makeCondition(.kind, .is, sample.kind), path: sample.path))
             #expect(ConditionEvaluator.evaluate(makeCondition(.kind, .isNot, "not-\(sample.kind)"), path: sample.path))
         }
+    }
+
+    // MARK: - Download metadata conditions
+
+    @Test func downloadedFromWebsiteMatchesAnExtractedURL() throws {
+        let dir = TempDir()
+        let file = dir.file("report.zip")
+        try setWhereFroms(file, ["https://example.com/downloads/report.zip", "https://example.com/"])
+
+        #expect(ConditionEvaluator.evaluate(makeCondition(.downloadedFromWebsite, .contains, "example.com"), path: file))
+        #expect(ConditionEvaluator.evaluate(
+            makeCondition(.downloadedFromWebsite, .is, "https://example.com/downloads/report.zip"), path: file
+        ))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.downloadedFromWebsite, .contains, "other.com"), path: file))
+    }
+
+    @Test func downloadedWithAppMatchesTheQuarantineAgent() throws {
+        let dir = TempDir()
+        let file = dir.file("installer.dmg")
+        try setQuarantineAgent(file, agent: "Safari")
+
+        #expect(ConditionEvaluator.evaluate(makeCondition(.downloadedWithApp, .is, "Safari"), path: file))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.downloadedWithApp, .is, "Chrome"), path: file))
+    }
+
+    @Test func rawWhereFromMetadataMatchesAnyStoredValue() throws {
+        let dir = TempDir()
+        let file = dir.file("note.txt")
+        try setWhereFroms(file, ["Safari", "https://example.com/"])
+
+        #expect(ConditionEvaluator.evaluate(makeCondition(.rawWhereFromMetadata, .contains, "Safari"), path: file))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.rawWhereFromMetadata, .contains, "example"), path: file))
+    }
+
+    @Test func metadataStringOperatorsStayCaseSensitiveLikeOtherStringConditions() throws {
+        let dir = TempDir()
+        let file = dir.file("doc.pdf")
+        try setWhereFroms(file, ["https://Example.com/File.zip"])
+
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.downloadedFromWebsite, .contains, "example.com"), path: file))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.downloadedFromWebsite, .contains, "Example.com"), path: file))
+    }
+
+    @Test func missingDownloadMetadataMatchesNothingPositiveAndEverythingNegative() throws {
+        let dir = TempDir()
+        let file = dir.file("plain.txt")
+        // No kMDItemWhereFroms, no quarantine xattr at all.
+
+        for kind: ConditionKind in [.downloadedFromWebsite, .downloadedWithApp, .rawWhereFromMetadata] {
+            #expect(!ConditionEvaluator.evaluate(makeCondition(kind, .is, "anything"), path: file))
+            #expect(!ConditionEvaluator.evaluate(makeCondition(kind, .contains, "anything"), path: file))
+            #expect(!ConditionEvaluator.evaluate(makeCondition(kind, .startsWith, "anything"), path: file))
+            #expect(!ConditionEvaluator.evaluate(makeCondition(kind, .endsWith, "anything"), path: file))
+            #expect(!ConditionEvaluator.evaluate(makeCondition(kind, .matchesRegex, "any.*"), path: file))
+            #expect(ConditionEvaluator.evaluate(makeCondition(kind, .isNot, "anything"), path: file))
+            #expect(ConditionEvaluator.evaluate(makeCondition(kind, .doesNotContain, "anything"), path: file))
+        }
+    }
+
+    @Test func malformedWhereFromsPlistNeverThrowsAndBehavesAsAbsent() throws {
+        let dir = TempDir()
+        let file = dir.file("broken.txt")
+        let garbage = Data([0xDE, 0xAD, 0xBE, 0xEF])
+        let result = garbage.withUnsafeBytes { bytes in
+            setxattr(file, "com.apple.metadata:kMDItemWhereFroms", bytes.baseAddress, garbage.count, 0, 0)
+        }
+        #expect(result == 0)
+
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.downloadedFromWebsite, .contains, "anything"), path: file))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.downloadedFromWebsite, .isNot, "anything"), path: file))
     }
 }
