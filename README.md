@@ -167,7 +167,8 @@ forel/
 - [ ] Native notifications on rule actions
 - [ ] Activity logs
 - [ ] Drag & drop to reorder rules
-- [ ] Rules based metadata files
+- [x] Rules based metadata files
+- [ ] Shortcuts integration
 - [ ] Automatic cleaning database
 - [ ] AI features
 
