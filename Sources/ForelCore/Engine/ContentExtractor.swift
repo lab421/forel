@@ -17,6 +17,7 @@ import Foundation
 import PDFKit
 import Vision
 import AppKit
+import ZIPFoundation
 
 /// How a file's text was obtained. Drives the Dry Run's per-condition detail.
 /// Cases marked Phase 2 are reserved so the display and call sites don't need to
@@ -27,11 +28,11 @@ public enum ContentStrategy: String, Sendable {
     case pdfOCR          // Phase 2 (scanned PDFs)
     case rtf
     case officeDocument  // .doc / .docx via AppKit
-    case xlsx            // Phase 2
-    case pptx            // Phase 2
+    case xlsx
+    case pptx
     case iWork           // Phase 2
     case officeLegacy    // Phase 2
-    case spotlight       // Phase 2
+    case spotlight
     case imageOCR
     case none
 
@@ -76,6 +77,7 @@ public enum ContentExtractor {
     private static let pdfMaxPages = 100
     private static let ocrImageMaxBytes: UInt64 = 25 * 1024 * 1024
     private static let ocrMaxDimension = 12_000
+    private static let officeZipMaxBytes: UInt64 = 100 * 1024 * 1024
 
     private static let plainTextExtensions: Set<String> = [
         "txt", "md", "csv", "tsv", "json", "xml", "yaml", "yml", "html", "css",
@@ -83,6 +85,12 @@ public enum ContentExtractor {
     ]
     private static let imageExtensions: Set<String> = [
         "png", "jpg", "jpeg", "heic", "tiff", "tif",
+    ]
+    /// Formats with no in-process text extractor that macOS can still index.
+    /// For these we fall back to a Spotlight search, which only answers the
+    /// `contains` operator (see `spotlightContains`).
+    private static let spotlightFallbackExtensions: Set<String> = [
+        "xls", "ppt", "pages", "numbers", "key", "odt", "ods", "odp", "epub",
     ]
 
     /// Runs the ordered extraction pipeline for `path`, dispatching on the file
@@ -105,12 +113,87 @@ public enum ContentExtractor {
         case "doc", "docx":
             let type: NSAttributedString.DocumentType = ext == "docx" ? .officeOpenXML : .docFormat
             return extractAttributed(path: path, documentType: type, strategy: .officeDocument)
+        case "xlsx":
+            return extractXLSX(path: path, size: size)
+        case "pptx":
+            return extractPPTX(path: path, size: size)
         default:
             if imageExtensions.contains(ext) {
                 return extractImageOCR(path: path, size: size)
             }
+            if spotlightFallbackExtensions.contains(ext) {
+                // No in-process extractor; the evaluator may still try a
+                // Spotlight "contains" search. Report that so the Dry Run is honest.
+                return ContentExtraction(text: nil, strategy: .none, message: "Only Spotlight ‘contains’ matching is available for this format.")
+            }
+            // Final fallback: lots of files are plain text with an extension we
+            // don't list (e.g. .ini, .conf, .toml) or no extension at all. Try
+            // to read them as text, but reject anything that looks binary.
+            return extractTextFallback(path: path, size: size)
+        }
+    }
+
+    /// Last-resort plain-text read for unrecognized extensions. Accepts the file
+    /// only if it decodes as valid UTF-8 and contains no NUL bytes — both strong
+    /// signals that it's text, not binary — so a negative operator never matches
+    /// on binary content that merely happened to be readable.
+    private static func extractTextFallback(path: String, size: UInt64) -> ContentExtraction {
+        if size > plainTextMaxBytes {
+            return ContentExtraction(text: nil, strategy: .none, message: "File exceeds the 50 MB text limit.")
+        }
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              !data.contains(0x00),
+              let text = String(data: data, encoding: .utf8) else {
             return ContentExtraction(text: nil, strategy: .none, message: "Unsupported file type.")
         }
+        return ContentExtraction(text: text, strategy: .plainText)
+    }
+
+    // MARK: - Spotlight fallback
+
+    /// Whether Spotlight's index should be consulted for this file when
+    /// in-process extraction yields nothing. Spotlight can only answer the
+    /// `contains` operator, so the evaluator gates on that.
+    static func supportsSpotlightFallback(path: String) -> Bool {
+        spotlightFallbackExtensions.contains((path as NSString).pathExtension.lowercased())
+    }
+
+    /// Builds the `mdfind` query that asks whether `name`'s indexed text
+    /// contains `term` (case- and diacritic-insensitive). Factored out so the
+    /// query construction and escaping can be unit-tested without the index.
+    static func spotlightContainsQuery(name: String, term: String) -> String {
+        "(kMDItemTextContent == \"*\(spotlightEscape(term))*\"cd) && (kMDItemFSName == \"\(spotlightEscape(name))\"cd)"
+    }
+
+    private static func spotlightEscape(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    /// Asks Spotlight whether the file's indexed text contains `term`. Returns
+    /// false when the file isn't indexed or `mdfind` is unavailable, so it is
+    /// only ever used to *confirm* a `contains` match — never to satisfy a
+    /// negative operator on content we couldn't actually read.
+    static func spotlightContains(path: String, term: String) -> Bool {
+        let url = URL(fileURLWithPath: path)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+        process.arguments = ["-onlyin", url.deletingLastPathComponent().path,
+                             spotlightContainsQuery(name: url.lastPathComponent, term: term)]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return false
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard let out = String(data: data, encoding: .utf8) else { return false }
+        let target = (path as NSString).standardizingPath
+        return out.split(separator: "\n").contains { ($0 as NSString).standardizingPath == target }
     }
 
     // MARK: - Plain text
@@ -165,6 +248,74 @@ public enum ContentExtractor {
             return ContentExtraction(text: nil, strategy: .none, message: "Document has no readable text.")
         }
         return ContentExtraction(text: text, strategy: strategy)
+    }
+
+    // MARK: - Office Open XML (.xlsx / .pptx)
+
+    /// `.xlsx` is a zip of XML parts. Text lives in the shared-string table
+    /// (`xl/sharedStrings.xml`) and, for numbers and inline values, in the
+    /// per-sheet XML.
+    private static func extractXLSX(path: String, size: UInt64) -> ContentExtraction {
+        if size > officeZipMaxBytes {
+            return ContentExtraction(text: nil, strategy: .none, message: "Spreadsheet exceeds the 100 MB limit.")
+        }
+        guard let xml = zipText(path: path, matching: { member in
+            member == "xl/sharedStrings.xml" || (member.hasPrefix("xl/worksheets/") && member.hasSuffix(".xml"))
+        }) else {
+            return ContentExtraction(text: nil, strategy: .none, message: "Could not read spreadsheet.")
+        }
+        let text = strippedXMLText(xml)
+        if text.isEmpty {
+            return ContentExtraction(text: nil, strategy: .none, message: "Spreadsheet has no readable text.")
+        }
+        return ContentExtraction(text: text, strategy: .xlsx)
+    }
+
+    /// `.pptx` is a zip of XML parts; the slide text lives in
+    /// `ppt/slides/slideN.xml`.
+    private static func extractPPTX(path: String, size: UInt64) -> ContentExtraction {
+        if size > officeZipMaxBytes {
+            return ContentExtraction(text: nil, strategy: .none, message: "Presentation exceeds the 100 MB limit.")
+        }
+        guard let xml = zipText(path: path, matching: { member in
+            member.hasPrefix("ppt/slides/slide") && member.hasSuffix(".xml")
+        }) else {
+            return ContentExtraction(text: nil, strategy: .none, message: "Could not read presentation.")
+        }
+        let text = strippedXMLText(xml)
+        if text.isEmpty {
+            return ContentExtraction(text: nil, strategy: .none, message: "Presentation has no readable text.")
+        }
+        return ContentExtraction(text: text, strategy: .pptx)
+    }
+
+    /// Reads and concatenates the contents of every archive member whose path
+    /// satisfies `matching`, decoded as UTF-8. In-process via ZIPFoundation —
+    /// no subprocess. Returns `nil` when the archive can't be opened or no
+    /// matching member yields data.
+    private static func zipText(path: String, matching: (String) -> Bool) -> String? {
+        guard let archive = try? Archive(url: URL(fileURLWithPath: path), accessMode: .read, pathEncoding: nil) else { return nil }
+        var combined = Data()
+        for entry in archive where matching(entry.path) {
+            var data = Data()
+            guard (try? archive.extract(entry, skipCRC32: true, consumer: { data.append($0) })) != nil else { continue }
+            combined.append(data)
+            combined.append(0x0a) // separate members with a newline
+        }
+        guard !combined.isEmpty else { return nil }
+        return String(data: combined, encoding: .utf8)
+    }
+
+    /// Collapses an XML fragment to readable text: drops tags, decodes the
+    /// common entities, and squeezes whitespace.
+    private static func strippedXMLText(_ xml: String) -> String {
+        var text = xml.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        let entities = ["&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&apos;": "'"]
+        for (entity, value) in entities {
+            text = text.replacingOccurrences(of: entity, with: value)
+        }
+        text = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Image OCR

@@ -69,6 +69,38 @@ import AppKit
         #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "payment received"), path: docx))
     }
 
+    @Test func xlsxSharedStringsAreExtracted() throws {
+        let dir = TempDir()
+        let xlsx = makeXLSX(in: dir, sharedStrings: ["Quarterly Revenue", "Paris office"])
+
+        let result = ContentExtractor.extract(path: xlsx)
+        #expect(result.strategy == .xlsx)
+        #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "Revenue"), path: xlsx))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "Paris office"), path: xlsx))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "Berlin"), path: xlsx))
+    }
+
+    @Test func pptxSlideTextIsExtracted() throws {
+        let dir = TempDir()
+        let pptx = makePPTX(in: dir, slides: ["Roadmap 2026", "Launch in Berlin"])
+
+        let result = ContentExtractor.extract(path: pptx)
+        #expect(result.strategy == .pptx)
+        #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "Roadmap"), path: pptx))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "Berlin"), path: pptx))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "Tokyo"), path: pptx))
+    }
+
+    @Test func corruptSpreadsheetReturnsNoContentWithoutCrashing() throws {
+        let dir = TempDir()
+        let xlsx = (dir.path as NSString).appendingPathComponent("broken.xlsx")
+        try Data([0x50, 0x4b, 0x03, 0x04, 0x00]).write(to: URL(fileURLWithPath: xlsx))
+
+        let result = ContentExtractor.extract(path: xlsx)
+        #expect(result.text == nil)
+        #expect(result.strategy == .none)
+    }
+
     @Test func corruptDocumentReturnsNoContentWithoutCrashing() throws {
         let dir = TempDir()
         let docx = (dir.path as NSString).appendingPathComponent("broken.docx")
@@ -79,13 +111,53 @@ import AppKit
         #expect(result.strategy == .none)
     }
 
-    @Test func unsupportedExtensionReturnsNone() throws {
-        let dir = TempDir()
-        let file = dir.file("archive.zip", contents: "not really a zip")
+    @Test func spotlightFallbackGatingAndQueryBuilding() throws {
+        #expect(ContentExtractor.supportsSpotlightFallback(path: "/tmp/book.xls"))
+        #expect(ContentExtractor.supportsSpotlightFallback(path: "/tmp/deck.key"))
+        #expect(!ContentExtractor.supportsSpotlightFallback(path: "/tmp/notes.txt"))
+        #expect(!ContentExtractor.supportsSpotlightFallback(path: "/tmp/archive.zip"))
 
-        let result = ContentExtractor.extract(path: file)
+        let query = ContentExtractor.spotlightContainsQuery(name: "book.xls", term: "Re\"ve\\nue")
+        // Quotes and backslashes in the term must be escaped so the query stays valid.
+        #expect(query == #"(kMDItemTextContent == "*Re\"ve\\nue*"cd) && (kMDItemFSName == "book.xls"cd)"#)
+    }
+
+    @Test func legacyXlsOnlyUsesSpotlightForContains() throws {
+        let dir = TempDir()
+        let xls = (dir.path as NSString).appendingPathComponent("ledger.xls")
+        try Data([0xd0, 0xcf, 0x11, 0xe0]).write(to: URL(fileURLWithPath: xls)) // OLE2 magic
+
+        // A temp file isn't in the Spotlight index, and only `contains` is even
+        // attempted — every other operator must report no readable content.
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .is, "anything"), path: xls))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .matchesRegex, ".*"), path: xls))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .doesNotContain, "x"), path: xls))
+        #expect(ContentExtractor.extract(path: xls).strategy == .none)
+    }
+
+    @Test func unknownExtensionFallsBackToPlainTextWhenTextual() throws {
+        let dir = TempDir()
+        // An extension we don't list, but the content is plain text.
+        let conf = dir.file("settings.conf", contents: "host = localhost\nport = 8080")
+        let result = ContentExtractor.extract(path: conf)
+        #expect(result.strategy == .plainText)
+        #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "localhost"), path: conf))
+
+        // A file with no extension at all, also textual.
+        let noExt = dir.file("LICENSE", contents: "Permission is hereby granted")
+        #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "Permission"), path: noExt))
+    }
+
+    @Test func unknownExtensionWithBinaryContentReturnsNone() throws {
+        let dir = TempDir()
+        // NUL byte + invalid UTF-8: must be treated as binary, never matched.
+        let blob = (dir.path as NSString).appendingPathComponent("data.xyz")
+        try Data([0x00, 0x01, 0x02, 0xff, 0xfe]).write(to: URL(fileURLWithPath: blob))
+
+        let result = ContentExtractor.extract(path: blob)
         #expect(result.text == nil)
         #expect(result.strategy == .none)
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .doesNotContain, "x"), path: blob))
     }
 
     @Test func imageOcrReadsRenderedText() throws {
@@ -161,6 +233,56 @@ private func makeBlankImage(at path: String) {
     NSRect(origin: .zero, size: size).fill()
     image.unlockFocus()
     writePNG(image, to: path)
+}
+
+/// Builds a minimal valid `.xlsx` (a zip with `xl/sharedStrings.xml`) by writing
+/// the part and zipping it with `/usr/bin/zip`.
+private func makeXLSX(in dir: TempDir, sharedStrings: [String]) -> String {
+    let staging = dir.dir("xlsx-staging")
+    let xlDir = (staging as NSString).appendingPathComponent("xl")
+    try! FileManager.default.createDirectory(atPath: xlDir, withIntermediateDirectories: true)
+
+    let items = sharedStrings.map { "<si><t>\($0)</t></si>" }.joined()
+    let xml = """
+    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="\(sharedStrings.count)" uniqueCount="\(sharedStrings.count)">\(items)</sst>
+    """
+    try! xml.write(toFile: (xlDir as NSString).appendingPathComponent("sharedStrings.xml"), atomically: true, encoding: .utf8)
+
+    let xlsx = (dir.path as NSString).appendingPathComponent("report.xlsx")
+    zipStaging(staging, topLevel: "xl", into: xlsx)
+    return xlsx
+}
+
+/// Zips `topLevel` (relative to `staging`) into the archive at `destination`.
+private func zipStaging(_ staging: String, topLevel: String, into destination: String) {
+    let zip = Process()
+    zip.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+    zip.currentDirectoryURL = URL(fileURLWithPath: staging)
+    zip.arguments = ["-r", "-q", destination, topLevel]
+    zip.standardError = FileHandle.nullDevice
+    try! zip.run()
+    zip.waitUntilExit()
+}
+
+/// Builds a minimal valid `.pptx` (a zip with one `ppt/slides/slideN.xml` per
+/// slide) by writing the parts and zipping them with `/usr/bin/zip`.
+private func makePPTX(in dir: TempDir, slides: [String]) -> String {
+    let staging = dir.dir("pptx-staging")
+    let slidesDir = (staging as NSString).appendingPathComponent("ppt/slides")
+    try! FileManager.default.createDirectory(atPath: slidesDir, withIntermediateDirectories: true)
+
+    for (index, text) in slides.enumerated() {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:t>\(text)</a:t></p:sld>
+        """
+        try! xml.write(toFile: (slidesDir as NSString).appendingPathComponent("slide\(index + 1).xml"), atomically: true, encoding: .utf8)
+    }
+
+    let pptx = (dir.path as NSString).appendingPathComponent("deck.pptx")
+    zipStaging(staging, topLevel: "ppt", into: pptx)
+    return pptx
 }
 
 private func writePNG(_ image: NSImage, to path: String) {

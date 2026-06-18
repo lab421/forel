@@ -101,10 +101,19 @@ public enum ConditionEvaluator {
     /// matches on content it could not read (including the negative operators).
     static func evaluateContents(_ condition: Condition, path: String) -> (matched: Bool, strategy: ContentStrategy, message: String?) {
         let result = ContentExtractor.extract(path: path)
-        guard let text = result.text else {
-            return (false, result.strategy, result.message)
+        if let text = result.text {
+            return (matchString(condition.operator, text, condition.value), result.strategy, result.message)
         }
-        return (matchString(condition.operator, text, condition.value), result.strategy, result.message)
+        // Nothing readable in-process. For formats macOS indexes but we can't
+        // read directly (e.g. legacy .xls), fall back to Spotlight — which can
+        // only confirm a `contains` match, never a negative operator.
+        if condition.operator == .contains,
+           !condition.value.isEmpty,
+           ContentExtractor.supportsSpotlightFallback(path: path),
+           ContentExtractor.spotlightContains(path: path, term: condition.value) {
+            return (true, .spotlight, nil)
+        }
+        return (false, result.strategy, result.message)
     }
 
     /// True if any value in `haystacks` satisfies the operator against

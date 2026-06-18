@@ -172,6 +172,34 @@ forel/
 - [ ] AI features
 
 ---
+
+## Content matching
+
+The **Contents** condition matches text found *inside* files. Everything is read
+locally — no cloud, OCR runs on-device. When a file's text can't be read, the Dry
+Run tells you why.
+
+| Type | Formats | Limits |
+|------|---------|--------|
+| Plain text | `.txt` `.md` `.csv` `.tsv` `.json` `.xml` `.yaml` `.yml` `.html` `.css` `.js` `.ts` `.swift` `.rs` `.py` `.rb` `.go` `.java` `.c` `.cpp` `.h` `.log`, plus any other text file (`.ini`, `.conf`, no extension, …) | 50 MB |
+| PDF | `.pdf` | 100 MB / 100 pages |
+| Rich text | `.rtf` `.rtfd` | — |
+| Word | `.doc` `.docx` | — |
+| Excel | `.xlsx` | 100 MB |
+| PowerPoint | `.pptx` | 100 MB |
+| Images (OCR) | `.png` `.jpg` `.jpeg` `.heic` `.tiff` `.tif` | 25 MB / 12000 px |
+| Spotlight fallback | `.xls` `.ppt` `.pages` `.numbers` `.key` `.odt` `.ods` `.odp` `.epub` | `contains` only |
+
+> [!NOTE]
+> The **Spotlight fallback** is used for formats Forel can't read directly. It
+> relies on macOS having already indexed the file and can only answer the
+> `contains` operator (not `is`, `starts with`, regex, …). When a file isn't
+> indexed, it simply doesn't match.
+>
+> Scanned PDFs (no text layer) are not yet supported and are on the roadmap.
+> Unsupported files simply don't match the Contents condition.
+
+---
 > [!WARNING]
 > Forel is currently in **beta**. Expect bugs, missing features, and breaking changes between versions.
 
