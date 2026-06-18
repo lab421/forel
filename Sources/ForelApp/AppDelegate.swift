@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func configure(model: AppModel, updater: UpdaterManager) {
         self.model = model
         self.updater = updater
+        configureMainWindow()
         if statusBarController == nil {
             setUpStatusBar()
         }
@@ -56,12 +57,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         if let window = NSApp.windows.first {
-            window.delegate = self
-            window.title = "Forel"
+            configureMainWindow(window)
         }
         if model != nil, updater != nil {
             setUpStatusBar()
         }
+    }
+
+    private func configureMainWindow() {
+        guard let window = NSApp.windows.first(where: { !($0 is NSPanel) }) else { return }
+        configureMainWindow(window)
+    }
+
+    private func configureMainWindow(_ window: NSWindow) {
+        window.delegate = self
+        window.title = "Forel"
+        window.titleVisibility = .hidden
     }
 
     /// Opening Forel straight from the mounted installer disk image (before

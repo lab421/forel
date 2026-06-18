@@ -24,6 +24,7 @@ struct ForelMacApp: App {
                 }
         }
         .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 900, height: 620)
     }
 }
