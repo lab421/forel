@@ -17,6 +17,7 @@ final class AppModel: ObservableObject {
     @Published var rules: [Rule] = []
     @Published var history: [HistoryEntry] = []
     @Published var paused: Bool = false
+    @Published var alertTitle: String = "Error"
     @Published var errorMessage: String?
     @Published var detailRoute: DetailRoute = .rules
     @Published var appTheme: AppTheme = .system
@@ -147,13 +148,25 @@ final class AppModel: ObservableObject {
     }
 
     func addFolder(path: String) {
-        let folder = WatchedFolder(path: path)
+        let normalizedPath = (path as NSString).standardizingPath
+        if let existingFolder = folders.first(where: { ($0.path as NSString).standardizingPath == normalizedPath }) {
+            selectedFolderId = existingFolder.id
+            detailRoute = .rules
+            reloadRules()
+            showNotice(
+                title: "Folder already watched",
+                message: "\"\((existingFolder.path as NSString).lastPathComponent)\" is already in your watched folders."
+            )
+            return
+        }
+
+        let folder = WatchedFolder(path: normalizedPath)
         do {
             try db.insertFolder(folder)
-            if !paused { coordinator.add(path) }
+            if !paused { coordinator.add(normalizedPath) }
             reloadFolders()
         } catch {
-            errorMessage = "\(error)"
+            showError(error)
         }
     }
 
@@ -187,7 +200,7 @@ final class AppModel: ObservableObject {
             }
             reloadRules()
         } catch {
-            errorMessage = "\(error)"
+            showError(error)
         }
     }
 
@@ -291,7 +304,7 @@ final class AppModel: ObservableObject {
             try db.markHistoryUndone(entry.id)
             reloadHistory()
         } catch {
-            errorMessage = "\(error)"
+            showError(error)
         }
     }
 
@@ -315,7 +328,7 @@ final class AppModel: ObservableObject {
         }
 
         if !failures.isEmpty {
-            errorMessage = "Some actions could not be undone:\n" + failures.joined(separator: "\n")
+            showError("Some actions could not be undone:\n" + failures.joined(separator: "\n"))
         }
         reloadHistory()
     }
@@ -331,5 +344,19 @@ final class AppModel: ObservableObject {
                 coordinator.add(folder.path)
             }
         }
+    }
+
+    private func showNotice(title: String, message: String) {
+        alertTitle = title
+        errorMessage = message
+    }
+
+    private func showError(_ error: any Error) {
+        showError("\(error)")
+    }
+
+    private func showError(_ message: String) {
+        alertTitle = "Error"
+        errorMessage = message
     }
 }

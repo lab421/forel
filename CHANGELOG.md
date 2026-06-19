@@ -12,6 +12,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Fixed
 - Fix hidden title window
+- Adding an already-watched folder now shows a clear explanation instead of a database error.
 
 ## [0.1.0-beta.4] - 2026-06-18
 

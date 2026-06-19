@@ -20,7 +20,7 @@ struct ContentView: View {
             }
         }
         .toolbarBackground(ForelTheme.background, for: .windowToolbar)
-        .alert("Error", isPresented: errorBinding) {
+        .alert(model.alertTitle, isPresented: errorBinding) {
             Button("OK") { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")
@@ -33,6 +33,14 @@ struct ContentView: View {
     }
 
     private var errorBinding: Binding<Bool> {
-        Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
+        Binding(
+            get: { model.errorMessage != nil },
+            set: {
+                if !$0 {
+                    model.errorMessage = nil
+                    model.alertTitle = "Error"
+                }
+            }
+        )
     }
 }
