@@ -244,9 +244,19 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
     private func loadState(_ path: String, stat: FileStat) -> FileState? {
         db.withLock { db -> FileState? in
-            if let byPath = try? db.fileStateForPath(path) { return byPath }
-            return (try? db.fileStateForIdentity(volumeId: stat.volumeId, fileId: stat.fileId)) ?? nil
+            if let byIdentity = try? db.fileStateForIdentity(volumeId: stat.volumeId, fileId: stat.fileId) {
+                return byIdentity
+            }
+            guard let byPath = try? db.fileStateForPath(path) else { return nil }
+            if Self.identitiesMatch(byPath, stat: stat) || byPath.volumeId == nil || byPath.fileId == nil || stat.volumeId == nil || stat.fileId == nil {
+                return byPath
+            }
+            return nil
         }
+    }
+
+    private static func identitiesMatch(_ state: FileState, stat: FileStat) -> Bool {
+        state.volumeId == stat.volumeId && state.fileId == stat.fileId
     }
 
     /// Stores the post-action state of the file (plan D2): terminal actions remove

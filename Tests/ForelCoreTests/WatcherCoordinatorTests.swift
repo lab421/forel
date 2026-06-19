@@ -102,6 +102,27 @@ import Foundation
         #expect(log.rules.isEmpty)
     }
 
+    @Test func fileRecreatedAtSamePathIsProcessedAsNewIdentity() throws {
+        let (db, folder, dir, coordinator, log, _) = try makeSetup()
+        try insertMatchAllRule(db, folder)
+        let file = dir.file("a.txt", contents: "hello")
+        let stat = try #require(SystemFileStatProvider().stat(file))
+
+        var stale = FileState(folderId: folder.id, volumeId: stat.volumeId, fileId: (stat.fileId ?? 0) + 1, path: file)
+        stale.contentFingerprint = stat.contentFingerprint
+        stale.sizeBytes = stat.sizeBytes
+        stale.modifiedAt = stat.modifiedAtKey
+        stale.lastProcessedAt = "2026-06-19T00:00:00Z"
+        try db.upsertFileState(stale)
+
+        coordinator.observe(file)
+
+        #expect(log.rules == ["match all"])
+        let current = try #require(try db.fileStateForPath(file))
+        #expect(current.fileId == stat.fileId)
+        #expect(current.contentFingerprint == stat.contentFingerprint)
+    }
+
     @Test func changedFileIsReprocessed() throws {
         let (db, folder, dir, coordinator, log, _) = try makeSetup()
         try insertMatchAllRule(db, folder)

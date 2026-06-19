@@ -13,6 +13,9 @@ All notable changes to Forel are documented here. Format loosely follows
 - When the app starts or watching resumes, watched folders are rescanned so files added or changed while it was closed or paused are caught up.
 - Rules no longer re-run on files already handled unless they actually change, and a file that keeps triggering itself is stopped instead of looping.
 
+### Fixed
+- Recreated files at the same path are now handled as new files instead of being skipped as already processed.
+
 ## [0.1.0-beta.5] - 2026-06-19
 
 ### Added
