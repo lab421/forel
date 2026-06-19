@@ -9,7 +9,7 @@
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&logo=apple)](https://www.apple.com/macos/)
 [![Swift 6](https://img.shields.io/badge/Swift-6-orange?style=flat-square&logo=swift)](https://www.swift.org)
 [![Downloads](https://img.shields.io/github/downloads/lab421/forel/total?style=flat-square)](https://github.com/lab421/forel/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue?style=flat-square)](LICENSE)
 
 <br/>
 
@@ -58,7 +58,7 @@ And everything happens **on your Mac**. No cloud. No API keys. No subscription. 
 
 ## Highlights
 
-- **Free & open source** — no license fee, no subscription, MIT-licensed.
+- **Free & open source** — no license fee, no subscription, GPLv3-licensed.
 - **100% on-device** — no cloud, no API keys, no account. Your files never leave your Mac.
 - **Rule-based** — match by name, extension, kind, size, date, tags, or color label.
 - **Native menu-bar app** — runs quietly in the background; toggle rules without opening the window.
@@ -194,7 +194,12 @@ Please read the repository guidelines before submitting. Bug reports, feature re
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+GPLv3 — see [LICENSE](LICENSE) for details.
+
+Copyright (C) 2026 Lionel Guichard. This program is free software: you can
+redistribute it and/or modify it under the terms of the GNU General Public
+License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
 
 ---
 
