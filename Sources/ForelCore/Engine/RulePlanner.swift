@@ -89,7 +89,6 @@ public enum RulePlanner {
                     PlannedAction(
                         ruleId: rule.id,
                         ruleName: rule.name,
-                        actionId: action.id,
                         actionKind: action.kind,
                         action: action,
                         description: "Already in destination",
@@ -113,7 +112,6 @@ public enum RulePlanner {
                     PlannedAction(
                         ruleId: rule.id,
                         ruleName: rule.name,
-                        actionId: action.id,
                         actionKind: action.kind,
                         action: action,
                         description: actionPlan.description,
@@ -143,7 +141,6 @@ public enum RulePlanner {
                     PlannedAction(
                         ruleId: rule.id,
                         ruleName: rule.name,
-                        actionId: action.id,
                         actionKind: action.kind,
                         action: action,
                         description: "Preview unavailable: \(error)",

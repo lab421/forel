@@ -15,10 +15,10 @@ public enum PlanActionStatus: String, Codable, Equatable, Sendable {
 public struct PlannedAction: Equatable, Sendable {
     public let ruleId: String
     public let ruleName: String
-    public let actionId: String
     public let actionKind: ActionKind
     /// The full action definition (with params), so the executor can run it
-    /// later without going back to the rules table.
+    /// later without going back to the rules table. Also carries the
+    /// action's own `id`.
     public let action: Action
     public let description: String
     public let sourcePath: String
@@ -28,14 +28,10 @@ public struct PlannedAction: Equatable, Sendable {
     public let skipReason: String?
     public let conflictReason: String?
     public let isTerminal: Bool
-    /// Serialised `Undo` the executor would record if this action ran,
-    /// known ahead of execution for reversible action kinds.
-    public let undoIntent: JSONValue?
 
     public init(
         ruleId: String,
         ruleName: String,
-        actionId: String,
         actionKind: ActionKind,
         action: Action,
         description: String,
@@ -45,12 +41,10 @@ public struct PlannedAction: Equatable, Sendable {
         status: PlanActionStatus,
         skipReason: String? = nil,
         conflictReason: String? = nil,
-        isTerminal: Bool,
-        undoIntent: JSONValue? = nil
+        isTerminal: Bool
     ) {
         self.ruleId = ruleId
         self.ruleName = ruleName
-        self.actionId = actionId
         self.actionKind = actionKind
         self.action = action
         self.description = description
@@ -61,7 +55,6 @@ public struct PlannedAction: Equatable, Sendable {
         self.skipReason = skipReason
         self.conflictReason = conflictReason
         self.isTerminal = isTerminal
-        self.undoIntent = undoIntent
     }
 }
 

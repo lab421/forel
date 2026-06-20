@@ -548,13 +548,6 @@ public final class Database: @unchecked Sendable {
         return rules
     }
 
-    public func ruleFolderId(_ ruleId: String) throws -> String? {
-        let stmt = try statement("SELECT folder_id FROM rules WHERE id=?1")
-        stmt.bind(1, ruleId)
-        guard try stmt.step() else { return nil }
-        return stmt.columnText(0)
-    }
-
     private func nextRulePriority(folderId: String) throws -> Int64 {
         let stmt = try statement("SELECT COALESCE(MAX(priority) + 1, 0) FROM rules WHERE folder_id=?1")
         stmt.bind(1, folderId)
