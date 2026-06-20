@@ -291,29 +291,41 @@ private struct PreviewSheet: View {
                                     }
                                     .padding(.leading, 6)
                                 }
-                                ForEach(rulePreview.actions, id: \.self) { action in
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: action.statusIcon)
-                                                .font(.system(size: 9))
-                                                .foregroundStyle(action.statusColor)
-                                            Text(action.description)
-                                                .font(.system(size: 11))
-                                                .foregroundStyle(ForelTheme.primaryText)
-                                            Text(action.statusLabel)
-                                                .font(.system(size: 10, weight: .medium))
-                                                .foregroundStyle(action.statusColor)
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 2)
-                                                .background(Capsule().fill(action.statusColor.opacity(0.12)))
-                                        }
-                                        if let targetPath = action.targetPath {
-                                            Text("\((action.sourcePath as NSString).lastPathComponent) -> \((targetPath as NSString).lastPathComponent)")
-                                                .font(.system(size: 10))
-                                                .foregroundStyle(ForelTheme.secondaryText)
-                                        }
+                                if rulePreview.actions.isEmpty {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "info.circle")
+                                            .font(.system(size: 9))
+                                            .foregroundStyle(ForelTheme.secondaryText)
+                                        Text("No actions configured for this rule.")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(ForelTheme.secondaryText)
                                     }
                                     .padding(.leading, 6)
+                                } else {
+                                    ForEach(rulePreview.actions, id: \.self) { action in
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: action.statusIcon)
+                                                    .font(.system(size: 9))
+                                                    .foregroundStyle(action.statusColor)
+                                                Text(action.description)
+                                                    .font(.system(size: 11))
+                                                    .foregroundStyle(ForelTheme.primaryText)
+                                                Text(action.statusLabel)
+                                                    .font(.system(size: 10, weight: .medium))
+                                                    .foregroundStyle(action.statusColor)
+                                                    .padding(.horizontal, 6)
+                                                    .padding(.vertical, 2)
+                                                    .background(Capsule().fill(action.statusColor.opacity(0.12)))
+                                            }
+                                            if let targetPath = action.targetPath {
+                                                Text("\((action.sourcePath as NSString).lastPathComponent) -> \((targetPath as NSString).lastPathComponent)")
+                                                    .font(.system(size: 10))
+                                                    .foregroundStyle(ForelTheme.secondaryText)
+                                            }
+                                        }
+                                        .padding(.leading, 6)
+                                    }
                                 }
                             }
                         }
