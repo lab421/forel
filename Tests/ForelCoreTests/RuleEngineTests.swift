@@ -88,6 +88,22 @@ import Foundation
         #expect(preview?.rules[0].conditions.map(\.kind) == [.name, .extension_])
     }
 
+    @Test func previewFileShowsMatchedRulesWithoutActions() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.pdf", contents: "paid")
+        let rule = makeRule(
+            name: "review invoices",
+            conditions: [makeCondition(.extension_, .is, "pdf")]
+        )
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+
+        #expect(preview?.name == "invoice.pdf")
+        #expect(preview?.rules.map(\.ruleName) == ["review invoices"])
+        #expect(preview?.rules[0].conditions.map(\.matched) == [true])
+        #expect(preview?.rules[0].actions.isEmpty == true)
+    }
+
     /// `moveToFolder` resolves a same-name conflict itself (default: rename
     /// the incoming file) rather than blocking, so Dry Run shows the actual
     /// destination Run Now/the watcher will use — no `(1)`-suffixed surprise

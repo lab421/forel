@@ -243,7 +243,7 @@ private struct PreviewSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             ViewHeader(
                 title: "Preview (Dry Run)",
-                subtitle: "\(result.filesScanned) items scanned · \(result.matches.count) would change"
+                subtitle: "\(result.filesScanned) items scanned · \(result.matches.count) matched"
             )
 
             ScrollView {

@@ -17,6 +17,7 @@ All notable changes to Forel are documented here. Format loosely follows
 - Database upgrades now run through an ordered migration list to keep future updates safer.
 
 ### Fixed
+- Fixed Dry Run hiding files that matched a rule with conditions but no actions.
 - Fixed a bug where a destination conflict could rename a file mid-move into a numbered duplicate that Dry Run never showed.
 - Fixed the automatic watcher repeatedly re-running a Copy to Folder rule on the same untouched file, flooding Activity with duplicate entries.
 - Fixed the automatic watcher logging a spurious "doesn't exist" entry for a file it had just successfully moved, caused by a duplicate filesystem notification for the same change.

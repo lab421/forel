@@ -165,16 +165,14 @@ public enum RuleEngine {
                 guard conditionResultsMatch(conditions.map(\.matched), rule.conditionMatch) else { continue }
 
                 let result = previewActions(rule, path: currentPath)
-                if !result.actions.isEmpty {
-                    matchedRules.append(
-                        RulePreview(
-                            ruleId: rule.id,
-                            ruleName: rule.name,
-                            conditions: conditions,
-                            actions: result.actions
-                        )
+                matchedRules.append(
+                    RulePreview(
+                        ruleId: rule.id,
+                        ruleName: rule.name,
+                        conditions: conditions,
+                        actions: result.actions
                     )
-                }
+                )
 
                 for copiedPath in result.copiedPaths {
                     pending.append(PendingFile(path: copiedPath, depth: currentDepth, startRuleIndex: ruleIndex + 1))
