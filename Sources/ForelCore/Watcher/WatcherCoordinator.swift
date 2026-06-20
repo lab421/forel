@@ -46,7 +46,6 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
     func handle(path: String, flags: UInt32) {
         journalFSEvent(path: path, flags: flags)
-        guard !isForelEcho(path: path) else { return }
 
         guard let (folder, rules) = db.withLock({ db -> (WatchedFolder, [Rule])? in
             guard let folder = try? db.folderForPath(path) else { return nil }
@@ -73,21 +72,6 @@ public final class WatcherCoordinator: @unchecked Sendable {
             for state in result.fileStateUpserts { try? db.upsertFileState(state) }
             for path in result.fileStateDeletes { try? db.deleteFileState(path) }
         }
-    }
-
-    /// Forel's own actions touch files the watcher then sees again via
-    /// FSEvents. If the file's current identity/fingerprint already matches
-    /// the `file_state` Forel itself just recorded for that path, this event
-    /// is an echo of Forel's own change, not a new observation — the rules
-    /// must not run again for it.
-    func isForelEcho(path: String) -> Bool {
-        guard let state = db.withLock({ db in try? db.getFileState(path) }) else { return false }
-        guard let currentFingerprint = FileFingerprint.current(path), state.contentFingerprint == currentFingerprint else {
-            return false
-        }
-        guard let volumeId = state.volumeId, let fileId = state.fileId else { return true }
-        guard let identity = FileFingerprint.identity(path) else { return false }
-        return identity.volumeId == volumeId && identity.fileId == fileId
     }
 
     /// Records the raw FSEvents flag for `path` so the journal distinguishes

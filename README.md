@@ -168,7 +168,7 @@ forel/
 - [ ] Sync actions
 - [ ] Upload actions
 - [ ] Native notifications on rule actions
-- [ ] Activity logs
+- [ ] Activity lo gs
 - [ ] Automatic cleaning database
 - [ ] AI features
 

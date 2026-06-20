@@ -29,30 +29,42 @@ import CoreServices
         #expect(try db.listHistory().count == 1)
     }
 
-    @Test func forelEchoIsObservedButDoesNotRerunRules() throws {
+    /// Regression test for a reported bug: moving a file into a subfolder
+    /// (rule 1) must not prevent a second, deeper-scoped rule (rule 2) from
+    /// still applying to it at its new location. The move's own follow-up
+    /// FSEvent for the new path is how rule 2 gets its chance — it must not
+    /// be swallowed as a "Forel echo".
+    @Test func laterRuleStillAppliesToAFileAfterAnEarlierRuleMovedIt() throws {
         let db = try makeDB()
         let dir = TempDir()
-        let file = dir.file("a.txt")
-        try db.upsertFileState(FileState(
-            path: file,
-            volumeId: FileFingerprint.identity(file)?.volumeId,
-            fileId: FileFingerprint.identity(file)?.fileId,
-            contentFingerprint: FileFingerprint.current(file)
-        ))
-
+        let file = dir.file("a.png")
+        let pngDir = dir.dir("PNG")
         let folder = WatchedFolder(path: dir.path)
         try db.insertFolder(folder)
-        var rule = makeRule(folderId: folder.id, name: "tag")
-        rule.conditions = [makeCondition(.extension_, .is, "txt", ruleId: rule.id)]
-        rule.actions = [makeAction(.addTag, .object(["tag": .string("Seen")]), position: 0, ruleId: rule.id)]
-        try db.insertRule(rule)
+
+        var moveRule = makeRule(folderId: folder.id, name: "move pngs")
+        moveRule.conditions = [makeCondition(.extension_, .is, "png", ruleId: moveRule.id)]
+        moveRule.actions = [makeAction(.moveToFolder, .object(["destination": .string(pngDir)]), position: 0, ruleId: moveRule.id)]
+        try db.insertRule(moveRule)
+
+        // Inserted second, so listRules returns it after moveRule (priority order).
+        var colorRule = makeRule(folderId: folder.id, name: "color pngs", recursionDepth: 3)
+        colorRule.conditions = [makeCondition(.extension_, .is, "png", ruleId: colorRule.id)]
+        colorRule.actions = [makeAction(.setColorLabel, .object(["color": .string("Blue")]), position: 0, ruleId: colorRule.id)]
+        try db.insertRule(colorRule)
 
         let coordinator = WatcherCoordinator(db: db)
-        coordinator.handle(path: file, flags: UInt32(kFSEventStreamEventFlagItemModified))
+        // First FSEvent: the file is created at /a.png — rule 1 moves it.
+        coordinator.handle(path: file, flags: UInt32(kFSEventStreamEventFlagItemCreated))
 
-        // The event is observed (fsevents row exists) but rules did not run.
-        #expect(try db.listFilesystemEvents(path: file).contains { $0.source == .fsevents })
-        #expect(try db.listHistory().isEmpty)
+        let movedPath = (pngDir as NSString).appendingPathComponent("a.png")
+        #expect(FileManager.default.fileExists(atPath: movedPath))
+
+        // Second FSEvent: the move itself surfaces the file at its new path.
+        coordinator.handle(path: movedPath, flags: UInt32(kFSEventStreamEventFlagItemRenamed))
+
+        #expect(FinderTags.currentColorName(movedPath) == "blue")
+        #expect(try db.listHistory().contains { $0.actionKind == .setColorLabel && $0.status == .applied })
     }
 
     @Test func alreadyInDestinationIsSkippedByWatcher() throws {
