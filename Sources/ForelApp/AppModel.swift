@@ -239,7 +239,7 @@ final class AppModel: ObservableObject {
                 let batchId = UUID().uuidString
                 var allHistory: [HistoryEntry] = []
                 for entry in entries {
-                    let (_, history) = RuleEngine.evaluateFile(path: entry.path, depth: entry.depth, rules: folderRules, batchId: batchId, root: folder.path)
+                    let (_, history) = RuleEngine.run(path: entry.path, depth: entry.depth, rules: folderRules, batchId: batchId, root: folder.path)
                     allHistory.append(contentsOf: history)
                 }
                 return allHistory
@@ -297,33 +297,64 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func undo(_ entry: HistoryEntry) {
-        guard entry.status == .applied else { return }
-        do {
-            try ActionExecutor.revert(Undo.fromJSON(entry.undo))
-            try db.markHistoryUndone(entry.id)
-            reloadHistory()
-        } catch {
-            showError(error)
-        }
+    /// The enabled rules and watched root currently covering `path`, if
+    /// watching is actually active there — empty/`nil` when paused or the
+    /// folder is disabled, since the watcher wouldn't reprocess anything in
+    /// that case regardless of what the rules say.
+    private func activeRules(coveringRestorePath path: String) -> (rules: [Rule], watchedRoot: String?) {
+        guard !paused, let folder = try? db.folderForPath(path), folder.enabled else { return ([], nil) }
+        let rules = (try? db.listRules(folderId: folder.id))?.filter(\.enabled) ?? []
+        return (rules, folder.path)
     }
 
-    /// Reverts every still-applied, reversible entry in a batch. Entries are
-    /// undone in reverse application order so chained actions on the same file
-    /// (e.g. tag then rename) revert correctly.
-    func undoBatch(_ batchId: String) {
-        let entries = (try? db.listHistoryBatch(batchId)) ?? []
-        let reversible = entries
-            .filter { $0.status == .applied && $0.reversible }
-            .reversed()
-
-        var failures: [String] = []
-        for entry in reversible {
+    /// Reverses `entry` only if `UndoChecker` finds it safe right now —
+    /// never a silent best-effort rollback on a file that no longer matches
+    /// what Forel originally changed.
+    func undo(_ entry: HistoryEntry) {
+        guard entry.status == .applied else { return }
+        let context = activeRules(coveringRestorePath: entry.originalPath)
+        switch UndoChecker.evaluate(entry, activeRules: context.rules, watchedRoot: context.watchedRoot) {
+        case .unsafe(let reason):
+            showNotice(title: "Can't undo this action", message: reason)
+        case .safe:
             do {
                 try ActionExecutor.revert(Undo.fromJSON(entry.undo))
                 try db.markHistoryUndone(entry.id)
+                reloadHistory()
             } catch {
-                failures.append("\((entry.originalPath as NSString).lastPathComponent): \(error)")
+                showError(error)
+            }
+        }
+    }
+
+    /// Reverts every still-applied, reversible entry in a batch that
+    /// `UndoChecker` finds safe, in reverse application order so chained
+    /// actions on the same file (e.g. tag then rename) revert correctly.
+    /// Entries that aren't safe — including ones that would collide with
+    /// another restore in the same batch — are left untouched and reported,
+    /// rather than attempted.
+    func undoBatch(_ batchId: String) {
+        let entries = (try? db.listHistoryBatch(batchId)) ?? []
+        let reversible = entries.filter { $0.status == .applied && $0.reversible }
+        let colliding = UndoChecker.collidingRestoreTargets(reversible)
+
+        var failures: [String] = []
+        for entry in reversible.reversed() {
+            if colliding.contains(entry.id) {
+                failures.append("\((entry.originalPath as NSString).lastPathComponent): would collide with another file being restored in this batch.")
+                continue
+            }
+            let context = activeRules(coveringRestorePath: entry.originalPath)
+            switch UndoChecker.evaluate(entry, activeRules: context.rules, watchedRoot: context.watchedRoot) {
+            case .unsafe(let reason):
+                failures.append("\((entry.originalPath as NSString).lastPathComponent): \(reason)")
+            case .safe:
+                do {
+                    try ActionExecutor.revert(Undo.fromJSON(entry.undo))
+                    try db.markHistoryUndone(entry.id)
+                } catch {
+                    failures.append("\((entry.originalPath as NSString).lastPathComponent): \(error)")
+                }
             }
         }
 

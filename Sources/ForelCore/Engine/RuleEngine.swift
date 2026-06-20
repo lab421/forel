@@ -81,10 +81,15 @@ public struct PreviewResult: Sendable {
 }
 
 public enum RuleEngine {
-    /// Evaluates all enabled rules against `path` and executes matching ones.
-    /// Returns the names of rules that matched and the history entries produced
-    /// by their actions (grouped under `batchId`).
-    public static func evaluateFile(path: String, depth: Int, rules: [Rule], batchId: String, root: String? = nil) -> (matched: [String], history: [HistoryEntry]) {
+    /// Evaluates all enabled rules against `path` and runs matching ones.
+    /// Returns the names of rules that matched and the history entries
+    /// produced by their actions (grouped under `batchId`).
+    ///
+    /// Shares its per-action decision (target path, skip/conflict/run
+    /// status) with `previewFile` by going through `ActionExecutor.plan`
+    /// first, then acting on it — so Dry Run, Run Now, and the watcher can
+    /// never see a different outcome for the same file and rules.
+    public static func run(path: String, depth: Int, rules: [Rule], batchId: String, root: String? = nil) -> (matched: [String], history: [HistoryEntry]) {
         struct PendingFile {
             let path: String
             let depth: Int
@@ -104,7 +109,7 @@ public enum RuleEngine {
                 let rule = rules[ruleIndex]
                 guard rule.enabled, ruleMatches(rule, path: currentPath, depth: currentDepth) else { continue }
 
-                let result = executeActions(rule, path: currentPath, batchId: batchId)
+                let result = runActions(rule, path: currentPath, batchId: batchId)
                 history.append(contentsOf: result.history)
                 matched.append(rule.name)
 
@@ -120,9 +125,10 @@ public enum RuleEngine {
                 }
 
                 // A terminal action (move/trash/delete) takes the file out of
-                // this location entirely, same as it stops the action chain
-                // within a single rule — no further rule in this pass should
-                // be evaluated against it.
+                // this location — even if it didn't actually run (e.g. a
+                // skipped/blocked conflict), later actions in this rule and
+                // later rules in this pass were written assuming it had, so
+                // stop here regardless of whether it ran.
                 if result.isTerminal { break }
 
                 // A non-terminal action (e.g. rename) can still change the
@@ -228,16 +234,18 @@ public enum RuleEngine {
         }
     }
 
+    /// Like `ruleInScope` + condition matching combined, but evaluates cheap
+    /// conditions first and short-circuits, so an expensive `contents`
+    /// extraction (PDF text, OCR, zip parsing, Spotlight) only runs when it
+    /// can still change the outcome — e.g. a failing name check in an `.all`
+    /// rule skips the OCR entirely. Reordering is safe because `.all` and
+    /// `.any` are order-independent. Used by `run`, which only needs a
+    /// yes/no answer; `previewFile` keeps the original order and evaluates
+    /// every condition on purpose, to show each one's result in the Dry Run.
     private static func ruleMatches(_ rule: Rule, path: String, depth: Int) -> Bool {
         guard ruleInScope(rule, depth: depth) else { return false }
         if rule.conditions.isEmpty { return true }
 
-        // Evaluate cheap conditions first and short-circuit, so an expensive
-        // `contents` extraction (PDF text, OCR, zip parsing, Spotlight) only runs
-        // when it can still change the outcome — e.g. a failing name check in an
-        // `.all` rule skips the OCR entirely. Reordering is safe because `.all`
-        // and `.any` are order-independent. The Dry Run keeps the original order
-        // and evaluates every condition on purpose, to show each one's result.
         let ordered = rule.conditions.sorted { evaluationCost($0.kind) < evaluationCost($1.kind) }
         switch rule.conditionMatch {
         case .all:
@@ -308,57 +316,104 @@ public enum RuleEngine {
         }.max()
     }
 
-    private static func executeActions(_ rule: Rule, path: String, batchId: String) -> (history: [HistoryEntry], copiedPaths: [String], finalPath: String, isTerminal: Bool) {
+    /// Runs one rule's actions against `path` in order, deciding each one
+    /// the exact same way `previewActions` would (via `ActionExecutor.plan`)
+    /// before acting on it — the single place preview and execution can
+    /// never disagree.
+    private static func runActions(_ rule: Rule, path: String, batchId: String) -> (history: [HistoryEntry], copiedPaths: [String], finalPath: String, isTerminal: Bool) {
         let sorted = rule.actions.sorted { $0.position < $1.position }
 
         var history: [HistoryEntry] = []
         var copiedPaths: [String] = []
         var current = path
         var stoppedOnTerminal = false
-        for action in sorted {
-            let isTerminal = action.kind == .moveToFolder || action.kind == .moveToTrash || action.kind == .delete
-            let original = current
-            if !ActionExecutor.wouldChange(action, path: current) {
-                history.append(
-                    HistoryEntry(
-                        batchId: batchId,
-                        ruleId: rule.id,
-                        ruleName: rule.name,
-                        actionKind: action.kind,
-                        originalPath: original,
-                        resultPath: original,
-                        undo: Undo.none.toJSON(),
-                        reversible: false,
-                        status: .skipped,
-                        message: "Skipped because the action would not change this file."
-                    )
-                )
-                continue
-            }
 
+        for action in sorted {
+            let original = current
             do {
-                let applied = try ActionExecutor.execute(action, path: current)
-                let resultPath: String
-                switch applied.undo {
-                case .copy(let copy):
-                    resultPath = copy
-                    copiedPaths.append(copy)
-                default:
-                    resultPath = applied.newPath
-                }
-                history.append(
-                    HistoryEntry(
-                        batchId: batchId,
-                        ruleId: rule.id,
-                        ruleName: rule.name,
-                        actionKind: action.kind,
-                        originalPath: original,
-                        resultPath: resultPath,
-                        undo: applied.undo.toJSON(),
-                        reversible: applied.undo.isReversible
+                let actionPlan = try ActionExecutor.plan(action, path: current)
+
+                switch actionPlan.status {
+                case .wouldSkip:
+                    // `description` already explains *why* for the
+                    // conflict-aware skips (already in destination, or
+                    // explicitly configured to skip); everything else is
+                    // skipped because it simply wouldn't change the file.
+                    let isConflictAwareSkip = actionPlan.description == "Already in destination" || actionPlan.description.hasPrefix("Skip —")
+                    history.append(
+                        HistoryEntry(
+                            batchId: batchId,
+                            ruleId: rule.id,
+                            ruleName: rule.name,
+                            actionKind: action.kind,
+                            originalPath: original,
+                            resultPath: original,
+                            undo: Undo.none.toJSON(),
+                            reversible: false,
+                            status: .skipped,
+                            message: isConflictAwareSkip ? actionPlan.description : "Skipped because the action would not change this file."
+                        )
                     )
-                )
-                current = applied.newPath
+                case .blockedByConflict:
+                    history.append(
+                        HistoryEntry(
+                            batchId: batchId,
+                            ruleId: rule.id,
+                            ruleName: rule.name,
+                            actionKind: action.kind,
+                            originalPath: original,
+                            resultPath: original,
+                            undo: Undo.none.toJSON(),
+                            reversible: false,
+                            status: .failed,
+                            message: "A file already exists at the destination."
+                        )
+                    )
+                case .needsConfirmation:
+                    history.append(
+                        HistoryEntry(
+                            batchId: batchId,
+                            ruleId: rule.id,
+                            ruleName: rule.name,
+                            actionKind: action.kind,
+                            originalPath: original,
+                            resultPath: original,
+                            undo: Undo.none.toJSON(),
+                            reversible: false,
+                            status: .needsConfirmation
+                        )
+                    )
+                case .wouldRun:
+                    let applied = try ActionExecutor.execute(action, path: current)
+                    let resultPath: String
+                    if let copiedPath = applied.copiedPath {
+                        resultPath = copiedPath
+                        copiedPaths.append(copiedPath)
+                    } else {
+                        resultPath = applied.newPath
+                    }
+                    let resultIdentity = FileFingerprint.identity(resultPath)
+                    history.append(
+                        HistoryEntry(
+                            batchId: batchId,
+                            ruleId: rule.id,
+                            ruleName: rule.name,
+                            actionKind: action.kind,
+                            originalPath: original,
+                            resultPath: resultPath,
+                            undo: applied.undo.toJSON(),
+                            reversible: applied.undo.isReversible,
+                            resultVolumeId: resultIdentity?.volumeId,
+                            resultFileId: resultIdentity?.fileId
+                        )
+                    )
+                    current = applied.newPath
+                }
+
+                if actionPlan.isTerminal {
+                    stoppedOnTerminal = true
+                    break
+                }
             } catch {
                 history.append(
                     HistoryEntry(
@@ -374,10 +429,6 @@ public enum RuleEngine {
                         message: String(describing: error)
                     )
                 )
-            }
-            if isTerminal {
-                stoppedOnTerminal = true
-                break
             }
         }
         return (history, copiedPaths, current, stoppedOnTerminal)

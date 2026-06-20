@@ -76,7 +76,10 @@ import Foundation
         #expect(FileManager.default.fileExists(atPath: file))
     }
 
-    @Test func revertCopyDeletesTheCreatedCopy() throws {
+    /// Copy is intentionally not reversible (matches Revert, which
+    /// doesn't cover Copy either): a copy is an independent file once
+    /// created, not something to roll back.
+    @Test func copyIsNotReversibleButStillTracksWhereItLanded() throws {
         let dir = TempDir()
         let file = dir.file("data.bin", contents: "x")
         let dest = (dir.path as NSString).appendingPathComponent("Backup")
@@ -87,7 +90,20 @@ import Foundation
         let copiedPath = (dest as NSString).appendingPathComponent("data.bin")
         #expect(FileManager.default.fileExists(atPath: copiedPath))
 
-        try ActionExecutor.revert(applied.undo)
+        #expect(applied.undo.isReversible == false)
+        #expect(applied.copiedPath == copiedPath)
+    }
+
+    /// Copies recorded before this behavior changed are still revertible —
+    /// existing history entries keep working exactly as they did when saved.
+    @Test func revertStillSupportsCopyEntriesSavedBeforeCopyBecameIrreversible() throws {
+        let dir = TempDir()
+        let file = dir.file("data.bin", contents: "x")
+        let copiedPath = (dir.path as NSString).appendingPathComponent("data (copy).bin")
+        try FileManager.default.copyItem(atPath: file, toPath: copiedPath)
+
+        try ActionExecutor.revert(.copy(copy: copiedPath))
+
         #expect(FileManager.default.fileExists(atPath: file))
         #expect(!FileManager.default.fileExists(atPath: copiedPath))
     }

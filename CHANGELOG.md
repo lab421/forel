@@ -3,6 +3,22 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Added an option to Move to Folder and Copy to Folder rules for handling a file that already exists at the destination: rename the new file (default), replace the existing file (sent to the Trash, not deleted), or skip the file to avoid creating a duplicate.
+
+### Changed
+- Dry Run, Run Now, and the automatic watcher now always agree on what a rule would do to a file, including which files are skipped, blocked, or already sorted — no more surprises between a preview and what actually happens.
+- Undo now refuses to act if the file changed since the original action, or if an active rule would immediately reprocess the restored file, instead of silently restoring the wrong file or letting the watcher redo what was just undone.
+- Copy to Folder is no longer undoable — a copy is an independent file once created, not something to roll back.
+- The action options button in the rule editor is now hidden for actions that have no options instead of showing an empty popover.
+
+### Fixed
+- Fixed a bug where a destination conflict could rename a file mid-move into a numbered duplicate that Dry Run never showed.
+- Fixed the automatic watcher repeatedly re-running a Copy to Folder rule on the same untouched file, flooding Activity with duplicate entries.
+- Fixed the automatic watcher logging a spurious "doesn't exist" entry for a file it had just successfully moved, caused by a duplicate filesystem notification for the same change.
+
 ## [0.1.0-beta.5] - 2026-06-19
 
 ### Added

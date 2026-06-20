@@ -19,7 +19,7 @@ import Foundation
             makeRule(name: "empty"),
         ]
 
-        let (matched, history) = RuleEngine.evaluateFile(path: file, depth: 0, rules: rules, batchId: "batch")
+        let (matched, history) = RuleEngine.run(path: file, depth: 0, rules: rules, batchId: "batch")
         #expect(matched == ["all matched", "any matched", "empty"])
         #expect(history.isEmpty)
     }
@@ -62,7 +62,7 @@ import Foundation
         #expect(before?.rules[0].actions.count == 2)
         #expect(before?.rules[0].actions.map(\.status) == [.wouldRun, .wouldRun])
 
-        let (_, history) = RuleEngine.evaluateFile(path: file, depth: 0, rules: [rule], batchId: "batch")
+        let (_, history) = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
         #expect(history.count == 2)
         #expect(history.allSatisfy { $0.reversible })
         let after = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
@@ -113,7 +113,11 @@ import Foundation
         #expect(preview?.rules[0].conditions.map(\.kind) == [.name, .extension_])
     }
 
-    @Test func previewFileDetectsDestinationConflictWithoutMutatingFiles() throws {
+    /// `moveToFolder` resolves a same-name conflict itself (default: rename
+    /// the incoming file) rather than blocking, so Dry Run shows the actual
+    /// destination Run Now/the watcher will use — no `(1)`-suffixed surprise
+    /// at execution time that didn't appear in the preview.
+    @Test func previewFileResolvesDestinationConflictByRenamingWithoutMutatingFiles() throws {
         let dir = TempDir()
         let file = dir.file("invoice.pdf", contents: "paid")
         let destination = dir.dir("Processed")
@@ -126,10 +130,29 @@ import Foundation
 
         let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
 
-        #expect(preview?.rules[0].actions[0].status == .blockedByConflict)
-        #expect(preview?.rules[0].actions[0].targetPath == conflict)
+        let renamed = (destination as NSString).appendingPathComponent("invoice (1).pdf")
+        #expect(preview?.rules[0].actions[0].status == .wouldRun)
+        #expect(preview?.rules[0].actions[0].targetPath == renamed)
         #expect(FileManager.default.fileExists(atPath: file))
+        #expect(!FileManager.default.fileExists(atPath: renamed))
         #expect((try String(contentsOfFile: conflict, encoding: .utf8)) == "existing")
+    }
+
+    @Test func previewFileSkipsAMoveToFolderThatWouldLandInTheSameFolderItsAlreadyIn() throws {
+        let dir = TempDir()
+        let pdfDir = dir.dir("PDF")
+        let existing = (pdfDir as NSString).appendingPathComponent("existing.pdf")
+        try "x".write(toFile: existing, atomically: true, encoding: .utf8)
+        let rule = makeRule(
+            name: "sort pdf",
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(pdfDir)]))]
+        )
+
+        let preview = RuleEngine.previewFile(path: existing, depth: 0, rules: [rule])
+
+        #expect(preview?.rules[0].actions[0].status == .wouldSkip)
+        let numberedDuplicate = (pdfDir as NSString).appendingPathComponent("existing (1).pdf")
+        #expect(!FileManager.default.fileExists(atPath: numberedDuplicate))
     }
 
     @Test func previewFileFollowsSimulatedRenameThroughFollowingRules() throws {
@@ -155,7 +178,7 @@ import Foundation
         #expect(FileManager.default.fileExists(atPath: file))
         #expect(!FileManager.default.fileExists(atPath: renamed))
 
-        let result = RuleEngine.evaluateFile(
+        let result = RuleEngine.run(
             path: file,
             depth: 0,
             rules: [renameRule, archiveRenamedRule],
@@ -175,8 +198,8 @@ import Foundation
 
         let shallowRule = makeRule(name: "shallow", conditions: [makeCondition(.name, .contains, "direct")], recursionDepth: 0)
 
-        #expect(RuleEngine.evaluateFile(path: direct, depth: 0, rules: [shallowRule], batchId: "batch").matched == ["shallow"])
-        #expect(RuleEngine.evaluateFile(path: nested, depth: 1, rules: [shallowRule], batchId: "batch").matched == [])
+        #expect(RuleEngine.run(path: direct, depth: 0, rules: [shallowRule], batchId: "batch").matched == ["shallow"])
+        #expect(RuleEngine.run(path: nested, depth: 1, rules: [shallowRule], batchId: "batch").matched == [])
     }
 
     @Test func recursionDepthSupportsCurrentFolderLimitedDepthAndAllLevels() throws {
@@ -184,16 +207,16 @@ import Foundation
         let ruleOneLevel = makeRule(name: "one level", recursionDepth: 1)
         let ruleAllLevels = makeRule(name: "all levels", recursionDepth: nil)
 
-        #expect(RuleEngine.evaluateFile(path: "/tmp/file.txt", depth: 0, rules: [ruleCurrent, ruleOneLevel, ruleAllLevels], batchId: "batch").matched == [
+        #expect(RuleEngine.run(path: "/tmp/file.txt", depth: 0, rules: [ruleCurrent, ruleOneLevel, ruleAllLevels], batchId: "batch").matched == [
             "current",
             "one level",
             "all levels",
         ])
-        #expect(RuleEngine.evaluateFile(path: "/tmp/Sub/file.txt", depth: 1, rules: [ruleCurrent, ruleOneLevel, ruleAllLevels], batchId: "batch").matched == [
+        #expect(RuleEngine.run(path: "/tmp/Sub/file.txt", depth: 1, rules: [ruleCurrent, ruleOneLevel, ruleAllLevels], batchId: "batch").matched == [
             "one level",
             "all levels",
         ])
-        #expect(RuleEngine.evaluateFile(path: "/tmp/Sub/Deep/file.txt", depth: 2, rules: [ruleCurrent, ruleOneLevel, ruleAllLevels], batchId: "batch").matched == [
+        #expect(RuleEngine.run(path: "/tmp/Sub/Deep/file.txt", depth: 2, rules: [ruleCurrent, ruleOneLevel, ruleAllLevels], batchId: "batch").matched == [
             "all levels",
         ])
     }
@@ -242,7 +265,7 @@ import Foundation
             actions: [makeAction(.addTag, .object(["tags": .stringArray(["Wrong"])]))]
         )
 
-        let result = RuleEngine.evaluateFile(path: file, depth: 0, rules: [matching, nonMatching], batchId: "batch")
+        let result = RuleEngine.run(path: file, depth: 0, rules: [matching, nonMatching], batchId: "batch")
 
         #expect(result.matched == ["matching image"])
         #expect(result.history.count == 1)
@@ -257,7 +280,7 @@ import Foundation
             actions: [makeAction(.rename, .object(["pattern": .string("same.txt")]))]
         )
 
-        let result = RuleEngine.evaluateFile(path: file, depth: 0, rules: [rule], batchId: "batch")
+        let result = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
 
         #expect(result.history.count == 1)
         #expect(result.history[0].status == .skipped)
@@ -276,7 +299,7 @@ import Foundation
             actions: [makeAction(.runScript, .object(["script": .string("exit 7")]))]
         )
 
-        let result = RuleEngine.evaluateFile(path: file, depth: 0, rules: [rule], batchId: "batch")
+        let result = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
 
         #expect(result.history.count == 1)
         #expect(result.history[0].status == .failed)
@@ -285,6 +308,114 @@ import Foundation
         #expect(result.history[0].reversible == false)
         #expect(result.history[0].message?.contains("script exited with status 7") == true)
         #expect(FileManager.default.fileExists(atPath: file))
+    }
+
+    @Test func runSkipsAMoveToFolderThatWouldLandInTheSameFolderItsAlreadyIn() throws {
+        let dir = TempDir()
+        let pdfDir = dir.dir("PDF")
+        let existing = (pdfDir as NSString).appendingPathComponent("existing.pdf")
+        try "x".write(toFile: existing, atomically: true, encoding: .utf8)
+        let rule = makeRule(
+            name: "sort pdf",
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(pdfDir)]))]
+        )
+
+        let result = RuleEngine.run(path: existing, depth: 0, rules: [rule], batchId: "batch")
+
+        let numberedDuplicate = (pdfDir as NSString).appendingPathComponent("existing (1).pdf")
+        #expect(!FileManager.default.fileExists(atPath: numberedDuplicate))
+        #expect(FileManager.default.fileExists(atPath: existing))
+        #expect(result.history.count == 1)
+        #expect(result.history[0].status == .skipped)
+    }
+
+    @Test func runResolvesDestinationConflictByRenamingByDefault() throws {
+        let dir = TempDir()
+        let destination = dir.dir("Archive")
+        let existing = (destination as NSString).appendingPathComponent("note.txt")
+        try "old".write(toFile: existing, atomically: true, encoding: .utf8)
+        let file = dir.file("note.txt", contents: "new")
+        let rule = makeRule(
+            name: "archive",
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(destination)]))]
+        )
+
+        let result = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+
+        let numbered = (destination as NSString).appendingPathComponent("note (1).txt")
+        #expect(result.history.count == 1)
+        #expect(result.history[0].status == .applied)
+        #expect(result.history[0].resultPath == numbered)
+        #expect(try String(contentsOfFile: existing, encoding: .utf8) == "old")
+        #expect(try String(contentsOfFile: numbered, encoding: .utf8) == "new")
+    }
+
+    @Test func runReplacesExistingFileWhenConfigured() throws {
+        let dir = TempDir()
+        let destination = dir.dir("Archive")
+        let existing = (destination as NSString).appendingPathComponent("note.txt")
+        try "old".write(toFile: existing, atomically: true, encoding: .utf8)
+        let file = dir.file("note.txt", contents: "new")
+        let rule = makeRule(
+            name: "archive",
+            actions: [makeAction(.moveToFolder, .object([
+                "destination": .string(destination),
+                "on_conflict": .string("replace"),
+            ]))]
+        )
+
+        let result = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(result.history.count == 1)
+        #expect(result.history[0].status == .applied)
+        #expect(result.history[0].resultPath == existing)
+        #expect(try String(contentsOfFile: existing, encoding: .utf8) == "new")
+    }
+
+    @Test func runSkipOnConflictStopsLaterActionsInTheSameRule() throws {
+        let dir = TempDir()
+        let destination = dir.dir("Archive")
+        let existing = (destination as NSString).appendingPathComponent("note.txt")
+        try "old".write(toFile: existing, atomically: true, encoding: .utf8)
+        let file = dir.file("note.txt", contents: "new")
+        var rule = makeRule(name: "archive then tag")
+        rule.actions = [
+            makeAction(.moveToFolder, .object([
+                "destination": .string(destination),
+                "on_conflict": .string("skip"),
+            ]), position: 0),
+            makeAction(.addTag, .object(["tag": .string("Archived")]), position: 1),
+        ]
+
+        let result = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(FinderTags.read(file).isEmpty)
+        #expect(result.history.count == 1)
+        #expect(result.history[0].status == .skipped)
+    }
+
+    @Test func runSkippedCopyDoesNotStopLaterActionsInTheSameRule() throws {
+        let dir = TempDir()
+        let destination = dir.dir("Backup")
+        let existing = (destination as NSString).appendingPathComponent("note.txt")
+        try "old".write(toFile: existing, atomically: true, encoding: .utf8)
+        let file = dir.file("note.txt", contents: "new")
+        var rule = makeRule(name: "backup then tag")
+        rule.actions = [
+            makeAction(.copyToFolder, .object([
+                "destination": .string(destination),
+                "on_conflict": .string("skip"),
+            ]), position: 0),
+            makeAction(.addTag, .object(["tag": .string("Reviewed")]), position: 1),
+        ]
+
+        let result = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(result.history.count == 2)
+        #expect(result.history[0].status == .skipped)
+        #expect(result.history[1].status == .applied)
+        #expect(FinderTags.read(file) == ["Reviewed"])
     }
 
     @Test func copiedFilesContinueThroughFollowingRulesWithoutRepeatingCopyRule() throws {
@@ -310,7 +441,7 @@ import Foundation
             actions: [makeAction(.moveToFolder, .object(["destination": .string(archivedDir)]))]
         )
 
-        let result = RuleEngine.evaluateFile(
+        let result = RuleEngine.run(
             path: file,
             depth: 0,
             rules: [labelRule, copyRule, deleteDuplicateRule],
@@ -351,7 +482,7 @@ import Foundation
             actions: [makeAction(.addTag, .object(["tags": .stringArray(["Stale"])]))]
         )
 
-        let result = RuleEngine.evaluateFile(
+        let result = RuleEngine.run(
             path: file,
             depth: 0,
             rules: [renameRule, archiveRenamedRule, shouldNeverMatchOldName],
