@@ -6,7 +6,7 @@ import Foundation
 /// schema exactly so the existing alpha database at
 /// `~/Library/Application Support/com.forel.app/forel.db` keeps working.
 public final class Database: @unchecked Sendable {
-    public static let currentSchemaVersion: Int64 = 5
+    public static let currentSchemaVersion: Int64 = 7
 
     private let handle: OpaquePointer
     private let lock = NSLock()
@@ -139,6 +139,14 @@ public final class Database: @unchecked Sendable {
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS watched_path_state (
+                path        TEXT PRIMARY KEY,
+                volume_id   INTEGER,
+                file_id     INTEGER,
+                fingerprint TEXT,
+                updated_at  TEXT NOT NULL
+            );
             """
         )
         try runMigrations()
@@ -154,6 +162,8 @@ public final class Database: @unchecked Sendable {
         if version < 3 { try runMigration(3) { try self.migrateV3AddAppSettings() } }
         if version < 4 { try runMigration(4) { try self.migrateV4AddHistoryMessage() } }
         if version < 5 { try runMigration(5) { try self.migrateV5AddFolderPriority() } }
+        if version < 6 { try runMigration(6) { try self.migrateV6AddWatchedPathState() } }
+        if version < 7 { try runMigration(7) { try self.migrateV7AddHistoryResultIdentity() } }
     }
 
     private func runMigration(_ version: Int64, _ apply: () throws -> Void) throws {
@@ -217,6 +227,29 @@ public final class Database: @unchecked Sendable {
         }
     }
 
+    private func migrateV6AddWatchedPathState() throws {
+        try exec(
+            """
+            CREATE TABLE IF NOT EXISTS watched_path_state (
+                path        TEXT PRIMARY KEY,
+                volume_id   INTEGER,
+                file_id     INTEGER,
+                fingerprint TEXT,
+                updated_at  TEXT NOT NULL
+            );
+            """
+        )
+    }
+
+    private func migrateV7AddHistoryResultIdentity() throws {
+        if !(try tableHasColumn("action_history", "result_volume_id")) {
+            try exec("ALTER TABLE action_history ADD COLUMN result_volume_id INTEGER;")
+        }
+        if !(try tableHasColumn("action_history", "result_file_id")) {
+            try exec("ALTER TABLE action_history ADD COLUMN result_file_id INTEGER;")
+        }
+    }
+
     // MARK: - App settings
 
     public func getSetting(_ key: String) throws -> String? {
@@ -253,7 +286,7 @@ public final class Database: @unchecked Sendable {
     // MARK: - Action history
 
     private static let historyColumns =
-        "id, batch_id, rule_id, rule_name, action_kind, original_path, result_path, undo, reversible, status, message, created_at"
+        "id, batch_id, rule_id, rule_name, action_kind, original_path, result_path, undo, reversible, status, message, created_at, result_volume_id, result_file_id"
 
     private func rowToHistoryEntry(_ stmt: SQLiteStatement) -> HistoryEntry {
         HistoryEntry(
@@ -268,7 +301,9 @@ public final class Database: @unchecked Sendable {
             reversible: stmt.columnBool(8),
             status: HistoryStatus(rawValue: stmt.columnText(9)) ?? .applied,
             message: stmt.columnTextOrNil(10),
-            createdAt: stmt.columnText(11)
+            createdAt: stmt.columnText(11),
+            resultVolumeId: stmt.columnInt64OrNil(12),
+            resultFileId: stmt.columnInt64OrNil(13)
         )
     }
 
@@ -277,8 +312,8 @@ public final class Database: @unchecked Sendable {
             let stmt = try statement(
                 """
                 INSERT INTO action_history
-                (id, batch_id, rule_id, rule_name, action_kind, original_path, result_path, undo, reversible, status, message, created_at)
-                VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
+                (id, batch_id, rule_id, rule_name, action_kind, original_path, result_path, undo, reversible, status, message, created_at, result_volume_id, result_file_id)
+                VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
                 """
             )
             stmt.bind(1, entry.id)
@@ -293,6 +328,8 @@ public final class Database: @unchecked Sendable {
             stmt.bind(10, entry.status.rawValue)
             stmt.bind(11, entry.message)
             stmt.bind(12, entry.createdAt)
+            stmt.bind(13, entry.resultVolumeId)
+            stmt.bind(14, entry.resultFileId)
             try stmt.runToCompletion()
         }
     }
@@ -598,6 +635,51 @@ public final class Database: @unchecked Sendable {
         stmt.bind(3, action.kind.rawValue)
         stmt.bind(4, action.params.jsonString)
         stmt.bind(5, action.position)
+        try stmt.runToCompletion()
+    }
+
+    // MARK: - Watched path state
+    //
+    // Lets the watcher tell whether it already fully evaluated a path at its
+    // current fingerprint, to absorb duplicate/coalesced FSEvents without
+    // repeating non-self-limiting actions (e.g. `copyToFolder`, which has no
+    // `alreadyInDestination`-style no-op). The *only* writer is
+    // `WatcherCoordinator`, and only after a path has been evaluated against
+    // every rule — never as a side effect of where some action's result
+    // happened to land. That contract is what lets a path nothing has
+    // evaluated before (e.g. a file a previous rule just moved here) always
+    // get its turn.
+
+    public func getWatchedPathState(_ path: String) throws -> WatchedPathState? {
+        let stmt = try statement("SELECT path, volume_id, file_id, fingerprint, updated_at FROM watched_path_state WHERE path=?1")
+        stmt.bind(1, path)
+        guard try stmt.step() else { return nil }
+        return WatchedPathState(
+            path: stmt.columnText(0),
+            volumeId: stmt.columnInt64OrNil(1),
+            fileId: stmt.columnInt64OrNil(2),
+            fingerprint: stmt.columnTextOrNil(3),
+            updatedAt: stmt.columnText(4)
+        )
+    }
+
+    public func upsertWatchedPathState(_ state: WatchedPathState) throws {
+        let stmt = try statement(
+            """
+            INSERT INTO watched_path_state (path, volume_id, file_id, fingerprint, updated_at)
+            VALUES (?1,?2,?3,?4,?5)
+            ON CONFLICT(path) DO UPDATE SET
+                volume_id = excluded.volume_id,
+                file_id = excluded.file_id,
+                fingerprint = excluded.fingerprint,
+                updated_at = excluded.updated_at
+            """
+        )
+        stmt.bind(1, state.path)
+        stmt.bind(2, state.volumeId)
+        stmt.bind(3, state.fileId)
+        stmt.bind(4, state.fingerprint)
+        stmt.bind(5, state.updatedAt)
         try stmt.runToCompletion()
     }
 }

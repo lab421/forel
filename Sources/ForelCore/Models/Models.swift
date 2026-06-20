@@ -16,6 +16,31 @@ public struct WatchedFolder: Codable, Equatable, Sendable {
     }
 }
 
+/// Last known identity/fingerprint the watcher fully evaluated a path at.
+/// See `Database`'s "Watched path state" section for who's allowed to write
+/// this and why.
+public struct WatchedPathState: Codable, Equatable, Sendable {
+    public var path: String
+    public var volumeId: Int64?
+    public var fileId: Int64?
+    public var fingerprint: String?
+    public var updatedAt: String
+
+    public init(
+        path: String,
+        volumeId: Int64? = nil,
+        fileId: Int64? = nil,
+        fingerprint: String? = nil,
+        updatedAt: String = ISO8601DateFormatter().string(from: Date())
+    ) {
+        self.path = path
+        self.volumeId = volumeId
+        self.fileId = fileId
+        self.fingerprint = fingerprint
+        self.updatedAt = updatedAt
+    }
+}
+
 public enum ConditionMatch: String, Codable, Equatable, Sendable {
     case all
     case any
@@ -174,6 +199,12 @@ public struct HistoryEntry: Codable, Equatable, Sendable {
     public var status: HistoryStatus
     public var message: String?
     public var createdAt: String
+    /// Identity of the file right after this action ran — `nil` for entries
+    /// written before this snapshot existed. Lets undo tell a safe rollback
+    /// (still the same file) from a dangerous one (something else is there
+    /// now).
+    public var resultVolumeId: Int64?
+    public var resultFileId: Int64?
 
     public init(
         id: String = UUID().uuidString,
@@ -187,7 +218,9 @@ public struct HistoryEntry: Codable, Equatable, Sendable {
         reversible: Bool,
         status: HistoryStatus = .applied,
         message: String? = nil,
-        createdAt: String = ISO8601DateFormatter().string(from: Date())
+        createdAt: String = ISO8601DateFormatter().string(from: Date()),
+        resultVolumeId: Int64? = nil,
+        resultFileId: Int64? = nil
     ) {
         self.id = id
         self.batchId = batchId
@@ -197,6 +230,8 @@ public struct HistoryEntry: Codable, Equatable, Sendable {
         self.originalPath = originalPath
         self.resultPath = resultPath
         self.undo = undo
+        self.resultVolumeId = resultVolumeId
+        self.resultFileId = resultFileId
         self.reversible = reversible
         self.status = status
         self.message = message

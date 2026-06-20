@@ -29,6 +29,13 @@ import Foundation
         }
     }
 
+    @Test func hasOptionsMatchesActionsThatExposeAnOptionsPopover() {
+        let expectedWithOptions: Set<ActionKind> = [.moveToFolder, .copyToFolder, .runShortcut]
+        for kind in RuleSchema.actionKinds {
+            #expect(kind.hasOptions == expectedWithOptions.contains(kind), "\(kind) hasOptions mismatch")
+        }
+    }
+
     @Test func valueKindResolutionHonoursOperatorOverrides() {
         // Regex operator always wins.
         #expect(RuleSchema.valueKind(for: .name, operator: .matchesRegex) == .regex)
