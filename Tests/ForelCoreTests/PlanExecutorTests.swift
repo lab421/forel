@@ -46,6 +46,55 @@ import Foundation
         #expect(result.history.isEmpty)
     }
 
+    @Test func moveToFolderConfiguredToSkipNeverDuplicatesOnConflict() throws {
+        let dir = TempDir()
+        let destination = dir.dir("Archive")
+        let existing = (destination as NSString).appendingPathComponent("note.txt")
+        try "old".write(toFile: existing, atomically: true, encoding: .utf8)
+        let file = dir.file("note.txt", contents: "new")
+
+        var rule = makeRule(name: "archive", conditions: [makeCondition(.extension_, .is, "txt")])
+        rule.actions = [makeAction(.moveToFolder, .object([
+            "destination": .string(destination),
+            "on_conflict": .string("skip"),
+        ]), position: 0)]
+
+        let entries = RuleEngine.walkEntries(root: dir.path, maxDepth: nil)
+        let plan = RulePlanner.plan(entries: entries, rules: [rule], root: dir.path, status: .ready)
+        let result = PlanExecutor.execute(plan)
+
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(try String(contentsOfFile: existing, encoding: .utf8) == "old")
+        let numberedDuplicate = (destination as NSString).appendingPathComponent("note (1).txt")
+        #expect(!FileManager.default.fileExists(atPath: numberedDuplicate))
+        #expect(result.history.isEmpty)
+    }
+
+    @Test func actionsAfterASkippedMoveDoNotRunOnTheUnmovedFile() throws {
+        let dir = TempDir()
+        let destination = dir.dir("Archive")
+        let existing = (destination as NSString).appendingPathComponent("note.txt")
+        try "old".write(toFile: existing, atomically: true, encoding: .utf8)
+        let file = dir.file("note.txt", contents: "new")
+
+        var rule = makeRule(name: "archive then tag", conditions: [makeCondition(.extension_, .is, "txt")])
+        rule.actions = [
+            makeAction(.moveToFolder, .object([
+                "destination": .string(destination),
+                "on_conflict": .string("skip"),
+            ]), position: 0),
+            makeAction(.addTag, .object(["tag": .string("Archived")]), position: 1),
+        ]
+
+        let entries = RuleEngine.walkEntries(root: dir.path, maxDepth: nil)
+        let plan = RulePlanner.plan(entries: entries, rules: [rule], root: dir.path, status: .ready)
+        let result = PlanExecutor.execute(plan)
+
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(FinderTags.read(file).isEmpty)
+        #expect(result.history.isEmpty)
+    }
+
     @Test func blocksWhenSourceFingerprintChangedSincePlanning() throws {
         let dir = TempDir()
         let file = dir.file("a.txt", contents: "v1")

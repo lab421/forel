@@ -156,6 +156,7 @@ public enum FileKindCatalog {
 /// both the editor and `ActionExecutor`, so the key exists in one place only.
 public enum ActionParam {
     public static let destination = "destination"
+    public static let onConflict = "on_conflict"
     public static let pattern = "pattern"
     public static let tags = "tags"
     public static let color = "color"

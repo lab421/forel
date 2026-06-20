@@ -685,11 +685,30 @@ private struct ActionOptionsView: View {
             switch action.kind {
             case .runShortcut:
                 shortcutOptions
+            case .moveToFolder:
+                moveConflictOptions
             default:
                 Text("No options for this action.")
                     .font(.system(size: 12))
                     .foregroundStyle(ForelTheme.secondaryText)
             }
+        }
+    }
+
+    private var moveConflictOptions: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("If a file already exists")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(ForelTheme.secondaryText)
+
+            Picker("", selection: paramBinding(ActionParam.onConflict, defaultValue: MoveConflictResolution.rename.rawValue)) {
+                ForEach(MoveConflictResolution.allCases, id: \.rawValue) { resolution in
+                    Text(resolution.label).tag(resolution.rawValue)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

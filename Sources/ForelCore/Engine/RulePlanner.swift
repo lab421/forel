@@ -132,8 +132,15 @@ public enum RulePlanner {
                     current = actionPlan.finalPath
                 }
 
-                if actionPlan.isTerminal && status == .wouldRun {
-                    stoppedOnTerminal = true
+                if actionPlan.isTerminal {
+                    // A terminal action is meant to take the file out of this
+                    // location. If it actually ran, later rules must follow it
+                    // there. If it didn't (skipped/blocked/unconfirmed), the
+                    // file never moved — but this rule's own later actions
+                    // were written assuming it had, so stop here regardless.
+                    if status == .wouldRun {
+                        stoppedOnTerminal = true
+                    }
                     break
                 }
             } catch {

@@ -5,11 +5,18 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- Added an option to Move to Folder rules for handling a file that already exists at the destination: rename the new file (default), replace the existing file (sent to the Trash, not deleted), or skip the file to avoid creating a duplicate.
+
 ### Changed
 - Dry Run, Run Now, and the automatic watcher now always agree on what a rule would do to a file, including which files are skipped, blocked, or already sorted — no more surprises between a preview and what actually happens.
 - Undo now refuses to act if the file changed, moved, or was touched again since the original action, instead of silently restoring the wrong file.
 - Run Now and the watcher now refuse to act on a file that changed since it was last evaluated, rather than risk acting on stale information.
 - Two files that would both land on the same destination are no longer silently renamed or overwritten — both are held back until the conflict is resolved.
+
+### Fixed
+- Fixed a bug where moving a file with one rule could prevent a later, deeper-scoped rule from still applying to it at its new location.
+- Fixed a crash that could occur while a rule was running.
 
 ## [0.1.0-beta.5] - 2026-06-19
 

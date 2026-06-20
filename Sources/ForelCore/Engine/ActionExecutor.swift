@@ -71,6 +71,25 @@ public struct Applied {
     public let undo: Undo
 }
 
+/// How `moveToFolder` resolves a destination that already has a file with
+/// the same name. `rename` (the default) keeps both files; `replace` keeps
+/// only the moved file, sending the one it displaces to the Trash rather
+/// than deleting it outright; `skip` leaves the source file where it is,
+/// so nothing is moved and no duplicate is created.
+public enum MoveConflictResolution: String, CaseIterable, Sendable {
+    case rename
+    case replace
+    case skip
+
+    public var label: String {
+        switch self {
+        case .rename: return "Rename the file"
+        case .replace: return "Replace existing file"
+        case .skip: return "Skip the file"
+        }
+    }
+}
+
 public enum ShortcutInputMode: String, CaseIterable, Sendable {
     case matchedFile = "matched_file"
     case none
@@ -128,7 +147,7 @@ public enum ActionExecutor {
         switch action.kind {
         case .moveToFolder:
             let destDir = try stringParam(action, ActionParam.destination, "MoveToFolder")
-            return try moveIntoDir(path: path, destDir: destDir)
+            return try moveIntoDir(path: path, destDir: destDir, resolution: conflictResolution(action))
         case .copyToFolder:
             return try copyToFolder(action, path: path)
         case .rename:
@@ -155,13 +174,40 @@ public enum ActionExecutor {
         return value
     }
 
-    /// Moves `path` into `destDir` (created if needed), avoiding name collisions.
-    private static func moveIntoDir(path: String, destDir: String) throws -> Applied {
+    /// Moves `path` into `destDir` (created if needed). `resolution` decides
+    /// what happens if a file with the same name is already there: `.rename`
+    /// (the default, also used by the Trash/delete paths which have no user-
+    /// facing conflict choice) numbers the moved file instead; `.replace`
+    /// sends the existing file to the Trash first so it stays recoverable.
+    private static func moveIntoDir(path: String, destDir: String, resolution: MoveConflictResolution = .rename) throws -> Applied {
         try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
         let fileName = (path as NSString).lastPathComponent
-        let dest = uniqueDest(dir: destDir, fileName: fileName)
+        let naiveDest = (destDir as NSString).appendingPathComponent(fileName)
+
+        let dest: String
+        switch resolution {
+        case .rename:
+            dest = uniqueDest(dir: destDir, fileName: fileName)
+        case .replace:
+            if FileManager.default.fileExists(atPath: naiveDest) {
+                let displaced = uniqueDest(dir: try trashDir(), fileName: fileName)
+                try FileManager.default.moveItem(atPath: naiveDest, toPath: displaced)
+            }
+            dest = naiveDest
+        case .skip:
+            // Planning turns a real conflict into `wouldSkip` so this is
+            // never reached with one in practice; if it somehow is,
+            // `moveItem` below throws instead of silently overwriting.
+            dest = naiveDest
+        }
+
         try FileManager.default.moveItem(atPath: path, toPath: dest)
         return Applied(newPath: dest, undo: .move(from: path, to: dest))
+    }
+
+    static func conflictResolution(_ action: Action) -> MoveConflictResolution {
+        guard let raw = action.params[ActionParam.onConflict]?.stringValue else { return .rename }
+        return MoveConflictResolution(rawValue: raw) ?? .rename
     }
 
     private static func copyToFolder(_ action: Action, path: String) throws -> Applied {
@@ -256,13 +302,49 @@ public enum ActionExecutor {
         switch action.kind {
         case .moveToFolder:
             let destDir = action.params[ActionParam.destination]?.stringValue ?? ""
-            let target = (destDir as NSString).appendingPathComponent(fileName)
+            let naiveTarget = (destDir as NSString).appendingPathComponent(fileName)
+            let resolution = conflictResolution(action)
+            let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
+
+            if conflicts && resolution == .skip {
+                return ActionPlan(
+                    kind: action.kind,
+                    description: "Skip — a file already exists at \(naiveTarget)",
+                    sourcePath: path,
+                    targetPath: naiveTarget,
+                    status: .wouldSkip,
+                    finalPath: path,
+                    copiedPath: nil,
+                    // Conceptually still a terminal move — it just didn't run.
+                    // This stops later actions in the *same* rule (e.g. a tag
+                    // meant to apply after the move) from running on a file
+                    // that never actually moved.
+                    isTerminal: true
+                )
+            }
+
+            let target: String
+            let description: String
+            switch resolution {
+            case .rename:
+                target = conflicts ? uniqueDest(dir: destDir, fileName: fileName) : naiveTarget
+                description = conflicts ? "Move to \(target) (renamed to avoid an existing file)" : "Move to \(target)"
+            case .replace:
+                target = naiveTarget
+                description = conflicts ? "Move to \(target) (replacing existing file)" : "Move to \(target)"
+            case .skip:
+                // `conflicts` is false here (the conflicting case returned
+                // above), so this behaves like a plain move.
+                target = naiveTarget
+                description = "Move to \(target)"
+            }
+
             return ActionPlan(
                 kind: action.kind,
-                description: "Move to \(target)",
+                description: description,
                 sourcePath: path,
                 targetPath: target,
-                status: conflictStatus(target),
+                status: .wouldRun,
                 finalPath: target,
                 copiedPath: nil,
                 isTerminal: true

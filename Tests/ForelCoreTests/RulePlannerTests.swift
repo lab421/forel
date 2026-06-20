@@ -73,6 +73,35 @@ import Foundation
         #expect(planned.rules[0].actions[0].isTerminal)
     }
 
+    @Test func skippedTerminalMoveStopsFollowingActionsInTheSameRuleButNotOtherRules() throws {
+        let dir = TempDir()
+        let destination = dir.dir("Archive")
+        let existing = (destination as NSString).appendingPathComponent("note.txt")
+        try "old".write(toFile: existing, atomically: true, encoding: .utf8)
+        let file = dir.file("note.txt", contents: "new")
+
+        var archiveRule = makeRule(name: "archive then tag", conditions: [makeCondition(.extension_, .is, "txt")])
+        archiveRule.actions = [
+            makeAction(.moveToFolder, .object([
+                "destination": .string(destination),
+                "on_conflict": .string("skip"),
+            ]), position: 0, ruleId: archiveRule.id),
+            makeAction(.addTag, .object(["tag": .string("Unreachable")]), position: 1, ruleId: archiveRule.id),
+        ]
+        var otherRule = makeRule(name: "unrelated", conditions: [makeCondition(.extension_, .is, "txt")])
+        otherRule.actions = [makeAction(.addTag, .object(["tag": .string("StillRuns")]), position: 0, ruleId: otherRule.id)]
+
+        let planned = try #require(RulePlanner.planFile(path: file, depth: 0, rules: [archiveRule, otherRule], root: dir.path))
+
+        #expect(planned.rules.count == 2)
+        // archiveRule: only the skipped move is planned, the tag after it is dropped.
+        #expect(planned.rules[0].actions.count == 1)
+        #expect(planned.rules[0].actions[0].status == .wouldSkip)
+        // otherRule still gets to evaluate the file, since it never moved.
+        #expect(planned.rules[1].ruleName == "unrelated")
+        #expect(planned.rules[1].actions[0].status == .wouldRun)
+    }
+
     @Test func moveToFolderTowardCurrentParentIsAlreadyInDestinationSkip() throws {
         let dir = TempDir()
         let pdfDir = dir.dir("PDF")

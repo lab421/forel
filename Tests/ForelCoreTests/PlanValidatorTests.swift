@@ -28,6 +28,10 @@ import Foundation
         #expect(result.conflicts.contains { $0.message.contains("Multiple files would be written") })
     }
 
+    /// `moveToFolder` always resolves a same-name destination itself
+    /// (rename or replace), so it never reaches the validator's
+    /// `destinationExists` conflict path. `copyToFolder` has no such
+    /// resolution param and still relies on it.
     @Test func existingDestinationRespectsConflictPolicy() throws {
         let dir = TempDir()
         let destination = dir.dir("Archive")
@@ -35,7 +39,7 @@ import Foundation
         _ = dir.file("a.txt")
 
         var rule = makeRule(name: "archive", conditions: [makeCondition(.extension_, .is, "txt")])
-        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 0)]
+        rule.actions = [makeAction(.copyToFolder, .object(["destination": .string(destination)]), position: 0)]
 
         let entries = RuleEngine.walkEntries(root: dir.path, maxDepth: nil)
         let plan = RulePlanner.plan(entries: entries, rules: [rule], root: dir.path)
