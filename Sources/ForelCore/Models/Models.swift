@@ -7,7 +7,7 @@ public struct WatchedFolder: Codable, Equatable, Sendable {
     public var priority: Int64
     public var createdAt: String
 
-    public init(id: String = UUID().uuidString, path: String, enabled: Bool = true, priority: Int64 = 0, createdAt: String = ISO8601DateFormatter().string(from: Date())) {
+    public init(id: String = UUID().uuidString, path: String, enabled: Bool = true, priority: Int64 = 0, createdAt: String = ISO8601DateFormatter.forelUTC.string(from: Date())) {
         self.id = id
         self.path = path
         self.enabled = enabled
@@ -31,7 +31,7 @@ public struct WatchedPathState: Codable, Equatable, Sendable {
         volumeId: Int64? = nil,
         fileId: Int64? = nil,
         fingerprint: String? = nil,
-        updatedAt: String = ISO8601DateFormatter().string(from: Date())
+        updatedAt: String = ISO8601DateFormatter.forelUTC.string(from: Date())
     ) {
         self.path = path
         self.volumeId = volumeId
@@ -160,7 +160,7 @@ public struct Rule: Codable, Equatable, Sendable {
         conditions: [Condition] = [],
         actions: [Action] = [],
         priority: Int64 = 0,
-        createdAt: String = ISO8601DateFormatter().string(from: Date())
+        createdAt: String = ISO8601DateFormatter.forelUTC.string(from: Date())
     ) {
         self.id = id
         self.folderId = folderId
@@ -218,7 +218,7 @@ public struct HistoryEntry: Codable, Equatable, Sendable {
         reversible: Bool,
         status: HistoryStatus = .applied,
         message: String? = nil,
-        createdAt: String = ISO8601DateFormatter().string(from: Date()),
+        createdAt: String = ISO8601DateFormatter.forelUTC.string(from: Date()),
         resultVolumeId: Int64? = nil,
         resultFileId: Int64? = nil
     ) {

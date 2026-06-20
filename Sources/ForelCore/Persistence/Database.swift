@@ -1,6 +1,14 @@
 import SQLite3
 import Foundation
 
+extension ISO8601DateFormatter {
+    public static var forelUTC: ISO8601DateFormatter {
+        let f = ISO8601DateFormatter()
+        f.timeZone = TimeZone(identifier: "UTC")!
+        return f
+    }
+}
+
 /// SQLite-backed persistence for watched folders, rules, conditions, actions,
 /// custom tags, action history and app settings. Mirrors the Rust `db` module
 /// schema exactly so the existing alpha database at
@@ -282,8 +290,8 @@ public final class Database: @unchecked Sendable {
     }
 
     public func purgeHistory(before days: Int) throws {
-        let cutoff = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-Double(days) * 86400))
-        let stmt = try statement("DELETE FROM action_history WHERE created_at < ?1")
+        let cutoff = ISO8601DateFormatter.forelUTC.string(from: Date().addingTimeInterval(-Double(days) * 86400))
+        let stmt = try statement("DELETE FROM action_history WHERE datetime(created_at) < datetime(?1)")
         stmt.bind(1, cutoff)
         try stmt.runToCompletion()
     }

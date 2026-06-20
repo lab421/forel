@@ -21,6 +21,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Fixed
 - Fixed a rare crash in automatic history cleanup caused by unsynchronized database access from background threads.
+- Fixed history retention cleanup incorrectly comparing dates across timezones — dates are now always stored and compared in UTC.
 - Fixed Dry Run showing an empty action area instead of explaining when a matched rule has no actions.
 - Fixed Activity becoming unresponsive when opening very large history logs.
 - Fixed renamed or moved files being immediately reprocessed by the watcher and receiving repeated rename suffixes.

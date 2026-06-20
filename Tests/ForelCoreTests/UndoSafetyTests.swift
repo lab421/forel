@@ -3,7 +3,7 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct UndoSafetyTests {
-    private func moveHistoryEntry(from: String, to: String, createdAt: String = ISO8601DateFormatter().string(from: Date())) -> HistoryEntry {
+    private func moveHistoryEntry(from: String, to: String, createdAt: String = ISO8601DateFormatter.forelUTC.string(from: Date())) -> HistoryEntry {
         let identity = FileFingerprint.identity(to)
         return HistoryEntry(
             batchId: "batch-1",
