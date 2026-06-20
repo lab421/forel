@@ -250,10 +250,6 @@ public enum ActionExecutor {
         }
     }
 
-    public static func preview(_ action: Action, path: String) throws -> String {
-        try plan(action, path: path).description
-    }
-
     public static func plan(_ action: Action, path: String) throws -> ActionPlan {
         let fileName = (path as NSString).lastPathComponent
 

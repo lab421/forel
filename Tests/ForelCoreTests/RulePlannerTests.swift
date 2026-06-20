@@ -3,7 +3,7 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct RulePlannerTests {
-    @Test func plannerMatchesPreviewFileForSimpleCases() throws {
+    @Test func planFileOrdersActionsAndComputesTargetPaths() throws {
         let dir = TempDir()
         let file = dir.file("invoice.pdf", contents: "paid")
         let destination = dir.dir("Processed")
@@ -13,11 +13,10 @@ import Foundation
             makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 2),
         ]
 
-        let preview = try #require(RuleEngine.previewFile(path: file, depth: 0, rules: [rule]))
         let planned = try #require(RulePlanner.planFile(path: file, depth: 0, rules: [rule], root: nil))
 
-        #expect(planned.rules.count == preview.rules.count)
-        #expect(planned.rules[0].actions.map(\.actionKind) == preview.rules[0].actions.map(\.kind))
+        #expect(planned.rules.count == 1)
+        #expect(planned.rules[0].actions.map(\.actionKind) == [.addTag, .moveToFolder])
         #expect(planned.rules[0].actions.map(\.status) == [.wouldRun, .wouldRun])
         #expect(planned.rules[0].actions[1].targetPath == (destination as NSString).appendingPathComponent("invoice.pdf"))
     }

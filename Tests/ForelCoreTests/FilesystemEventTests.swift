@@ -57,19 +57,20 @@ import CoreServices
         let dir = TempDir()
         let folder = WatchedFolder(path: dir.path)
         let path = dir.file("a.txt")
-        let rule = makeRule(folderId: folder.id, name: "noop", actions: [])
+        var rule = makeRule(folderId: folder.id, name: "tag txt", conditions: [makeCondition(.extension_, .is, "txt")])
+        rule.actions = [makeAction(.addTag, .object(["tag": .string("Seen")]), position: 0, ruleId: rule.id)]
 
         let depth = RuleEngine.pathDepth(root: dir.path, path: path) ?? 0
-        let (matchedBefore, historyBefore) = RuleEngine.evaluateFile(path: path, depth: depth, rules: [rule], batchId: "b1", root: dir.path)
+        let plannedBefore = RulePlanner.planFile(path: path, depth: depth, rules: [rule], root: dir.path)
 
         // Recording a discovered event must be side-effect free for the
-        // engine: re-running evaluation gives the same result.
+        // planner: re-planning gives the same result.
         let db = try makeDB()
         try db.insertFilesystemEvent(FilesystemEvent(source: .scan, kind: .discovered, path: path))
-        let (matchedAfter, historyAfter) = RuleEngine.evaluateFile(path: path, depth: depth, rules: [rule], batchId: "b2", root: dir.path)
+        let plannedAfter = RulePlanner.planFile(path: path, depth: depth, rules: [rule], root: dir.path)
 
-        #expect(matchedBefore == matchedAfter)
-        #expect(historyBefore.count == historyAfter.count)
+        #expect(plannedBefore != nil)
+        #expect(plannedBefore == plannedAfter)
     }
 
     @Test func forelActionEventsSkipNonAppliedHistory() throws {

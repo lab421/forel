@@ -171,13 +171,13 @@ import Foundation
             "shortcut_input_mode": .string("json_context"),
         ]))
         #expect(ActionExecutor.shortcutInputMode(oldJsonAction) == .matchedFile)
-        #expect(try ActionExecutor.preview(oldJsonAction, path: file) == "Run shortcut: Archive Invoice")
+        #expect(try ActionExecutor.plan(oldJsonAction, path: file).description == "Run shortcut: Archive Invoice")
 
         let noneAction = makeAction(.runShortcut, .object([
             "shortcut_name": .string("Archive Invoice"),
             "shortcut_input_mode": .string("none"),
         ]))
-        #expect(try ActionExecutor.preview(noneAction, path: file) == "Run shortcut: Archive Invoice with no input")
+        #expect(try ActionExecutor.plan(noneAction, path: file).description == "Run shortcut: Archive Invoice with no input")
     }
 
     @Test func shortcutListParsingTrimsEmptyAndDuplicateNames() {
