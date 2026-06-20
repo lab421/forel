@@ -18,7 +18,8 @@ struct RuleEditorView: View {
         VStack(alignment: .leading, spacing: 18) {
             ViewHeader(
                 title: rule.name.isEmpty ? "New Rule" : "Edit Rule",
-                subtitle: "Conditions decide which files match; actions decide what happens"
+                subtitle: "Conditions decide which files match; actions decide what happens",
+                systemImage: "slider.horizontal.3"
             )
 
             ScrollView {
@@ -107,7 +108,7 @@ struct RuleEditorView: View {
             }
         }
         .padding(22)
-        .frame(width: 760, height: 680)
+        .frame(width: 880, height: 680)
         .background(ForelTheme.background)
         .background(WindowActivationBridge(showsDockIcon: model.showDockIcon))
     }
@@ -249,14 +250,15 @@ private struct ConditionRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 12) {
                 ConditionKindMenu(selection: kindBinding)
-                .frame(width: 160, alignment: .leading)
+                .frame(minWidth: 140, alignment: .leading)
 
                 ConditionOperatorMenu(selection: operatorBinding, operators: condition.kind.validOperators)
-                .frame(width: 170, alignment: .leading)
+                .frame(minWidth: 140, alignment: .leading)
 
                 conditionValue
-                    .frame(width: 300, alignment: .leading)
+                    .frame(minWidth: 200, alignment: .leading)
                     .frame(minHeight: 32)
+                    .layoutPriority(1)
 
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "minus")
@@ -633,11 +635,12 @@ private struct ActionRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             ActionKindMenu(selection: kindBinding)
-            .frame(width: 190)
+            .frame(minWidth: 160, alignment: .leading)
 
             actionParams
-                .frame(width: 380, alignment: .leading)
+                .frame(minWidth: 200, alignment: .leading)
                 .frame(minHeight: 32)
+                .layoutPriority(1)
 
             if action.kind.hasOptions {
                 Button {
