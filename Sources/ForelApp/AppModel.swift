@@ -145,7 +145,9 @@ final class AppModel: ObservableObject {
     private func runHistoryCleanup() {
         let days = historyMaxDays
         Task.detached(priority: .background) { [db] in
-            try? db.purgeHistory(before: days)
+            try? db.withLock { db in
+                try db.purgeHistory(before: days)
+            }
         }
     }
 

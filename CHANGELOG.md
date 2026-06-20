@@ -20,6 +20,7 @@ All notable changes to Forel are documented here. Format loosely follows
 - Database upgrades now run through an ordered migration list to keep future updates safer.
 
 ### Fixed
+- Fixed a rare crash in automatic history cleanup caused by unsynchronized database access from background threads.
 - Fixed Dry Run showing an empty action area instead of explaining when a matched rule has no actions.
 - Fixed Activity becoming unresponsive when opening very large history logs.
 - Fixed renamed or moved files being immediately reprocessed by the watcher and receiving repeated rename suffixes.
