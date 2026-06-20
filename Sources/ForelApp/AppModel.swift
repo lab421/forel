@@ -40,6 +40,7 @@ final class AppModel: ObservableObject {
     let db: Database
     private let coordinator: WatcherCoordinator
     private let historyPageSize = 50
+    private let previewMatchLimit = 500
 
     init() throws {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -326,16 +327,32 @@ final class AppModel: ObservableObject {
             previewResult = PreviewResult(filesScanned: 0, matches: [])
             return
         }
+        let matchLimit = previewMatchLimit
         isPreviewing = true
         Task {
             defer { isPreviewing = false }
             previewResult = await Task.detached(priority: .userInitiated) {
                 let maxDepth = RuleEngine.maxRuleDepth(folderRules)
-                let entries = RuleEngine.walkEntries(root: folder.path, maxDepth: maxDepth)
-                let matches = entries.compactMap { entry in
-                    RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: folderRules)
+                var filesScanned = 0
+                var matches: [FilePreview] = []
+                var reachedMatchLimit = false
+                RuleEngine.forEachEntry(root: folder.path, maxDepth: maxDepth) { entry in
+                    filesScanned += 1
+                    guard let match = RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: folderRules) else {
+                        return
+                    }
+                    if matches.count < matchLimit {
+                        matches.append(match)
+                    } else {
+                        reachedMatchLimit = true
+                    }
                 }
-                return PreviewResult(filesScanned: entries.count, matches: matches)
+                return PreviewResult(
+                    filesScanned: filesScanned,
+                    matches: matches,
+                    matchLimit: matchLimit,
+                    reachedMatchLimit: reachedMatchLimit
+                )
             }.value
         }
     }

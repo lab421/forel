@@ -17,6 +17,7 @@ All notable changes to Forel are documented here. Format loosely follows
 - Database upgrades now run through an ordered migration list to keep future updates safer.
 
 ### Fixed
+- Fixed Dry Run crashing when a very large folder produced too many preview matches.
 - Fixed unreadable rule editor selectors in Light mode.
 - Fixed Dry Run hiding files that matched a rule with conditions but no actions.
 - Fixed a bug where a destination conflict could rename a file mid-move into a numbered duplicate that Dry Run never showed.

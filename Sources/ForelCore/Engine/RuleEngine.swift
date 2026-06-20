@@ -69,10 +69,14 @@ public struct FilePreview: Sendable {
 public struct PreviewResult: Sendable {
     public let filesScanned: Int
     public let matches: [FilePreview]
+    public let matchLimit: Int?
+    public let reachedMatchLimit: Bool
 
-    public init(filesScanned: Int, matches: [FilePreview]) {
+    public init(filesScanned: Int, matches: [FilePreview], matchLimit: Int? = nil, reachedMatchLimit: Bool = false) {
         self.filesScanned = filesScanned
         self.matches = matches
+        self.matchLimit = matchLimit
+        self.reachedMatchLimit = reachedMatchLimit
     }
 }
 
@@ -230,19 +234,25 @@ public enum RuleEngine {
 
     public static func walkEntries(root: String, maxDepth: Int?) -> [ScopedPath] {
         var entries: [ScopedPath] = []
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue else {
-            return entries
+        forEachEntry(root: root, maxDepth: maxDepth) { entry in
+            entries.append(entry)
         }
-        walkEntriesInner(root: root, maxDepth: maxDepth, depth: 0, entries: &entries)
         return entries
     }
 
-    private static func walkEntriesInner(root: String, maxDepth: Int?, depth: Int, entries: inout [ScopedPath]) {
+    public static func forEachEntry(root: String, maxDepth: Int?, _ visit: (ScopedPath) -> Void) {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue else {
+            return
+        }
+        walkEntriesInner(root: root, maxDepth: maxDepth, depth: 0, visit: visit)
+    }
+
+    private static func walkEntriesInner(root: String, maxDepth: Int?, depth: Int, visit: (ScopedPath) -> Void) {
         guard let children = try? FileManager.default.contentsOfDirectory(atPath: root) else { return }
         for child in children.sorted() {
             let childPath = (root as NSString).appendingPathComponent(child)
-            entries.append(ScopedPath(path: childPath, depth: depth))
+            visit(ScopedPath(path: childPath, depth: depth))
 
             var isDir: ObjCBool = false
             var isSymlink = false
@@ -253,7 +263,7 @@ public enum RuleEngine {
                 continue
             }
             if let limit = maxDepth, depth >= limit { continue }
-            walkEntriesInner(root: childPath, maxDepth: maxDepth, depth: depth + 1, entries: &entries)
+            walkEntriesInner(root: childPath, maxDepth: maxDepth, depth: depth + 1, visit: visit)
         }
     }
 

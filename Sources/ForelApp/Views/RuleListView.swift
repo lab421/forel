@@ -230,7 +230,7 @@ private struct RuleCard: View {
 }
 
 extension PreviewResult: Identifiable {
-    public var id: Int { filesScanned.hashValue ^ matches.count.hashValue }
+    public var id: Int { filesScanned.hashValue ^ matches.count.hashValue ^ reachedMatchLimit.hashValue }
 }
 
 extension Rule: Identifiable {}
@@ -239,15 +239,36 @@ private struct PreviewSheet: View {
     let result: PreviewResult
     let onClose: () -> Void
 
+    private var subtitle: String {
+        let matchText = result.reachedMatchLimit
+            ? "\(result.matches.count)+ matched"
+            : "\(result.matches.count) matched"
+        return "\(result.filesScanned) items scanned · \(matchText)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ViewHeader(
                 title: "Preview (Dry Run)",
-                subtitle: "\(result.filesScanned) items scanned · \(result.matches.count) matched"
+                subtitle: subtitle
             )
 
             ScrollView {
-                VStack(spacing: 8) {
+                LazyVStack(spacing: 8) {
+                    if result.reachedMatchLimit, let matchLimit = result.matchLimit {
+                        HStack(spacing: 8) {
+                            Image(systemName: "list.bullet.rectangle")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(ForelTheme.accent)
+                            Text("Showing the first \(matchLimit) matches. Narrow the folder scope or conditions to see fewer results.")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(ForelTheme.secondaryText)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ForelTheme.accent.opacity(0.10)))
+                    }
+
                     ForEach(result.matches, id: \.path) { match in
                         VStack(alignment: .leading, spacing: 6) {
                             HStack(spacing: 6) {
