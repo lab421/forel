@@ -622,11 +622,6 @@ public enum ActionExecutor {
         let url = URL(fileURLWithPath: path)
         let stem = url.deletingPathExtension().lastPathComponent
         let ext = url.pathExtension
-
-        let attrs = try FileManager.default.attributesOfItem(atPath: path)
-        let modified = (attrs[.modificationDate] as? Date) ?? Date()
-        let created = (attrs[.creationDate] as? Date) ?? Date()
-        let size = (attrs[.size] as? UInt64) ?? 0
         let today = Date()
 
         let dayFormatter = DateFormatter()
@@ -636,10 +631,18 @@ public enum ActionExecutor {
         var result = pattern
             .replacingOccurrences(of: "{name}", with: stem)
             .replacingOccurrences(of: "{extension}", with: ext)
-            .replacingOccurrences(of: "{date_modified}", with: dayFormatter.string(from: modified))
-            .replacingOccurrences(of: "{date_created}", with: dayFormatter.string(from: created))
             .replacingOccurrences(of: "{current_date}", with: dayFormatter.string(from: today))
-            .replacingOccurrences(of: "{size}", with: formatFileSize(size))
+
+        if result.contains("{date_modified}") || result.contains("{date_created}") || result.contains("{size}") {
+            let attrs = try FileManager.default.attributesOfItem(atPath: path)
+            let modified = (attrs[.modificationDate] as? Date) ?? Date()
+            let created = (attrs[.creationDate] as? Date) ?? Date()
+            let size = (attrs[.size] as? UInt64) ?? 0
+            result = result
+                .replacingOccurrences(of: "{date_modified}", with: dayFormatter.string(from: modified))
+                .replacingOccurrences(of: "{date_created}", with: dayFormatter.string(from: created))
+                .replacingOccurrences(of: "{size}", with: formatFileSize(size))
+        }
 
         if result.isEmpty {
             throw ActionError("rename pattern produced empty filename")

@@ -19,6 +19,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ### Fixed
 - Fixed Dry Run crashing when a very large folder produced too many preview matches.
 - Fixed rules stopping after a successful Move to Folder action instead of continuing with later actions on the moved file.
+- Fixed Dry Run showing rename actions as unavailable after a simulated move when the rename pattern only used the file name.
 - Fixed unreadable rule editor selectors in Light mode.
 - Fixed Dry Run hiding files that matched a rule with conditions but no actions.
 - Fixed a bug where a destination conflict could rename a file mid-move into a numbered duplicate that Dry Run never showed.

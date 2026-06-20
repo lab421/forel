@@ -453,6 +453,33 @@ import Foundation
         #expect(FinderTags.currentColorName(moved) == "red")
     }
 
+    @Test func previewRenameAfterSimulatedMoveDoesNotNeedMovedFileToExistYet() throws {
+        let dir = TempDir()
+        let firstDestination = dir.dir("PDF")
+        let secondDestination = dir.dir("DMG")
+        let file = dir.file("image.png", contents: "image")
+        let secondMoved = (secondDestination as NSString).appendingPathComponent("image.png")
+        let renamed = (secondDestination as NSString).appendingPathComponent("image-moved.png")
+        var rule = makeRule(
+            name: "move twice then rename",
+            conditions: [makeCondition(.extension_, .is, "png")]
+        )
+        rule.actions = [
+            makeAction(.moveToFolder, .object(["destination": .string(firstDestination)]), position: 0),
+            makeAction(.moveToFolder, .object(["destination": .string(secondDestination)]), position: 1),
+            makeAction(.rename, .object(["pattern": .string("{name}-moved")]), position: 2),
+        ]
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+
+        #expect(preview?.rules[0].actions.map(\.kind) == [.moveToFolder, .moveToFolder, .rename])
+        #expect(preview?.rules[0].actions.map(\.status) == [.wouldRun, .wouldRun, .wouldRun])
+        #expect(preview?.rules[0].actions[2].sourcePath == secondMoved)
+        #expect(preview?.rules[0].actions[2].targetPath == renamed)
+        #expect(!FileManager.default.fileExists(atPath: secondMoved))
+        #expect(!FileManager.default.fileExists(atPath: renamed))
+    }
+
     @Test func copiedFilesContinueThroughFollowingRulesWithoutRepeatingCopyRule() throws {
         let dir = TempDir()
         let file = dir.file("document.pdf", contents: "content")
