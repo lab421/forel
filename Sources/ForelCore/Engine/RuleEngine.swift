@@ -370,7 +370,7 @@ public enum RuleEngine {
                     current = applied.newPath
                 }
 
-                if actionPlan.isTerminal {
+                if shouldStopActionChain(after: action, plan: actionPlan) {
                     stoppedOnTerminal = true
                     break
                 }
@@ -422,7 +422,7 @@ public enum RuleEngine {
                     current = plan.finalPath
                 }
 
-                if plan.isTerminal {
+                if shouldStopActionChain(after: action, plan: plan) {
                     stoppedOnTerminal = true
                     break
                 }
@@ -440,5 +440,10 @@ public enum RuleEngine {
         }
 
         return (actions, copiedPaths, current, stoppedOnTerminal)
+    }
+
+    private static func shouldStopActionChain(after action: Action, plan: ActionPlan) -> Bool {
+        guard plan.isTerminal else { return false }
+        return action.kind != .moveToFolder || plan.status != .wouldRun
     }
 }

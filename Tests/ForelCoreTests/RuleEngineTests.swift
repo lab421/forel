@@ -409,6 +409,50 @@ import Foundation
         #expect(FinderTags.read(file) == ["Reviewed"])
     }
 
+    @Test func previewMoveToFolderContinuesLaterActionsOnMovedPath() throws {
+        let dir = TempDir()
+        let destination = dir.dir("PDF")
+        let file = dir.file("image.png", contents: "image")
+        let moved = (destination as NSString).appendingPathComponent("image.png")
+        var rule = makeRule(
+            name: "move then color",
+            conditions: [makeCondition(.extension_, .is, "png")]
+        )
+        rule.actions = [
+            makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 0),
+            makeAction(.setColorLabel, .object(["color": .string("Red")]), position: 1),
+        ]
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+
+        #expect(preview?.rules[0].actions.map(\.kind) == [.moveToFolder, .setColorLabel])
+        #expect(preview?.rules[0].actions.map(\.status) == [.wouldRun, .wouldRun])
+        #expect(preview?.rules[0].actions[1].sourcePath == moved)
+    }
+
+    @Test func runMoveToFolderContinuesLaterActionsOnMovedPath() throws {
+        let dir = TempDir()
+        let destination = dir.dir("PDF")
+        let file = dir.file("image.png", contents: "image")
+        let moved = (destination as NSString).appendingPathComponent("image.png")
+        var rule = makeRule(
+            name: "move then color",
+            conditions: [makeCondition(.extension_, .is, "png")]
+        )
+        rule.actions = [
+            makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 0),
+            makeAction(.setColorLabel, .object(["color": .string("Red")]), position: 1),
+        ]
+
+        let result = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(result.history.map(\.actionKind) == [.moveToFolder, .setColorLabel])
+        #expect(result.history.allSatisfy { $0.status == .applied })
+        #expect(!FileManager.default.fileExists(atPath: file))
+        #expect(FileManager.default.fileExists(atPath: moved))
+        #expect(FinderTags.currentColorName(moved) == "red")
+    }
+
     @Test func copiedFilesContinueThroughFollowingRulesWithoutRepeatingCopyRule() throws {
         let dir = TempDir()
         let file = dir.file("document.pdf", contents: "content")
