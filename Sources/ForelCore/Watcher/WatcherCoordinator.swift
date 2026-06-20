@@ -47,6 +47,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
             db.withLock { db in
                 try? db.insertHistoryEntries(history)
             }
+            recordEvaluatedResultStates(history)
         }
         recordEvaluatedState(path)
     }
@@ -81,5 +82,16 @@ public final class WatcherCoordinator: @unchecked Sendable {
         let identity = FileFingerprint.identity(path)
         let state = WatchedPathState(path: path, volumeId: identity?.volumeId, fileId: identity?.fileId, fingerprint: FileFingerprint.current(path))
         db.withLock { db in try? db.upsertWatchedPathState(state) }
+    }
+
+    private func recordEvaluatedResultStates(_ history: [HistoryEntry]) {
+        let paths = Set(
+            history
+                .filter { $0.status == .applied }
+                .map(\.resultPath)
+        )
+        for path in paths {
+            recordEvaluatedState(path)
+        }
     }
 }

@@ -94,19 +94,22 @@ public enum RuleEngine {
             let path: String
             let depth: Int
             let startRuleIndex: Int
+            let blockedRuleIds: Set<String>
         }
 
         var matched: [String] = []
         var history: [HistoryEntry] = []
-        var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0)]
+        var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0, blockedRuleIds: [])]
 
         while !pending.isEmpty {
             let target = pending.removeFirst()
             var currentPath = target.path
             var currentDepth = target.depth
+            var blockedRuleIds = target.blockedRuleIds
 
             for ruleIndex in target.startRuleIndex..<rules.count {
                 let rule = rules[ruleIndex]
+                guard !blockedRuleIds.contains(rule.id) else { continue }
                 guard rule.enabled, ruleInScope(rule, depth: currentDepth) else { continue }
                 let conditionResults = rule.conditions.map { ConditionEvaluator.evaluate($0, path: currentPath) }
                 guard conditionResultsMatch(conditionResults, rule.conditionMatch) else { continue }
@@ -123,7 +126,14 @@ public enum RuleEngine {
                     } else {
                         copiedDepth = currentDepth
                     }
-                    pending.append(PendingFile(path: copiedPath, depth: copiedDepth, startRuleIndex: ruleIndex + 1))
+                    pending.append(
+                        PendingFile(
+                            path: copiedPath,
+                            depth: copiedDepth,
+                            startRuleIndex: ruleIndex + 1,
+                            blockedRuleIds: blockedRuleIds.union([rule.id])
+                        )
+                    )
                 }
 
                 // A terminal action (move/trash/delete) takes the file out of
@@ -138,6 +148,7 @@ public enum RuleEngine {
                 // where the file actually is now, not where it used to be.
                 if result.finalPath != currentPath {
                     currentPath = result.finalPath
+                    blockedRuleIds.insert(rule.id)
                     if let root, let depth = pathDepth(root: root, path: currentPath) {
                         currentDepth = depth
                     }
@@ -152,18 +163,21 @@ public enum RuleEngine {
             let path: String
             let depth: Int
             let startRuleIndex: Int
+            let blockedRuleIds: Set<String>
         }
 
         var matchedRules: [RulePreview] = []
-        var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0)]
+        var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0, blockedRuleIds: [])]
 
         while !pending.isEmpty {
             let target = pending.removeFirst()
             var currentPath = target.path
             var currentDepth = target.depth
+            var blockedRuleIds = target.blockedRuleIds
 
             for ruleIndex in target.startRuleIndex..<rules.count {
                 let rule = rules[ruleIndex]
+                guard !blockedRuleIds.contains(rule.id) else { continue }
                 guard rule.enabled, ruleInScope(rule, depth: currentDepth) else { continue }
                 let conditions = conditionPreviews(rule, path: currentPath)
                 guard conditionResultsMatch(conditions.map(\.matched), rule.conditionMatch) else { continue }
@@ -179,13 +193,21 @@ public enum RuleEngine {
                 )
 
                 for copiedPath in result.copiedPaths {
-                    pending.append(PendingFile(path: copiedPath, depth: currentDepth, startRuleIndex: ruleIndex + 1))
+                    pending.append(
+                        PendingFile(
+                            path: copiedPath,
+                            depth: currentDepth,
+                            startRuleIndex: ruleIndex + 1,
+                            blockedRuleIds: blockedRuleIds.union([rule.id])
+                        )
+                    )
                 }
 
                 if result.isTerminal { break }
 
                 if result.finalPath != currentPath {
                     currentPath = result.finalPath
+                    blockedRuleIds.insert(rule.id)
                     // Preview is intentionally pure: when simulating a rename
                     // to a path that does not exist yet, keep the current depth.
                     currentDepth = target.depth

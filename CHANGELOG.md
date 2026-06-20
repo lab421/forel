@@ -17,6 +17,7 @@ All notable changes to Forel are documented here. Format loosely follows
 - Database upgrades now run through an ordered migration list to keep future updates safer.
 
 ### Fixed
+- Fixed renamed or moved files being immediately reprocessed by the watcher and receiving repeated rename suffixes.
 - Fixed Dry Run crashing when a very large folder produced too many preview matches.
 - Fixed rules stopping after a successful Move to Folder action instead of continuing with later actions on the moved file.
 - Fixed Dry Run showing rename actions as unavailable after a simulated move when the rename pattern only used the file name.
