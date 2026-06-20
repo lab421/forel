@@ -17,6 +17,7 @@ All notable changes to Forel are documented here. Format loosely follows
 - Database upgrades now run through an ordered migration list to keep future updates safer.
 
 ### Fixed
+- Fixed unreadable condition selectors in the rule editor when using Light mode.
 - Fixed Dry Run hiding files that matched a rule with conditions but no actions.
 - Fixed a bug where a destination conflict could rename a file mid-move into a numbered duplicate that Dry Run never showed.
 - Fixed the automatic watcher repeatedly re-running a Copy to Folder rule on the same untouched file, flooding Activity with duplicate entries.

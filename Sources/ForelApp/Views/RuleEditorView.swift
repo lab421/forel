@@ -248,30 +248,10 @@ private struct ConditionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 12) {
-                Picker("", selection: kindBinding) {
-                    ForEach(Array(RuleSchema.conditionKindGroups.enumerated()), id: \.offset) { _, group in
-                        if let title = group.title {
-                            Section(title) {
-                                ForEach(group.kinds, id: \.self) { kind in
-                                    Text(kind.label).tag(kind)
-                                }
-                            }
-                        } else {
-                            ForEach(group.kinds, id: \.self) { kind in
-                                Text(kind.label).tag(kind)
-                            }
-                        }
-                    }
-                }
-                .labelsHidden()
+                ConditionKindMenu(selection: kindBinding)
                 .frame(width: 160, alignment: .leading)
 
-                Picker("", selection: operatorBinding) {
-                    ForEach(condition.kind.validOperators, id: \.self) { op in
-                        Text(op.label).tag(op)
-                    }
-                }
-                .labelsHidden()
+                ConditionOperatorMenu(selection: operatorBinding, operators: condition.kind.validOperators)
                 .frame(width: 170, alignment: .leading)
 
                 conditionValue
@@ -355,6 +335,70 @@ private struct ConditionRow: View {
             return operator_.usesRelativeDateValue ? "7 days" : DateValueFormatter.string(from: Date())
         default: return ""
         }
+    }
+}
+
+private struct ConditionKindMenu: View {
+    @Binding var selection: ConditionKind
+
+    var body: some View {
+        RuleSelectMenu(title: selection.label) {
+            ForEach(Array(RuleSchema.conditionKindGroups.enumerated()), id: \.offset) { _, group in
+                if let title = group.title {
+                    Section(title) {
+                        ForEach(group.kinds, id: \.self) { kind in
+                            Button(kind.label) { selection = kind }
+                        }
+                    }
+                } else {
+                    ForEach(group.kinds, id: \.self) { kind in
+                        Button(kind.label) { selection = kind }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ConditionOperatorMenu: View {
+    @Binding var selection: Operator
+    let operators: [Operator]
+
+    var body: some View {
+        RuleSelectMenu(title: selection.label) {
+            ForEach(operators, id: \.self) { op in
+                Button(op.label) { selection = op }
+            }
+        }
+    }
+}
+
+private struct RuleSelectMenu<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        Menu {
+            content
+        } label: {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 12))
+                    .foregroundStyle(ForelTheme.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(ForelTheme.secondaryText)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
+        }
+        .buttonStyle(.plain)
     }
 }
 
