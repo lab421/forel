@@ -331,7 +331,7 @@ public enum ActionExecutor {
             throw ActionError("File format not supported by \(libraryType.label) — requires \(formatDescription(for: libraryType))")
         }
 
-        if let accessMessage = ensureLibraryAccess(libraryType: libraryType) {
+        if let accessMessage = ensureLibraryAccess(libraryType: libraryType, launchIfNeeded: true) {
             throw ActionError("Import to \(libraryType.label) — \(accessMessage)")
         }
 
@@ -548,16 +548,6 @@ public enum ActionExecutor {
     // MARK: - Photos import
 
     #if canImport(Photos)
-    /// Local identifiers of assets that match the file at `path`. Matching is by
-    /// original filename **and** byte size — the size check prevents `replace`
-    /// from deleting an unrelated photo that merely shares a name (e.g. two
-    /// different `IMG_0001.jpg`). When the source size is unknown, falls back to
-    /// filename only.
-    ///
-    /// `originalFilename` is not a queryable key in a `PHFetchOptions` predicate
-    /// (using it crashes with `NSInvalidArgumentException`), so we narrow the
-    /// fetch by media type — which *is* supported — and match filename/size in
-    /// code via each asset's resources.
     /// Builds the fetch predicate used to narrow assets before matching filename
     /// in code. `mediaType` is one of the few keys PhotoKit allows in a
     /// `PHFetchOptions` predicate — `originalFilename` is not, and using it
@@ -568,6 +558,11 @@ public enum ActionExecutor {
         return NSPredicate(format: "mediaType == %d", mediaType.rawValue)
     }
 
+    /// Local identifiers of assets that match the file at `path`. Matching is by
+    /// original filename **and** byte size — the size check prevents `replace`
+    /// from deleting an unrelated photo that merely shares a name (e.g. two
+    /// different `IMG_0001.jpg`). When the source size is unknown, falls back to
+    /// filename only.
     private static func matchingPhotoAssetIds(forFileAt path: String) -> [String] {
         let url = URL(fileURLWithPath: path)
         let filename = url.lastPathComponent
@@ -652,8 +647,9 @@ public enum ActionExecutor {
     /// the system permission dialog if the user hasn't decided yet. Returns `nil`
     /// when access is granted, or a user-facing message explaining why it isn't.
     /// Both `plan()` and `execute()` call this — so Dry Run prompts for consent
-    /// just as Run Now and the watcher do.
-    private static func ensureLibraryAccess(libraryType: LibraryType) -> String? {
+    /// just as Run Now and the watcher do, except for Music/TV automation
+    /// (see `ensureMusicTVAccess`'s `launchIfNeeded`).
+    private static func ensureLibraryAccess(libraryType: LibraryType, launchIfNeeded: Bool) -> String? {
         switch libraryType {
         case .photos:
             #if canImport(Photos)
@@ -662,7 +658,7 @@ public enum ActionExecutor {
             return "Photos import is not available on this platform."
             #endif
         case .music, .tv:
-            return ensureMusicTVAccess(libraryType: libraryType)
+            return ensureMusicTVAccess(libraryType: libraryType, launchIfNeeded: launchIfNeeded)
         }
     }
 
@@ -710,8 +706,14 @@ public enum ActionExecutor {
         #endif
     }
 
-    private static func ensureMusicTVAccess(libraryType: LibraryType) -> String? {
+    /// `tell application "X" to ...` launches the app if it isn't already
+    /// running, even for a no-op command like `get name`. When `launchIfNeeded`
+    /// is `false` (Dry Run) and the app isn't running, we skip the live check
+    /// rather than launch it just to preview a rule — Run Now will surface a
+    /// real denial if automation access turns out to be missing.
+    private static func ensureMusicTVAccess(libraryType: LibraryType, launchIfNeeded: Bool) -> String? {
         let appName = libraryType == .music ? "Music" : "TV"
+        if !launchIfNeeded && !isAppRunning(appName) { return nil }
         let script = """
         tell application "\(appName)" to get name
         """
@@ -959,7 +961,7 @@ public enum ActionExecutor {
                 throw ActionError("File format not supported by \(libraryType.label) — requires \(formatDescription(for: libraryType))")
             }
 
-            if let accessMessage = ensureLibraryAccess(libraryType: libraryType) {
+            if let accessMessage = ensureLibraryAccess(libraryType: libraryType, launchIfNeeded: false) {
                 return ActionPlan(
                     kind: action.kind,
                     description: "Import to \(libraryType.label) — \(accessMessage)",
