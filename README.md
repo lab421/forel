@@ -214,11 +214,11 @@ File path
   │
   ├─ RTF / .doc/.docx ──► AppKit document reader (main thread)
   │
-  ├─ .xlsx / .pptx / .odt/.ods/.odp ──► ZIP → XML → strip tags
+  ├─ .xlsx/.xltx / .pptx/.potx / .odt/.ods/.odp ──► ZIP → XML → strip tags
   │
   ├─ .pages / .numbers / .key ──► ZIP → Preview.pdf → PDF text
   │
-  ├─ Images (.png, .jpg, .heic, …) ──► Vision OCR (Apple Neural Engine)
+  ├─ Images (.png, .jpg, .heic, .webp, .gif, …) ──► Vision OCR (Apple Neural Engine)
   │
   ├─ .xls / .ppt / .epub ──► Spotlight query (contains only)
   │
@@ -230,12 +230,12 @@ File path
 | Plain text | `.txt` `.md` `.csv` `.tsv` `.json` `.xml` `.yaml` `.yml` `.html` `.css` `.js` `.ts` `.swift` `.rs` `.py` `.rb` `.go` `.java` `.c` `.cpp` `.h` `.log`, plus any other text file (`.ini`, `.conf`, no extension, …) | 100 MB |
 | PDF | `.pdf` (text layer, or OCR for scanned PDFs) | 100 MB / 100 pages · OCR 20 pages |
 | Rich text | `.rtf` `.rtfd` | 100 MB |
-| Word | `.doc` `.docx` | 100 MB |
-| Excel | `.xlsx` | 100 MB |
-| PowerPoint | `.pptx` | 100 MB |
+| Word | `.doc` `.docx` `.dotx` | 100 MB |
+| Excel | `.xlsx` `.xltx` | 100 MB |
+| PowerPoint | `.pptx` `.potx` | 100 MB |
 | Apple iWork | `.pages` `.numbers` `.key` | 100 MB |
 | OpenDocument | `.odt` `.ods` `.odp` | 100 MB |
-| Images (OCR) | `.png` `.jpg` `.jpeg` `.heic` `.tiff` `.tif` | 25 MB / 12000 px |
+| Images (OCR) | `.png` `.jpg` `.jpeg` `.heic` `.tiff` `.tif` `.webp` `.gif` `.bmp` `.jp2` `.psd` | 25 MB / 12000 px |
 | Spotlight fallback | `.xls` `.ppt` `.epub` | `contains` only |
 
 > [!NOTE]

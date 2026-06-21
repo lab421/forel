@@ -7,6 +7,8 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Added
 - The Contents condition now uses on-device Vision OCR and the Apple Neural Engine to extract text from scanned PDFs and images — everything stays private and works offline, with no data sent to the cloud.
+- Added image OCR support for WebP, GIF, BMP, JPEG 2000, and Photoshop files.
+- Added content extraction support for Office template formats (.dotx, .xltx, .potx).
 
 ### Fixed
 - Fixed content extraction from Office documents and OpenDocument files sometimes missing text when the internal XML contained `>` characters inside comments.

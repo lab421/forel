@@ -85,6 +85,7 @@ public enum ContentExtractor {
     ]
     private static let imageExtensions: Set<String> = [
         "png", "jpg", "jpeg", "heic", "tiff", "tif",
+        "webp", "gif", "bmp", "jp2", "j2k", "psd",
     ]
     /// Formats with no in-process text extractor that macOS can still index.
     /// For these we fall back to a Spotlight search, which only answers the
@@ -110,12 +111,12 @@ public enum ContentExtractor {
             return extractAttributed(path: path, documentType: .rtf, strategy: .rtf)
         case "rtfd":
             return extractAttributed(path: path, documentType: .rtfd, strategy: .rtf)
-        case "doc", "docx":
-            let type: NSAttributedString.DocumentType = ext == "docx" ? .officeOpenXML : .docFormat
+        case "doc", "docx", "dotx":
+            let type: NSAttributedString.DocumentType = (ext == "docx" || ext == "dotx") ? .officeOpenXML : .docFormat
             return extractAttributed(path: path, documentType: type, strategy: .officeDocument)
-        case "xlsx":
+        case "xlsx", "xltx":
             return extractXLSX(path: path, size: size)
-        case "pptx":
+        case "pptx", "potx":
             return extractPPTX(path: path, size: size)
         case "odt", "ods", "odp":
             return extractOpenDocument(path: path, size: size)
