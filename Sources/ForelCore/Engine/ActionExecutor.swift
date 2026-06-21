@@ -322,24 +322,13 @@ public enum ActionExecutor {
     // MARK: - Import to Library
 
     private static func importToLibrary(_ action: Action, path: String) throws -> Applied {
-        let libraryTypeRaw = action.params[ActionParam.libraryType]?.stringValue ?? ""
+        let libraryTypeRaw = action.params[ActionParam.libraryType]?.stringValue ?? LibraryType.music.rawValue
         guard let libraryType = LibraryType(rawValue: libraryTypeRaw) else {
             throw ActionError("Import to Library requires a 'library_type' parameter")
         }
-        let resolution = conflictResolution(action)
 
         guard canImportToLibrary(path, libraryType: libraryType) else {
             throw ActionError("File format not supported by \(libraryType.label) — requires \(formatDescription(for: libraryType))")
-        }
-
-        if resolution == .skip {
-            if try libraryContainsFile(path, libraryType: libraryType) {
-                throw ActionError("Skip — file already exists in \(libraryType.label)")
-            }
-        }
-
-        if resolution == .replace {
-            try removeFromLibrary(path, libraryType: libraryType)
         }
 
         try performImport(path: path, libraryType: libraryType)
@@ -366,28 +355,6 @@ public enum ActionExecutor {
         case .music: return "an audio file (MP3, AAC, WAV, AIFF, ALAC, etc.)"
         case .photos: return "an image or video file (JPEG, PNG, TIFF, HEIC, RAW, MP4, MOV, etc.)"
         case .tv: return "a video file (MP4, MOV, M4V, etc.)"
-        }
-    }
-
-    private static func libraryContainsFile(_ path: String, libraryType: LibraryType) throws -> Bool {
-        switch libraryType {
-        case .music:
-            return try musicTVLibraryContainsFile(app: "Music", path: path)
-        case .photos:
-            return photosLibraryContainsFile(path)
-        case .tv:
-            return try musicTVLibraryContainsFile(app: "TV", path: path)
-        }
-    }
-
-    private static func removeFromLibrary(_ path: String, libraryType: LibraryType) throws {
-        switch libraryType {
-        case .music:
-            try removeFromMusicTVLibrary(app: "Music", path: path)
-        case .photos:
-            try removeFromPhotosLibrary(path)
-        case .tv:
-            try removeFromMusicTVLibrary(app: "TV", path: path)
         }
     }
 
@@ -438,95 +405,11 @@ public enum ActionExecutor {
         """
         try runAppleScript(script)
     }
-
-    private static func musicTVLibraryContainsFile(app: String, path: String) throws -> Bool {
-        let escaped = appleScriptEscapePath(path)
-        let script = """
-        tell application "\(app)"
-            set targetPath to "\(escaped)"
-            set found to false
-            try
-                set matchedItems to (every track whose location is not missing value)
-                repeat with itemRef in matchedItems
-                    set loc to location of itemRef
-                    try
-                        set posixPath to POSIX path of (loc as text)
-                        if posixPath is targetPath then
-                            set found to true
-                            exit repeat
-                        end if
-                    end try
-                end repeat
-            end try
-            return found
-        end tell
-        """
-        let result = try runAppleScript(script)
-        return result == "true"
-    }
-
-    private static func removeFromMusicTVLibrary(app: String, path: String) throws {
-        let escaped = appleScriptEscapePath(path)
-        let script = """
-        tell application "\(app)"
-            set targetPath to "\(escaped)"
-            try
-                set matchedItems to (every track whose location is not missing value)
-                repeat with itemRef in matchedItems
-                    set loc to location of itemRef
-                    try
-                        set posixPath to POSIX path of (loc as text)
-                        if posixPath is targetPath then
-                            delete itemRef
-                        end if
-                    end try
-                end repeat
-            end try
-        end tell
-        """
-        try runAppleScript(script)
-    }
-
-    // MARK: - Photos import
-
-    private static func photosLibraryContainsFile(_ path: String) -> Bool {
-        #if canImport(Photos)
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        guard status == .authorized || status == .limited else { return false }
-        let url = URL(fileURLWithPath: path)
-        let filename = url.lastPathComponent
-        let options = PHFetchOptions()
-        options.predicate = NSPredicate(format: "originalFilename == %@", filename)
-        let existing = PHAsset.fetchAssets(with: options)
-        return existing.count > 0
-        #else
-        return false
-        #endif
-    }
-
-    private static func removeFromPhotosLibrary(_ path: String) throws {
-        #if canImport(Photos)
-        guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == .authorized else { return }
-        let url = URL(fileURLWithPath: path)
-        let filename = url.lastPathComponent
-        let options = PHFetchOptions()
-        options.predicate = NSPredicate(format: "originalFilename == %@", filename)
-        let existing = PHAsset.fetchAssets(with: options)
-        guard existing.count > 0 else { return }
-        var localIds: [String] = []
-        existing.enumerateObjects { asset, _, _ in
-            localIds.append(asset.localIdentifier)
-        }
-        try PHPhotoLibrary.shared().performChangesAndWait {
-            let assets = PHAsset.fetchAssets(withLocalIdentifiers: localIds, options: nil)
-            PHAssetChangeRequest.deleteAssets(assets)
-        }
-        #endif
-    }
-
     private static func importToPhotos(path: String) throws {
         #if canImport(Photos)
-        try ensurePhotosAuthorization()
+        if let msg = ensureLibraryAccess(libraryType: .photos) {
+            throw ActionError("Photos library \(msg)")
+        }
         let url = URL(fileURLWithPath: path)
         try PHPhotoLibrary.shared().performChangesAndWait {
             let ext = url.pathExtension.lowercased()
@@ -544,14 +427,34 @@ public enum ActionExecutor {
         #endif
     }
 
-    private static func ensurePhotosAuthorization() throws {
+    /// Checks whether Forel has permission to access the given library, triggering
+    /// the system permission dialog if the user hasn't decided yet. Returns `nil`
+    /// when access is granted, or a user-facing message explaining why it isn't.
+    /// Both `plan()` and `execute()` call this — so Dry Run prompts for consent
+    /// just as Run Now and the watcher do.
+    private static func ensureLibraryAccess(libraryType: LibraryType) -> String? {
+        switch libraryType {
+        case .photos:
+            #if canImport(Photos)
+            return ensurePhotosAccess()
+            #else
+            return "Photos import is not available on this platform."
+            #endif
+        case .music, .tv:
+            return ensureMusicTVAccess(libraryType: libraryType)
+        }
+    }
+
+    private static func ensurePhotosAccess() -> String? {
         #if canImport(Photos)
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         switch status {
         case .authorized, .limited:
-            return
-        case .denied, .restricted:
-            throw ActionError("Photos library access denied. Grant access in System Settings > Privacy & Security > Photos.")
+            return nil
+        case .denied:
+            return "access denied. Grant access in System Settings > Privacy & Security > Photos."
+        case .restricted:
+            return "access restricted by parental controls."
         case .notDetermined:
             let semaphore = DispatchSemaphore(value: 0)
             var result: PHAuthorizationStatus = .denied
@@ -560,13 +463,35 @@ public enum ActionExecutor {
                 semaphore.signal()
             }
             semaphore.wait()
-            guard result == .authorized || result == .limited else {
-                throw ActionError("Photos library access not granted.")
+            switch result {
+            case .authorized, .limited:
+                return nil
+            case .denied:
+                return "access denied. Grant access in System Settings > Privacy & Security > Photos."
+            case .restricted:
+                return "access restricted by parental controls."
+            default:
+                return "cannot determine access status."
             }
         @unknown default:
-            throw ActionError("Photos library access status unknown.")
+            return "cannot determine access status."
         }
+        #else
+        return "Photos import is not available on this platform."
         #endif
+    }
+
+    private static func ensureMusicTVAccess(libraryType: LibraryType) -> String? {
+        let appName = libraryType == .music ? "Music" : "TV"
+        let script = """
+        tell application "\(appName)" to get name
+        """
+        do {
+            try runAppleScript(script)
+            return nil
+        } catch {
+            return "automation access not granted. Allow Forel to control \(appName) in System Settings > Privacy & Security > Automation."
+        }
     }
 
     /// Reverses a previously executed action using its stored `Undo`.
@@ -797,7 +722,7 @@ public enum ActionExecutor {
                 isTerminal: false
             )
         case .importToLibrary:
-            let libraryTypeRaw = action.params[ActionParam.libraryType]?.stringValue ?? ""
+            let libraryTypeRaw = action.params[ActionParam.libraryType]?.stringValue ?? LibraryType.music.rawValue
             guard let libraryType = LibraryType(rawValue: libraryTypeRaw) else {
                 throw ActionError("Import to Library requires a 'library_type' parameter")
             }
@@ -805,47 +730,22 @@ public enum ActionExecutor {
                 throw ActionError("File format not supported by \(libraryType.label) — requires \(formatDescription(for: libraryType))")
             }
 
-            #if canImport(Photos)
-            if libraryType == .photos {
-                let authStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-                if authStatus == .notDetermined {
-                    return ActionPlan(
-                        kind: action.kind,
-                        description: "Import to Photos — authorization required",
-                        sourcePath: path,
-                        targetPath: nil,
-                        status: .needsConfirmation,
-                        finalPath: path,
-                        copiedPath: nil,
-                        isTerminal: false
-                    )
-                }
-                if authStatus != .authorized && authStatus != .limited {
-                    throw ActionError("Photos library access denied. Grant access in System Settings > Privacy & Security > Photos.")
-                }
+            if let accessMessage = ensureLibraryAccess(libraryType: libraryType) {
+                return ActionPlan(
+                    kind: action.kind,
+                    description: "Import to \(libraryType.label) — \(accessMessage)",
+                    sourcePath: path,
+                    targetPath: nil,
+                    status: .needsConfirmation,
+                    finalPath: path,
+                    copiedPath: nil,
+                    isTerminal: false
+                )
             }
-            #endif
 
-            let resolution = conflictResolution(action)
-            let description = "Import to \(libraryType.label)"
-            if resolution == .skip {
-                let alreadyExists = try libraryContainsFile(path, libraryType: libraryType)
-                if alreadyExists {
-                    return ActionPlan(
-                        kind: action.kind,
-                        description: "Skip — file already exists in \(libraryType.label)",
-                        sourcePath: path,
-                        targetPath: nil,
-                        status: .wouldSkip,
-                        finalPath: path,
-                        copiedPath: nil,
-                        isTerminal: false
-                    )
-                }
-            }
             return ActionPlan(
                 kind: action.kind,
-                description: description,
+                description: "Import to \(libraryType.label)",
                 sourcePath: path,
                 targetPath: nil,
                 status: .wouldRun,

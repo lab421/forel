@@ -699,7 +699,11 @@ private struct ActionRow: View {
         Binding(
             get: { action.kind },
             set: { newKind in
-                action = Action(id: action.id, ruleId: action.ruleId, kind: newKind, params: .object([:]), position: action.position)
+                var params: [String: JSONValue] = [:]
+                if newKind == .importToLibrary {
+                    params[ActionParam.libraryType] = .string(LibraryType.music.rawValue)
+                }
+                action = Action(id: action.id, ruleId: action.ruleId, kind: newKind, params: .object(params), position: action.position)
             }
         )
     }

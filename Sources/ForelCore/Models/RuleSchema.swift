@@ -228,9 +228,9 @@ public extension ActionKind {
     /// have none, instead of showing an empty "No options" popover.
     var hasOptions: Bool {
         switch self {
-        case .moveToFolder, .copyToFolder, .runShortcut, .rename, .importToLibrary:
+        case .moveToFolder, .copyToFolder, .runShortcut, .rename:
             return true
-        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
+        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete, .importToLibrary:
             return false
         }
     }
