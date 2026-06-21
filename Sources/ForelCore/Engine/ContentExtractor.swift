@@ -178,7 +178,8 @@ public enum ContentExtractor {
     /// Asks Spotlight whether the file's indexed text contains `term`. Returns
     /// false when the file isn't indexed or `mdfind` is unavailable, so it is
     /// only ever used to *confirm* a `contains` match — never to satisfy a
-    /// negative operator on content we couldn't actually read.
+    /// negative operator on content we couldn't actually read. Times out after
+    /// 15 seconds to avoid hanging on an unresponsive Spotlight index.
     static func spotlightContains(path: String, term: String) -> Bool {
         let url = URL(fileURLWithPath: path)
         let process = Process()
@@ -467,20 +468,30 @@ public enum ContentExtractor {
 
     /// Runs on-device Vision text recognition on a bitmap, returning the joined
     /// lines or `nil` when nothing is recognized (or OCR is unavailable). Shared
-    /// by image and scanned-PDF extraction.
+    /// by image and scanned-PDF extraction. Times out after 30 seconds to avoid
+    /// hanging the caller when the Vision framework is unresponsive.
     private static func recognizeText(in cgImage: CGImage) -> String? {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        guard (try? handler.perform([request])) != nil, let observations = request.results else {
-            return nil
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var resultText: String?
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard (try? handler.perform([request])) != nil, let observations = request.results else {
+                semaphore.signal()
+                return
+            }
+            let text = observations
+                .compactMap { $0.topCandidates(1).first?.string }
+                .joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            resultText = text.isEmpty ? nil : text
+            semaphore.signal()
         }
-        let text = observations
-            .compactMap { $0.topCandidates(1).first?.string }
-            .joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? nil : text
+        _ = semaphore.wait(timeout: .now() + 30)
+        return resultText
     }
 
     // MARK: - Helpers
