@@ -73,10 +73,14 @@ public struct FilePreview: Sendable {
 public struct PreviewResult: Sendable {
     public let filesScanned: Int
     public let matches: [FilePreview]
+    public let matchLimit: Int?
+    public let reachedMatchLimit: Bool
 
-    public init(filesScanned: Int, matches: [FilePreview]) {
+    public init(filesScanned: Int, matches: [FilePreview], matchLimit: Int? = nil, reachedMatchLimit: Bool = false) {
         self.filesScanned = filesScanned
         self.matches = matches
+        self.matchLimit = matchLimit
+        self.reachedMatchLimit = reachedMatchLimit
     }
 }
 
@@ -94,19 +98,22 @@ public enum RuleEngine {
             let path: String
             let depth: Int
             let startRuleIndex: Int
+            let blockedRuleIds: Set<String>
         }
 
         var matched: [String] = []
         var history: [HistoryEntry] = []
-        var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0)]
+        var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0, blockedRuleIds: [])]
 
         while !pending.isEmpty {
             let target = pending.removeFirst()
             var currentPath = target.path
             var currentDepth = target.depth
+            var blockedRuleIds = target.blockedRuleIds
 
             for ruleIndex in target.startRuleIndex..<rules.count {
                 let rule = rules[ruleIndex]
+                guard !blockedRuleIds.contains(rule.id) else { continue }
                 guard rule.enabled, ruleMatches(rule, path: currentPath, depth: currentDepth) else { continue }
 
                 let result = runActions(rule, path: currentPath, batchId: batchId)
@@ -121,7 +128,14 @@ public enum RuleEngine {
                     } else {
                         copiedDepth = currentDepth
                     }
-                    pending.append(PendingFile(path: copiedPath, depth: copiedDepth, startRuleIndex: ruleIndex + 1))
+                    pending.append(
+                        PendingFile(
+                            path: copiedPath,
+                            depth: copiedDepth,
+                            startRuleIndex: ruleIndex + 1,
+                            blockedRuleIds: blockedRuleIds.union([rule.id])
+                        )
+                    )
                 }
 
                 // A terminal action (move/trash/delete) takes the file out of
@@ -136,6 +150,7 @@ public enum RuleEngine {
                 // where the file actually is now, not where it used to be.
                 if result.finalPath != currentPath {
                     currentPath = result.finalPath
+                    blockedRuleIds.insert(rule.id)
                     if let root, let depth = pathDepth(root: root, path: currentPath) {
                         currentDepth = depth
                     }
@@ -150,42 +165,51 @@ public enum RuleEngine {
             let path: String
             let depth: Int
             let startRuleIndex: Int
+            let blockedRuleIds: Set<String>
         }
 
         var matchedRules: [RulePreview] = []
-        var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0)]
+        var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0, blockedRuleIds: [])]
 
         while !pending.isEmpty {
             let target = pending.removeFirst()
             var currentPath = target.path
             var currentDepth = target.depth
+            var blockedRuleIds = target.blockedRuleIds
 
             for ruleIndex in target.startRuleIndex..<rules.count {
                 let rule = rules[ruleIndex]
+                guard !blockedRuleIds.contains(rule.id) else { continue }
                 guard rule.enabled, ruleInScope(rule, depth: currentDepth) else { continue }
                 let conditions = conditionPreviews(rule, path: currentPath)
                 guard conditionResultsMatch(conditions.map(\.matched), rule.conditionMatch) else { continue }
 
                 let result = previewActions(rule, path: currentPath)
-                if !result.actions.isEmpty {
-                    matchedRules.append(
-                        RulePreview(
-                            ruleId: rule.id,
-                            ruleName: rule.name,
-                            conditions: conditions,
-                            actions: result.actions
-                        )
+                matchedRules.append(
+                    RulePreview(
+                        ruleId: rule.id,
+                        ruleName: rule.name,
+                        conditions: conditions,
+                        actions: result.actions
                     )
-                }
+                )
 
                 for copiedPath in result.copiedPaths {
-                    pending.append(PendingFile(path: copiedPath, depth: currentDepth, startRuleIndex: ruleIndex + 1))
+                    pending.append(
+                        PendingFile(
+                            path: copiedPath,
+                            depth: currentDepth,
+                            startRuleIndex: ruleIndex + 1,
+                            blockedRuleIds: blockedRuleIds.union([rule.id])
+                        )
+                    )
                 }
 
                 if result.isTerminal { break }
 
                 if result.finalPath != currentPath {
                     currentPath = result.finalPath
+                    blockedRuleIds.insert(rule.id)
                     // Preview is intentionally pure: when simulating a rename
                     // to a path that does not exist yet, keep the current depth.
                     currentDepth = target.depth
@@ -280,19 +304,25 @@ public enum RuleEngine {
 
     public static func walkEntries(root: String, maxDepth: Int?) -> [ScopedPath] {
         var entries: [ScopedPath] = []
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue else {
-            return entries
+        forEachEntry(root: root, maxDepth: maxDepth) { entry in
+            entries.append(entry)
         }
-        walkEntriesInner(root: root, maxDepth: maxDepth, depth: 0, entries: &entries)
         return entries
     }
 
-    private static func walkEntriesInner(root: String, maxDepth: Int?, depth: Int, entries: inout [ScopedPath]) {
+    public static func forEachEntry(root: String, maxDepth: Int?, _ visit: (ScopedPath) -> Void) {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue else {
+            return
+        }
+        walkEntriesInner(root: root, maxDepth: maxDepth, depth: 0, visit: visit)
+    }
+
+    private static func walkEntriesInner(root: String, maxDepth: Int?, depth: Int, visit: (ScopedPath) -> Void) {
         guard let children = try? FileManager.default.contentsOfDirectory(atPath: root) else { return }
         for child in children.sorted() {
             let childPath = (root as NSString).appendingPathComponent(child)
-            entries.append(ScopedPath(path: childPath, depth: depth))
+            visit(ScopedPath(path: childPath, depth: depth))
 
             var isDir: ObjCBool = false
             var isSymlink = false
@@ -303,7 +333,7 @@ public enum RuleEngine {
                 continue
             }
             if let limit = maxDepth, depth >= limit { continue }
-            walkEntriesInner(root: childPath, maxDepth: maxDepth, depth: depth + 1, entries: &entries)
+            walkEntriesInner(root: childPath, maxDepth: maxDepth, depth: depth + 1, visit: visit)
         }
     }
 
@@ -410,7 +440,7 @@ public enum RuleEngine {
                     current = applied.newPath
                 }
 
-                if actionPlan.isTerminal {
+                if shouldStopActionChain(after: action, plan: actionPlan) {
                     stoppedOnTerminal = true
                     break
                 }
@@ -462,7 +492,7 @@ public enum RuleEngine {
                     current = plan.finalPath
                 }
 
-                if plan.isTerminal {
+                if shouldStopActionChain(after: action, plan: plan) {
                     stoppedOnTerminal = true
                     break
                 }
@@ -480,5 +510,10 @@ public enum RuleEngine {
         }
 
         return (actions, copiedPaths, current, stoppedOnTerminal)
+    }
+
+    private static func shouldStopActionChain(after action: Action, plan: ActionPlan) -> Bool {
+        guard plan.isTerminal else { return false }
+        return action.kind != .moveToFolder || plan.status != .wouldRun
     }
 }

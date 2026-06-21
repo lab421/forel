@@ -165,6 +165,7 @@ public enum ActionParam {
     public static let script = "script"
     public static let shortcutName = "shortcut_name"
     public static let shortcutInputMode = "shortcut_input_mode"
+    public static let cleanFileName = "clean_file_name"
 }
 
 /// The abstract shape of an action parameter; the UI maps it to a concrete editor.
@@ -225,9 +226,9 @@ public extension ActionKind {
     /// have none, instead of showing an empty "No options" popover.
     var hasOptions: Bool {
         switch self {
-        case .moveToFolder, .copyToFolder, .runShortcut:
+        case .moveToFolder, .copyToFolder, .runShortcut, .rename:
             return true
-        case .rename, .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
+        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
             return false
         }
     }

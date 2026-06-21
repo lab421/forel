@@ -114,6 +114,36 @@ import Foundation
         #expect(try db.listHistory().contains { $0.actionKind == .setColorLabel && $0.status == .applied })
     }
 
+    @Test func resultEventAfterMoveAndRenameDoesNotRepeatTheSameRule() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("a.png")
+        let pngDir = dir.dir("PNG")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+
+        var rule = makeRule(folderId: folder.id, name: "move and rename", recursionDepth: 2)
+        rule.conditions = [makeCondition(.extension_, .is, "png", ruleId: rule.id)]
+        rule.actions = [
+            makeAction(.moveToFolder, .object(["destination": .string(pngDir)]), position: 0, ruleId: rule.id),
+            makeAction(.rename, .object(["pattern": .string("{name}-moved")]), position: 1, ruleId: rule.id),
+        ]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(path: file)
+
+        let renamedPath = (pngDir as NSString).appendingPathComponent("a-moved.png")
+        #expect(FileManager.default.fileExists(atPath: renamedPath))
+
+        coordinator.handle(path: renamedPath)
+
+        let repeatedPath = (pngDir as NSString).appendingPathComponent("a-moved-moved.png")
+        #expect(FileManager.default.fileExists(atPath: renamedPath))
+        #expect(!FileManager.default.fileExists(atPath: repeatedPath))
+        #expect(try db.listHistory().filter { $0.ruleId == rule.id }.count == 2)
+    }
+
     @Test func alreadyInDestinationIsSkippedByTheWatcher() throws {
         let db = try makeDB()
         let dir = TempDir()

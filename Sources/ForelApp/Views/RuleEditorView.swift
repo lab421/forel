@@ -18,7 +18,8 @@ struct RuleEditorView: View {
         VStack(alignment: .leading, spacing: 18) {
             ViewHeader(
                 title: rule.name.isEmpty ? "New Rule" : "Edit Rule",
-                subtitle: "Conditions decide which files match; actions decide what happens"
+                subtitle: "Conditions decide which files match; actions decide what happens",
+                systemImage: "slider.horizontal.3"
             )
 
             ScrollView {
@@ -107,7 +108,7 @@ struct RuleEditorView: View {
             }
         }
         .padding(22)
-        .frame(width: 760, height: 680)
+        .frame(width: 880, height: 680)
         .background(ForelTheme.background)
         .background(WindowActivationBridge(showsDockIcon: model.showDockIcon))
     }
@@ -248,35 +249,16 @@ private struct ConditionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 12) {
-                Picker("", selection: kindBinding) {
-                    ForEach(Array(RuleSchema.conditionKindGroups.enumerated()), id: \.offset) { _, group in
-                        if let title = group.title {
-                            Section(title) {
-                                ForEach(group.kinds, id: \.self) { kind in
-                                    Text(kind.label).tag(kind)
-                                }
-                            }
-                        } else {
-                            ForEach(group.kinds, id: \.self) { kind in
-                                Text(kind.label).tag(kind)
-                            }
-                        }
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 160, alignment: .leading)
+                ConditionKindMenu(selection: kindBinding)
+                .frame(minWidth: 140, alignment: .leading)
 
-                Picker("", selection: operatorBinding) {
-                    ForEach(condition.kind.validOperators, id: \.self) { op in
-                        Text(op.label).tag(op)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 170, alignment: .leading)
+                ConditionOperatorMenu(selection: operatorBinding, operators: condition.kind.validOperators)
+                .frame(minWidth: 140, alignment: .leading)
 
                 conditionValue
-                    .frame(width: 300, alignment: .leading)
+                    .frame(minWidth: 200, alignment: .leading)
                     .frame(minHeight: 32)
+                    .layoutPriority(1)
 
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "minus")
@@ -358,6 +340,102 @@ private struct ConditionRow: View {
     }
 }
 
+private struct ConditionKindMenu: View {
+    @Binding var selection: ConditionKind
+
+    var body: some View {
+        RuleSelectMenu(title: selection.label) {
+            ForEach(Array(RuleSchema.conditionKindGroups.enumerated()), id: \.offset) { _, group in
+                if let title = group.title {
+                    Section(title) {
+                        ForEach(group.kinds, id: \.self) { kind in
+                            Button(kind.label) { selection = kind }
+                        }
+                    }
+                } else {
+                    ForEach(group.kinds, id: \.self) { kind in
+                        Button(kind.label) { selection = kind }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ConditionOperatorMenu: View {
+    @Binding var selection: Operator
+    let operators: [Operator]
+
+    var body: some View {
+        RuleSelectMenu(title: selection.label) {
+            ForEach(operators, id: \.self) { op in
+                Button(op.label) { selection = op }
+            }
+        }
+    }
+}
+
+private struct ActionKindMenu: View {
+    @Binding var selection: ActionKind
+
+    var body: some View {
+        RuleSelectMenu(title: selection.label) {
+            ForEach(RuleSchema.actionKinds, id: \.self) { kind in
+                Button(kind.label) { selection = kind }
+            }
+        }
+    }
+}
+
+private struct StringSelectMenu: View {
+    @Binding var selection: String
+    let options: [String]
+    let label: (String) -> String
+
+    init(selection: Binding<String>, options: [String], label: @escaping (String) -> String = { $0 }) {
+        _selection = selection
+        self.options = options
+        self.label = label
+    }
+
+    var body: some View {
+        RuleSelectMenu(title: label(selection)) {
+            ForEach(options, id: \.self) { option in
+                Button(label(option)) { selection = option }
+            }
+        }
+    }
+}
+
+private struct RuleSelectMenu<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        Menu {
+            content
+        } label: {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 12))
+                    .foregroundStyle(ForelTheme.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(ForelTheme.secondaryText)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// Plain text field for a regex condition, but validated as you type: an
 /// invalid pattern would otherwise just make the condition silently never
 /// match at run time, with no indication why. Catching it here means the
@@ -418,12 +496,7 @@ private struct RelativeDateValueEditor: View {
         HStack(spacing: 8) {
             GlassField(placeholder: "7", text: numberBinding)
                 .frame(width: 72)
-            Picker("", selection: unitBinding) {
-                ForEach(["days", "weeks", "months", "years"], id: \.self) { unit in
-                    Text(unit).tag(unit)
-                }
-            }
-            .labelsHidden()
+            StringSelectMenu(selection: unitBinding, options: ["days", "weeks", "months", "years"])
             .frame(width: 120)
             Spacer(minLength: 0)
         }
@@ -458,12 +531,7 @@ private struct SizeValueEditor: View {
         HStack(spacing: 8) {
             GlassField(placeholder: "0", text: numberBinding)
                 .frame(width: 90)
-            Picker("", selection: unitBinding) {
-                ForEach(["bytes", "KB", "MB", "GB"], id: \.self) { unit in
-                    Text(unit).tag(unit)
-                }
-            }
-            .labelsHidden()
+            StringSelectMenu(selection: unitBinding, options: ["bytes", "KB", "MB", "GB"])
             .frame(width: 110)
             Spacer(minLength: 0)
         }
@@ -541,12 +609,11 @@ private struct KindValuePicker: View {
     @Binding var value: String
 
     var body: some View {
-        Picker("", selection: valueBinding) {
-            ForEach(FileKindCatalog.all, id: \.value) { value, label in
-                Text(label).tag(value)
-            }
-        }
-        .labelsHidden()
+        StringSelectMenu(
+            selection: valueBinding,
+            options: FileKindCatalog.all.map(\.value),
+            label: { value in FileKindCatalog.all.first { $0.value == value }?.label ?? value }
+        )
         .frame(width: 180, alignment: .leading)
     }
 
@@ -567,17 +634,13 @@ private struct ActionRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            Picker("", selection: kindBinding) {
-                ForEach(RuleSchema.actionKinds, id: \.self) { kind in
-                    Text(kind.label).tag(kind)
-                }
-            }
-            .labelsHidden()
-            .frame(width: 190)
+            ActionKindMenu(selection: kindBinding)
+            .frame(minWidth: 160, alignment: .leading)
 
             actionParams
-                .frame(width: 380, alignment: .leading)
+                .frame(minWidth: 200, alignment: .leading)
                 .frame(minHeight: 32)
+                .layoutPriority(1)
 
             if action.kind.hasOptions {
                 Button {
@@ -613,7 +676,7 @@ private struct ActionRow: View {
         case .moveToFolder, .copyToFolder:
             FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
         case .rename:
-            RenamePatternEditor(pattern: paramBinding(ActionParam.pattern))
+            RenamePatternEditor(pattern: paramBinding(ActionParam.pattern), cleanFileName: action.params[ActionParam.cleanFileName]?.boolValue == true)
         case .addTag, .removeTag:
             TagTokensEditor(tags: tagsBinding, placeholder: action.kind == .addTag ? "Add tag" : "Tag")
         case .setColorLabel:
@@ -691,6 +754,8 @@ private struct ActionOptionsView: View {
                 shortcutOptions
             case .moveToFolder, .copyToFolder:
                 conflictResolutionOptions
+            case .rename:
+                renameOptions
             default:
                 Text("No options for this action.")
                     .font(.system(size: 12))
@@ -705,13 +770,11 @@ private struct ActionOptionsView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(ForelTheme.secondaryText)
 
-            Picker("", selection: paramBinding(ActionParam.onConflict, defaultValue: MoveConflictResolution.rename.rawValue)) {
-                ForEach(MoveConflictResolution.allCases, id: \.rawValue) { resolution in
-                    Text(resolution.label).tag(resolution.rawValue)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
+            StringSelectMenu(
+                selection: paramBinding(ActionParam.onConflict, defaultValue: MoveConflictResolution.rename.rawValue),
+                options: MoveConflictResolution.allCases.map(\.rawValue),
+                label: { value in MoveConflictResolution(rawValue: value)?.label ?? value }
+            )
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -722,15 +785,37 @@ private struct ActionOptionsView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(ForelTheme.secondaryText)
 
-            Picker("", selection: paramBinding(ActionParam.shortcutInputMode, defaultValue: ShortcutInputMode.matchedFile.rawValue)) {
-                ForEach(ShortcutInputMode.allCases, id: \.rawValue) { mode in
-                    Text(mode.label).tag(mode.rawValue)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
+            StringSelectMenu(
+                selection: paramBinding(ActionParam.shortcutInputMode, defaultValue: ShortcutInputMode.matchedFile.rawValue),
+                options: ShortcutInputMode.allCases.map(\.rawValue),
+                label: { value in ShortcutInputMode(rawValue: value)?.label ?? value }
+            )
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var renameOptions: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: cleanNameBinding) {
+                Text("Clean file name")
+                    .font(.system(size: 12))
+                    .foregroundStyle(ForelTheme.primaryText)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+        }
+    }
+
+    private var cleanNameBinding: Binding<Bool> {
+        Binding(
+            get: { action.params[ActionParam.cleanFileName]?.boolValue == true },
+            set: { newValue in
+                var dict: [String: JSONValue] = [:]
+                if case .object(let existing) = action.params { dict = existing }
+                dict[ActionParam.cleanFileName] = .bool(newValue)
+                action.params = .object(dict)
+            }
+        )
     }
 
     private func paramBinding(_ key: String, defaultValue: String = "") -> Binding<String> {
@@ -756,12 +841,7 @@ private struct ShortcutPicker: View {
             if shortcuts.isEmpty {
                 GlassField(placeholder: isLoading ? "Loading shortcuts..." : "Shortcut name", text: $selection)
             } else {
-                Picker("", selection: shortcutBinding) {
-                    ForEach(shortcutOptions, id: \.self) { shortcut in
-                        Text(shortcut).tag(shortcut)
-                    }
-                }
-                .labelsHidden()
+                StringSelectMenu(selection: shortcutBinding, options: shortcutOptions)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -886,6 +966,7 @@ private struct TagTokensEditor: View {
 
 private struct RenamePatternEditor: View {
     @Binding var pattern: String
+    let cleanFileName: Bool
 
     private let tokens: [(placeholder: String, label: String)] = [
         ("{name}", "name"),
@@ -918,7 +999,30 @@ private struct RenamePatternEditor: View {
     private var preview: String {
         let candidate = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !candidate.isEmpty else { return "Preview: " }
-        return "Preview: \(candidate)"
+        if candidate.contains("/") {
+            return "⚠️ Pattern contains '/' which is not allowed in filenames"
+        }
+        let previewName = candidate
+            .replacingOccurrences(of: "{name}", with: "file")
+            .replacingOccurrences(of: "{extension}", with: "txt")
+            .replacingOccurrences(of: "{current_date}", with: dateString())
+        let displayName = cleanFileName ? ActionExecutor.cleanFileName(previewName) : previewName
+        if displayName == "." || displayName == ".." {
+            return "⚠️ Pattern resolves to '\(displayName)' which is not a valid filename"
+        }
+        if displayName.utf8.count > 255 {
+            return "⚠️ Pattern resolves to a filename longer than 255 characters"
+        }
+        if let last = displayName.last, last == "." || last == " " {
+            return "⚠️ Pattern resolves to '\(displayName)' — trailing '.' or space is not supported"
+        }
+        return "Preview: \(displayName)"
+    }
+
+    private func dateString() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
     }
 
     private func tokenButton(_ token: (placeholder: String, label: String)) -> some View {

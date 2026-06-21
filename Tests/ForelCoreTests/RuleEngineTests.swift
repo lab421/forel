@@ -113,6 +113,22 @@ import Foundation
         #expect(preview?.rules[0].conditions.map(\.kind) == [.name, .extension_])
     }
 
+    @Test func previewFileShowsMatchedRulesWithoutActions() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.pdf", contents: "paid")
+        let rule = makeRule(
+            name: "review invoices",
+            conditions: [makeCondition(.extension_, .is, "pdf")]
+        )
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+
+        #expect(preview?.name == "invoice.pdf")
+        #expect(preview?.rules.map(\.ruleName) == ["review invoices"])
+        #expect(preview?.rules[0].conditions.map(\.matched) == [true])
+        #expect(preview?.rules[0].actions.isEmpty == true)
+    }
+
     /// `moveToFolder` resolves a same-name conflict itself (default: rename
     /// the incoming file) rather than blocking, so Dry Run shows the actual
     /// destination Run Now/the watcher will use — no `(1)`-suffixed surprise
@@ -416,6 +432,77 @@ import Foundation
         #expect(result.history[0].status == .skipped)
         #expect(result.history[1].status == .applied)
         #expect(FinderTags.read(file) == ["Reviewed"])
+    }
+
+    @Test func previewMoveToFolderContinuesLaterActionsOnMovedPath() throws {
+        let dir = TempDir()
+        let destination = dir.dir("PDF")
+        let file = dir.file("image.png", contents: "image")
+        let moved = (destination as NSString).appendingPathComponent("image.png")
+        var rule = makeRule(
+            name: "move then color",
+            conditions: [makeCondition(.extension_, .is, "png")]
+        )
+        rule.actions = [
+            makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 0),
+            makeAction(.setColorLabel, .object(["color": .string("Red")]), position: 1),
+        ]
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+
+        #expect(preview?.rules[0].actions.map(\.kind) == [.moveToFolder, .setColorLabel])
+        #expect(preview?.rules[0].actions.map(\.status) == [.wouldRun, .wouldRun])
+        #expect(preview?.rules[0].actions[1].sourcePath == moved)
+    }
+
+    @Test func runMoveToFolderContinuesLaterActionsOnMovedPath() throws {
+        let dir = TempDir()
+        let destination = dir.dir("PDF")
+        let file = dir.file("image.png", contents: "image")
+        let moved = (destination as NSString).appendingPathComponent("image.png")
+        var rule = makeRule(
+            name: "move then color",
+            conditions: [makeCondition(.extension_, .is, "png")]
+        )
+        rule.actions = [
+            makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 0),
+            makeAction(.setColorLabel, .object(["color": .string("Red")]), position: 1),
+        ]
+
+        let result = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(result.history.map(\.actionKind) == [.moveToFolder, .setColorLabel])
+        #expect(result.history.allSatisfy { $0.status == .applied })
+        #expect(!FileManager.default.fileExists(atPath: file))
+        #expect(FileManager.default.fileExists(atPath: moved))
+        #expect(FinderTags.currentColorName(moved) == "red")
+    }
+
+    @Test func previewRenameAfterSimulatedMoveDoesNotNeedMovedFileToExistYet() throws {
+        let dir = TempDir()
+        let firstDestination = dir.dir("PDF")
+        let secondDestination = dir.dir("DMG")
+        let file = dir.file("image.png", contents: "image")
+        let secondMoved = (secondDestination as NSString).appendingPathComponent("image.png")
+        let renamed = (secondDestination as NSString).appendingPathComponent("image-moved.png")
+        var rule = makeRule(
+            name: "move twice then rename",
+            conditions: [makeCondition(.extension_, .is, "png")]
+        )
+        rule.actions = [
+            makeAction(.moveToFolder, .object(["destination": .string(firstDestination)]), position: 0),
+            makeAction(.moveToFolder, .object(["destination": .string(secondDestination)]), position: 1),
+            makeAction(.rename, .object(["pattern": .string("{name}-moved")]), position: 2),
+        ]
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+
+        #expect(preview?.rules[0].actions.map(\.kind) == [.moveToFolder, .moveToFolder, .rename])
+        #expect(preview?.rules[0].actions.map(\.status) == [.wouldRun, .wouldRun, .wouldRun])
+        #expect(preview?.rules[0].actions[2].sourcePath == secondMoved)
+        #expect(preview?.rules[0].actions[2].targetPath == renamed)
+        #expect(!FileManager.default.fileExists(atPath: secondMoved))
+        #expect(!FileManager.default.fileExists(atPath: renamed))
     }
 
     @Test func copiedFilesContinueThroughFollowingRulesWithoutRepeatingCopyRule() throws {

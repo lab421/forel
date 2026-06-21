@@ -13,7 +13,7 @@ struct HistoryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ViewHeader(title: "Activity", subtitle: "\(model.historyTotalCount) recorded action\(model.historyTotalCount == 1 ? "" : "s")") {
+            ViewHeader(title: "Activity", subtitle: "\(model.historyTotalCount) recorded action\(model.historyTotalCount == 1 ? "" : "s")", systemImage: "clock.arrow.circlepath") {
                 Button {
                     model.detailRoute = .rules
                 } label: {
@@ -49,7 +49,7 @@ struct HistoryView: View {
             }
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 14) {
                     ForEach(batches, id: \.id) { batch in
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
@@ -159,7 +159,7 @@ private struct BatchHistorySection: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
+        LazyVStack(spacing: 10) {
             ForEach(groups) { group in
                 VStack(alignment: .leading, spacing: 0) {
                     Text(group.title)

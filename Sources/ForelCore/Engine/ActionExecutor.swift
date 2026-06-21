@@ -167,8 +167,11 @@ public enum ActionExecutor {
             return try copyToFolder(action, path: path)
         case .rename:
             return try renameFile(action, path: path)
-        case .moveToTrash, .delete:
+        case .moveToTrash:
             return try moveIntoDir(path: path, destDir: try trashDir())
+        case .delete:
+            try FileManager.default.removeItem(atPath: path)
+            return Applied(newPath: path, undo: .none)
         case .addTag:
             return try applyTags(action, path: path, add: true)
         case .removeTag:
@@ -242,7 +245,10 @@ public enum ActionExecutor {
 
     private static func renameFile(_ action: Action, path: String) throws -> Applied {
         let pattern = try stringParam(action, ActionParam.pattern, "Rename")
-        let newName = try applyRenamePattern(pattern, path: path)
+        var newName = try applyRenamePattern(pattern, path: path)
+        if action.params[ActionParam.cleanFileName]?.boolValue == true {
+            newName = cleanFileName(newName)
+        }
         let dest = (path as NSString).deletingLastPathComponent + "/" + newName
         try FileManager.default.moveItem(atPath: path, toPath: dest)
         return Applied(newPath: dest, undo: .move(from: path, to: dest))
@@ -269,6 +275,8 @@ public enum ActionExecutor {
         return Applied(newPath: path, undo: .color(path: path, previous: previous))
     }
 
+    private static let scriptDefaultTimeout: TimeInterval = 60
+
     private static func runScript(_ action: Action, path: String) throws -> Applied {
         let script = try stringParam(action, ActionParam.script, "RunScript")
         let process = Process()
@@ -278,7 +286,20 @@ public enum ActionExecutor {
         env["FOREL_FILE"] = path
         process.environment = env
         try process.run()
-        process.waitUntilExit()
+
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            process.waitUntilExit()
+            group.leave()
+        }
+
+        if group.wait(timeout: DispatchTime.now() + scriptDefaultTimeout) == .timedOut {
+            process.terminate()
+            _ = group.wait(timeout: DispatchTime.now() + 2)
+            throw ActionError("script timed out after \(Int(scriptDefaultTimeout))s")
+        }
+
         guard process.terminationStatus == 0 else {
             throw ActionError("script exited with status \(process.terminationStatus)")
         }
@@ -411,7 +432,10 @@ public enum ActionExecutor {
             )
         case .rename:
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
-            let newName = try applyRenamePattern(pattern, path: path)
+            var newName = try applyRenamePattern(pattern, path: path)
+            if action.params[ActionParam.cleanFileName]?.boolValue == true {
+                newName = cleanFileName(newName)
+            }
             let target = ((path as NSString).deletingLastPathComponent as NSString).appendingPathComponent(newName)
             return ActionPlan(
                 kind: action.kind,
@@ -436,14 +460,13 @@ public enum ActionExecutor {
                 isTerminal: true
             )
         case .delete:
-            let target = (try trashDir() as NSString).appendingPathComponent(fileName)
             return ActionPlan(
                 kind: action.kind,
-                description: "Delete (move to Trash)",
+                description: "Delete permanently",
                 sourcePath: path,
-                targetPath: target,
-                status: conflictStatus(target),
-                finalPath: target,
+                targetPath: nil,
+                status: .wouldRun,
+                finalPath: path,
                 copiedPath: nil,
                 isTerminal: true
             )
@@ -622,11 +645,6 @@ public enum ActionExecutor {
         let url = URL(fileURLWithPath: path)
         let stem = url.deletingPathExtension().lastPathComponent
         let ext = url.pathExtension
-
-        let attrs = try FileManager.default.attributesOfItem(atPath: path)
-        let modified = (attrs[.modificationDate] as? Date) ?? Date()
-        let created = (attrs[.creationDate] as? Date) ?? Date()
-        let size = (attrs[.size] as? UInt64) ?? 0
         let today = Date()
 
         let dayFormatter = DateFormatter()
@@ -636,14 +654,24 @@ public enum ActionExecutor {
         var result = pattern
             .replacingOccurrences(of: "{name}", with: stem)
             .replacingOccurrences(of: "{extension}", with: ext)
-            .replacingOccurrences(of: "{date_modified}", with: dayFormatter.string(from: modified))
-            .replacingOccurrences(of: "{date_created}", with: dayFormatter.string(from: created))
             .replacingOccurrences(of: "{current_date}", with: dayFormatter.string(from: today))
-            .replacingOccurrences(of: "{size}", with: formatFileSize(size))
+
+        if result.contains("{date_modified}") || result.contains("{date_created}") || result.contains("{size}") {
+            let attrs = try FileManager.default.attributesOfItem(atPath: path)
+            let modified = (attrs[.modificationDate] as? Date) ?? Date()
+            let created = (attrs[.creationDate] as? Date) ?? Date()
+            let size = (attrs[.size] as? UInt64) ?? 0
+            result = result
+                .replacingOccurrences(of: "{date_modified}", with: dayFormatter.string(from: modified))
+                .replacingOccurrences(of: "{date_created}", with: dayFormatter.string(from: created))
+                .replacingOccurrences(of: "{size}", with: formatFileSize(size))
+        }
 
         if result.isEmpty {
             throw ActionError("rename pattern produced empty filename")
         }
+
+        try validateMacOSFilename(result)
 
         // Append the original extension only when the pattern did not place it
         // explicitly (via the {extension} token or by typing it literally).
@@ -653,6 +681,45 @@ public enum ActionExecutor {
         }
         result = "\(result).\(ext)"
         return result
+    }
+
+    /// Converts a filename to kebab-case: strips diacritics and special
+    /// characters, lowercases, replaces spaces and underscores with hyphens,
+    /// splits camelCase boundaries, and collapses adjacent hyphens.
+    public static func cleanFileName(_ name: String) -> String {
+        let nsName = name as NSString
+        let ext = nsName.pathExtension
+        let stem = ext.isEmpty ? (name as NSString).deletingPathExtension : nsName.deletingPathExtension
+
+        // Strip diacritics: "café" → "cafe"
+        var cleaned = stem.applyingTransform(.stripDiacritics, reverse: false) ?? stem
+
+        cleaned = cleaned
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "_", with: "-")
+
+        // Insert hyphen at camelCase boundaries: "myFile" → "my-File"
+        var withBoundaries = ""
+        for ch in cleaned {
+            if ch.isUppercase, let last = withBoundaries.last, last.isLowercase || last.isNumber {
+                withBoundaries.append("-")
+            }
+            withBoundaries.append(ch)
+        }
+        cleaned = withBoundaries
+
+        // Lowercase
+        cleaned = cleaned.lowercased()
+
+        // Remove remaining characters that aren't alphanumeric or hyphens
+        cleaned = String(cleaned.filter { $0.isLetter || $0.isNumber || $0 == "-" })
+
+        // Collapse and strip hyphens
+        while cleaned.contains("--") { cleaned = cleaned.replacingOccurrences(of: "--", with: "-") }
+        cleaned = cleaned.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+
+        if cleaned.isEmpty { return name }
+        return ext.isEmpty ? cleaned : "\(cleaned).\(ext)"
     }
 
     /// Returns a destination path that does not yet exist, appending ` (N)` to
@@ -679,6 +746,25 @@ public enum ActionExecutor {
             throw ActionError("HOME not set")
         }
         return (home as NSString).appendingPathComponent(".Trash")
+    }
+
+    /// macOS filename rules: no `/` or null, not `.`/`..`, not empty,
+    /// no trailing dot/space (silently stripped by the filesystem and
+    /// impossible to use afterward), and within the 255-char limit.
+    /// Note: empty is already rejected earlier.
+    private static func validateMacOSFilename(_ name: String) throws {
+        if name.contains("/") {
+            throw ActionError("rename pattern produced an invalid filename (contains '/')")
+        }
+        if name == "." || name == ".." {
+            throw ActionError("rename pattern produced an invalid filename ('.' and '..' are not allowed)")
+        }
+        if name.utf8.count > 255 {
+            throw ActionError("rename pattern produced a filename longer than 255 characters")
+        }
+        if let lastChar = name.last, lastChar == "." || lastChar == " " {
+            throw ActionError("rename pattern produced a filename ending with '.' or space — not supported by macOS")
+        }
     }
 }
 

@@ -40,6 +40,18 @@ struct SettingsView: View {
                             subtitle: "Keep Forel visible in the Dock while it runs",
                             isOn: dockIconBinding
                         )
+                        Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Keep history for").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
+                                Spacer()
+                                Text("\(model.historyMaxDays) day\(model.historyMaxDays > 1 ? "s" : "")").font(.system(size: 12)).foregroundStyle(ForelTheme.secondaryText)
+                            }
+                            Slider(value: historyMaxDaysDoubleBinding, in: 1...30, step: 1)
+                                .tint(ForelTheme.accent)
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 14)
                     }
 
                     SectionLabel(title: "Updates")
@@ -94,7 +106,7 @@ struct SettingsView: View {
     }
 
     private var header: some View {
-        ViewHeader(title: "Settings", subtitle: "Forel preferences") {
+        ViewHeader(title: "Settings", subtitle: "Forel preferences", systemImage: "gearshape") {
             Button {
                 model.detailRoute = .rules
             } label: {
@@ -126,6 +138,14 @@ struct SettingsView: View {
 
     private var dockIconBinding: Binding<Bool> {
         Binding(get: { model.showDockIcon }, set: { model.setShowDockIcon($0) })
+    }
+
+    private var historyMaxDaysBinding: Binding<Int> {
+        Binding(get: { model.historyMaxDays }, set: { model.setHistoryMaxDays($0) })
+    }
+
+    private var historyMaxDaysDoubleBinding: Binding<Double> {
+        Binding(get: { Double(model.historyMaxDays) }, set: { model.setHistoryMaxDays(Int($0)) })
     }
 
     private var automaticUpdatesBinding: Binding<Bool> {

@@ -64,6 +64,81 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: applied.newPath))
     }
 
+    // MARK: - Clean file name
+
+    @Test func cleanFileNameStripsDiacriticsAndSpecialChars() {
+        #expect(ActionExecutor.cleanFileName("café") == "cafe")
+        #expect(ActionExecutor.cleanFileName("français") == "francais")
+        #expect(ActionExecutor.cleanFileName("über cool") == "uber-cool")
+        #expect(ActionExecutor.cleanFileName("naïve_file") == "naive-file")
+        #expect(ActionExecutor.cleanFileName("München.txt") == "munchen.txt")
+    }
+
+    @Test func cleanFileNameConvertsSpacesAndUnderscoresToHyphens() {
+        #expect(ActionExecutor.cleanFileName("hello world") == "hello-world")
+        #expect(ActionExecutor.cleanFileName("hello_world") == "hello-world")
+        #expect(ActionExecutor.cleanFileName("a b_c d") == "a-b-c-d")
+    }
+
+    @Test func cleanFileNameSplitsCamelCase() {
+        #expect(ActionExecutor.cleanFileName("myFile") == "my-file")
+        #expect(ActionExecutor.cleanFileName("PDFReport") == "pdfreport")
+        #expect(ActionExecutor.cleanFileName("helloWorldAgain") == "hello-world-again")
+        #expect(ActionExecutor.cleanFileName("my2Files") == "my2-files")
+    }
+
+    @Test func cleanFileNameRemovesSpecialCharacters() {
+        #expect(ActionExecutor.cleanFileName("hello's world") == "hellos-world")
+        #expect(ActionExecutor.cleanFileName("price (2024).txt") == "price-2024.txt")
+        #expect(ActionExecutor.cleanFileName("file@name!") == "filename")
+        #expect(ActionExecutor.cleanFileName("100% done") == "100-done")
+    }
+
+    @Test func cleanFileNameCollapsesMultipleHyphens() {
+        #expect(ActionExecutor.cleanFileName("hello   world") == "hello-world")
+        #expect(ActionExecutor.cleanFileName("hello___world") == "hello-world")
+        #expect(ActionExecutor.cleanFileName("hello - world") == "hello-world")
+    }
+
+    @Test func cleanFileNameStripsLeadingAndTrailingHyphens() {
+        #expect(ActionExecutor.cleanFileName(" hello ") == "hello")
+        #expect(ActionExecutor.cleanFileName("_hello_") == "hello")
+        #expect(ActionExecutor.cleanFileName("-hello-") == "hello")
+    }
+
+    @Test func cleanFileNamePreservesExtension() {
+        #expect(ActionExecutor.cleanFileName("Hello World.txt") == "hello-world.txt")
+        #expect(ActionExecutor.cleanFileName("Café Report.PDF") == "cafe-report.PDF")
+        #expect(ActionExecutor.cleanFileName("myFile.txt") == "my-file.txt")
+    }
+
+    @Test func cleanFileNameFallsBackToOriginalWhenResultIsEmpty() {
+        #expect(ActionExecutor.cleanFileName("___") == "___")
+        #expect(ActionExecutor.cleanFileName("!@#") == "!@#")
+    }
+
+    @Test func cleanFileNameHandlesComplexMixedInput() {
+        #expect(ActionExecutor.cleanFileName("L'Été 2024 (Report).txt") == "lete-2024-report.txt")
+        #expect(ActionExecutor.cleanFileName("Déjà_Vu - Copy (2).txt") == "deja-vu-copy-2.txt")
+        #expect(ActionExecutor.cleanFileName("MyCafé_Report (final)") == "my-cafe-report-final")
+    }
+
+    @Test func cleanFileNameWithOptionRenamesFileCorrectly() throws {
+        let dir = TempDir()
+        let file = dir.file("Café Report.txt", contents: "hello")
+        let rename = makeAction(.rename, .object([
+            "pattern": .string("{name}"),
+            "clean_file_name": .bool(true),
+        ]))
+
+        _ = try ActionExecutor.execute(rename, path: file)
+
+        #expect(!FileManager.default.fileExists(atPath: file))
+        #expect(FileManager.default.fileExists(atPath: (dir.path as NSString).appendingPathComponent("cafe-report.txt")))
+    }
+
+    // MARK: - Rename
+
     @Test func revertRenameRestoresOriginalName() throws {
         let dir = TempDir()
         let file = dir.file("report.txt", contents: "hi")

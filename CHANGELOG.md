@@ -3,11 +3,15 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.0.0] - 2026-06-21
+
+🎉🍾 **Forel is exiting beta.** This release marks the transition to a stable. Faster, safer, and ready for everyday use.
 
 ### Added
+- Added an options button to the Rename action with a "Clean file name" toggle that strips accents and special characters, lowercases, and converts camelCase and spaces to hyphens.
 - Added a directory filter and paginated loading to Activity so large histories open faster.
 - Added an option to Move to Folder and Copy to Folder rules for handling a file that already exists at the destination: rename the new file (default), replace the existing file (sent to the Trash, not deleted), or skip the file to avoid creating a duplicate.
+- Added a History retention setting to limit stored activity entries, with automatic background cleanup of entries older than the configured number of days.
 
 ### Changed
 - Dry Run, Run Now, and the automatic watcher now always agree on what a rule would do to a file, including which files are skipped, blocked, or already sorted — no more surprises between a preview and what actually happens.
@@ -17,6 +21,21 @@ All notable changes to Forel are documented here. Format loosely follows
 - Database upgrades now run through an ordered migration list to keep future updates safer.
 
 ### Fixed
+- Fixed a rare crash in automatic history cleanup caused by unsynchronized database access from background threads.
+- Fixed history retention cleanup incorrectly comparing dates across timezones — dates are now always stored and compared in UTC.
+- Fixed the watcher re-evaluating every file once after migrating to the new path-state schema, instead of trusting a matching fingerprint.
+- Fixed Run Script actions hanging forever when the script doesn't exit — they now time out after 60 seconds.
+- Delete now permanently removes the file instead of moving it to the Trash (undo is no longer available for Delete).
+- Fixed rename patterns containing `/` being able to move files outside the source directory — they now produce an error instead.
+- Rename patterns are now validated against macOS filename rules (`.`, `..`, trailing spaces/dots, max length) and show live warnings in the editor.
+- Fixed Dry Run showing an empty action area instead of explaining when a matched rule has no actions.
+- Fixed Activity becoming unresponsive when opening very large history logs.
+- Fixed renamed or moved files being immediately reprocessed by the watcher and receiving repeated rename suffixes.
+- Fixed Dry Run crashing when a very large folder produced too many preview matches.
+- Fixed rules stopping after a successful Move to Folder action instead of continuing with later actions on the moved file.
+- Fixed Dry Run showing rename actions as unavailable after a simulated move when the rename pattern only used the file name.
+- Fixed unreadable rule editor selectors in Light mode.
+- Fixed Dry Run hiding files that matched a rule with conditions but no actions.
 - Fixed a bug where a destination conflict could rename a file mid-move into a numbered duplicate that Dry Run never showed.
 - Fixed the automatic watcher repeatedly re-running a Copy to Folder rule on the same untouched file, flooding Activity with duplicate entries.
 - Fixed the automatic watcher logging a spurious "doesn't exist" entry for a file it had just successfully moved, caused by a duplicate filesystem notification for the same change.

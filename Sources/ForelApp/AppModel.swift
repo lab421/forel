@@ -3,6 +3,8 @@ import ForelCore
 import Combine
 import AppKit
 
+private let historyCleanupInterval: TimeInterval = 3600
+
 /// Central observable state for the SwiftUI app: owns the database, the
 /// watcher coordinator, and the in-memory view of folders/rules. Mirrors the
 /// surface of the old `useForelStore` Zustand store, but as direct Swift
@@ -27,6 +29,7 @@ final class AppModel: ObservableObject {
     @Published var appTheme: AppTheme = .system
     @Published var accentPreset: AccentPreset = .default
     @Published var showDockIcon: Bool = true
+    @Published var historyMaxDays: Int = 30
     /// Bumped whenever the accent colour changes, so views can force a full
     /// re-render with `.id(model.accentVersion)` — `ForelTheme.accent` is a
     /// plain static var, not itself observable.
@@ -39,7 +42,9 @@ final class AppModel: ObservableObject {
 
     let db: Database
     private let coordinator: WatcherCoordinator
-    private let historyPageSize = 50
+    private let historyPageSize = 200
+    private let previewMatchLimit = 500
+    private var historyCleanupTimer: AnyCancellable?
 
     init() throws {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -69,8 +74,12 @@ final class AppModel: ObservableObject {
         let storedShowDockIcon = try? db.getSetting("show_dock_icon")
         self.showDockIcon = storedShowDockIcon.map { $0 == "1" } ?? true
 
+        let storedMaxDays = (try? db.getSetting("history_max_days")).flatMap { Int($0) }
+        self.historyMaxDays = min(max(storedMaxDays ?? 30, 1), 30)
+
         reloadFolders()
         startWatchingEnabledFolders()
+        startHistoryCleanupTimer()
     }
 
     func applyDockIconPreference(keepingWindowsVisible: Bool = false) {
@@ -123,6 +132,30 @@ final class AppModel: ObservableObject {
         ForelTheme.apply(preset)
         accentVersion += 1
         try? db.setSetting("accent_color", preset.rawValue)
+    }
+
+    func setHistoryMaxDays(_ days: Int) {
+        let clamped = min(max(days, 1), 30)
+        guard clamped != historyMaxDays else { return }
+        historyMaxDays = clamped
+        try? db.setSetting("history_max_days", "\(clamped)")
+        runHistoryCleanup()
+    }
+
+    private func runHistoryCleanup() {
+        let days = historyMaxDays
+        Task.detached(priority: .background) { [db] in
+            try? db.withLock { db in
+                try db.purgeHistory(before: days)
+            }
+        }
+    }
+
+    private func startHistoryCleanupTimer() {
+        historyCleanupTimer = Timer.publish(every: historyCleanupInterval, tolerance: 60, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.runHistoryCleanup() }
+        runHistoryCleanup()
     }
 
     func reloadFolders() {
@@ -326,16 +359,32 @@ final class AppModel: ObservableObject {
             previewResult = PreviewResult(filesScanned: 0, matches: [])
             return
         }
+        let matchLimit = previewMatchLimit
         isPreviewing = true
         Task {
             defer { isPreviewing = false }
             previewResult = await Task.detached(priority: .userInitiated) {
                 let maxDepth = RuleEngine.maxRuleDepth(folderRules)
-                let entries = RuleEngine.walkEntries(root: folder.path, maxDepth: maxDepth)
-                let matches = entries.compactMap { entry in
-                    RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: folderRules)
+                var filesScanned = 0
+                var matches: [FilePreview] = []
+                var reachedMatchLimit = false
+                RuleEngine.forEachEntry(root: folder.path, maxDepth: maxDepth) { entry in
+                    filesScanned += 1
+                    guard let match = RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: folderRules) else {
+                        return
+                    }
+                    if matches.count < matchLimit {
+                        matches.append(match)
+                    } else {
+                        reachedMatchLimit = true
+                    }
                 }
-                return PreviewResult(filesScanned: entries.count, matches: matches)
+                return PreviewResult(
+                    filesScanned: filesScanned,
+                    matches: matches,
+                    matchLimit: matchLimit,
+                    reachedMatchLimit: reachedMatchLimit
+                )
             }.value
         }
     }

@@ -47,6 +47,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
             db.withLock { db in
                 try? db.insertHistoryEntries(history)
             }
+            recordEvaluatedResultStates(history)
         }
         recordEvaluatedState(path)
     }
@@ -68,7 +69,11 @@ public final class WatcherCoordinator: @unchecked Sendable {
         guard let currentFingerprint = FileFingerprint.current(path), cached.fingerprint == currentFingerprint else {
             return true
         }
-        guard let volumeId = cached.volumeId, let fileId = cached.fileId else { return true }
+        // Fingerprint matches — file hasn't changed. No need to check identity
+        // (inode/volume) unless it happens to already be cached; rows written
+        // before migration V7 have nil volumeId/fileId and would otherwise
+        // trigger a spurious re-evaluation.
+        guard let volumeId = cached.volumeId, let fileId = cached.fileId else { return false }
         guard let identity = FileFingerprint.identity(path) else { return true }
         return !(identity.volumeId == volumeId && identity.fileId == fileId)
     }
@@ -81,5 +86,16 @@ public final class WatcherCoordinator: @unchecked Sendable {
         let identity = FileFingerprint.identity(path)
         let state = WatchedPathState(path: path, volumeId: identity?.volumeId, fileId: identity?.fileId, fingerprint: FileFingerprint.current(path))
         db.withLock { db in try? db.upsertWatchedPathState(state) }
+    }
+
+    private func recordEvaluatedResultStates(_ history: [HistoryEntry]) {
+        let paths = Set(
+            history
+                .filter { $0.status == .applied }
+                .map(\.resultPath)
+        )
+        for path in paths {
+            recordEvaluatedState(path)
+        }
     }
 }
