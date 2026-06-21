@@ -70,7 +70,7 @@ public struct ContentExtraction: Sendable {
 public enum ContentExtractor {
     // Hard limits, kept together so they're easy to tune. Files over a limit
     // return no text with an explanatory message rather than being read.
-    private static let plainTextMaxBytes: UInt64 = 50 * 1024 * 1024
+    private static let plainTextMaxBytes: UInt64 = 100 * 1024 * 1024
     private static let pdfMaxBytes: UInt64 = 100 * 1024 * 1024
     private static let pdfMaxPages = 100
     private static let pdfOCRMaxPages = 20
@@ -143,7 +143,7 @@ public enum ContentExtractor {
     /// on binary content that merely happened to be readable.
     private static func extractTextFallback(path: String, size: UInt64) -> ContentExtraction {
         if size > plainTextMaxBytes {
-            return ContentExtraction(text: nil, strategy: .none, message: "File exceeds the 50 MB text limit.")
+            return ContentExtraction(text: nil, strategy: .none, message: "File exceeds the 100 MB text limit.")
         }
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
               !data.contains(0x00),
@@ -214,7 +214,7 @@ public enum ContentExtractor {
 
     private static func extractPlainText(path: String, size: UInt64) -> ContentExtraction {
         if size > plainTextMaxBytes {
-            return ContentExtraction(text: nil, strategy: .none, message: "File exceeds the 50 MB text limit.")
+            return ContentExtraction(text: nil, strategy: .none, message: "File exceeds the 100 MB text limit.")
         }
         // UTF-8 first, then fall back to UTF-16 and ISO Latin 1 so files saved
         // with another encoding still match.

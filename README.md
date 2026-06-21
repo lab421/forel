@@ -227,7 +227,7 @@ File path
 
 | Type | Formats | Limits |
 |------|---------|--------|
-| Plain text | `.txt` `.md` `.csv` `.tsv` `.json` `.xml` `.yaml` `.yml` `.html` `.css` `.js` `.ts` `.swift` `.rs` `.py` `.rb` `.go` `.java` `.c` `.cpp` `.h` `.log`, plus any other text file (`.ini`, `.conf`, no extension, …) | 50 MB |
+| Plain text | `.txt` `.md` `.csv` `.tsv` `.json` `.xml` `.yaml` `.yml` `.html` `.css` `.js` `.ts` `.swift` `.rs` `.py` `.rb` `.go` `.java` `.c` `.cpp` `.h` `.log`, plus any other text file (`.ini`, `.conf`, no extension, …) | 100 MB |
 | PDF | `.pdf` (text layer, or OCR for scanned PDFs) | 100 MB / 100 pages · OCR 20 pages |
 | Rich text | `.rtf` `.rtfd` | 100 MB |
 | Word | `.doc` `.docx` | 100 MB |
@@ -246,8 +246,6 @@ File path
 > relies on macOS having already indexed the file and can only answer the
 > `contains` operator (not `is`, `starts with`, regex, …). When a file isn't
 > indexed, it simply doesn't match.
->
-> Unsupported files simply don't match the Contents condition.
 
 ## Contributing
 

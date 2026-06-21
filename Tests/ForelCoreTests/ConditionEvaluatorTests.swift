@@ -62,7 +62,7 @@ import Darwin
         #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .doesNotContain, "anything"), path: binary))
 
         let large = (dir.path as NSString).appendingPathComponent("large.txt")
-        let data = Data(repeating: UInt8(ascii: "a"), count: 50 * 1024 * 1024 + 1)
+        let data = Data(repeating: UInt8(ascii: "a"), count: 100 * 1024 * 1024 + 1)
         try data.write(to: URL(fileURLWithPath: large))
         #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "a"), path: large))
     }
