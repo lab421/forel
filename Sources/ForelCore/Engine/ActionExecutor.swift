@@ -394,7 +394,7 @@ public enum ActionExecutor {
     /// Size of the file on disk in bytes, used to confirm a library match by
     /// content rather than only by path (Music/TV copy files into their media
     /// folder, so the original path no longer matches once imported).
-    private static func fileByteSize(_ path: String) -> Int64? {
+    static func fileByteSize(_ path: String) -> Int64? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: path) else { return nil }
         return (attrs[.size] as? NSNumber)?.int64Value
     }
@@ -472,34 +472,51 @@ public enum ActionExecutor {
         try runAppleScript(script)
     }
 
-    /// The individual `whose track` predicates used to locate a file in the
-    /// library. We try each separately rather than combining them with `or` in a
-    /// single `whose` clause — AppleScript rejects that compound form. The first
-    /// matches reference imports (track still points at the original path); the
-    /// second matches copied imports (the file now lives in the media folder, so
-    /// only its byte size still lines up).
-    private static func musicTVMatchPredicates(path: String) -> [String] {
-        var predicates = ["location is fileRef"]
-        if let size = fileByteSize(path) {
-            predicates.append("size is \(size)")
-        }
-        return predicates
+    /// AppleScript fragment that matches tracks by byte size *and* filename —
+    /// the fallback for copied imports, where Music relocates the file into its
+    /// media folder and the original `location` no longer matches.
+    ///
+    /// Matching by size alone (the original fix for the location problem)
+    /// caused a worse bug: any other track in the user's library that happens
+    /// to share that exact byte size makes "already imported" detection stick
+    /// forever, even after the real match was deleted from the library. Byte
+    /// size collisions between unrelated tracks are common (same bitrate +
+    /// duration), so we also compare the destination filename — read via
+    /// `POSIX path of (location of t)`, since `whose` clauses can't filter on
+    /// a computed string directly. The comparison uses `ends with "/name"`
+    /// (with the leading separator) rather than exact equality, since
+    /// `location` is the full path Music moved the file to.
+    ///
+    /// Returns `nil` when the source file's size can't be read.
+    static func musicTVSizeAndNameCheck(path: String, onMatch: String) -> String? {
+        guard let size = fileByteSize(path) else { return nil }
+        let suffix = appleScriptEscapePath("/" + (path as NSString).lastPathComponent)
+        return """
+            try
+                repeat with t in (every track whose size is \(size))
+                    try
+                        if (POSIX path of (location of t)) ends with "\(suffix)" then \(onMatch)
+                    end try
+                end repeat
+            end try
+        """
     }
 
     private static func musicTVLibraryContainsFile(app: String, path: String, launchIfNeeded: Bool) throws -> Bool {
         if !launchIfNeeded && !isAppRunning(app) { return false }
         let escaped = appleScriptEscapePath(path)
-        let checks = musicTVMatchPredicates(path: path).map { predicate in
-            """
-                try
-                    if (count of (every track whose \(predicate))) > 0 then return true
-                end try
-            """
-        }.joined(separator: "\n")
-        let script = """
+        var script = """
         tell application "\(app)"
             set fileRef to (POSIX file "\(escaped)") as alias
-        \(checks)
+            try
+                if (count of (every track whose location is fileRef)) > 0 then return true
+            end try
+        """
+        if let sizeAndNameCheck = musicTVSizeAndNameCheck(path: path, onMatch: "return true") {
+            script += "\n" + sizeAndNameCheck
+        }
+        script += """
+
             return false
         end tell
         """
@@ -509,19 +526,20 @@ public enum ActionExecutor {
 
     private static func removeFromMusicTVLibrary(app: String, path: String) throws {
         let escaped = appleScriptEscapePath(path)
-        let deletions = musicTVMatchPredicates(path: path).map { predicate in
-            """
-                try
-                    repeat with t in (every track whose \(predicate))
-                        delete t
-                    end repeat
-                end try
-            """
-        }.joined(separator: "\n")
-        let script = """
+        var script = """
         tell application "\(app)"
             set fileRef to (POSIX file "\(escaped)") as alias
-        \(deletions)
+            try
+                repeat with t in (every track whose location is fileRef)
+                    delete t
+                end repeat
+            end try
+        """
+        if let sizeAndNameCheck = musicTVSizeAndNameCheck(path: path, onMatch: "delete t") {
+            script += "\n" + sizeAndNameCheck
+        }
+        script += """
+
         end tell
         """
         try runAppleScript(script)
@@ -540,6 +558,16 @@ public enum ActionExecutor {
     /// (using it crashes with `NSInvalidArgumentException`), so we narrow the
     /// fetch by media type — which *is* supported — and match filename/size in
     /// code via each asset's resources.
+    /// Builds the fetch predicate used to narrow assets before matching filename
+    /// in code. `mediaType` is one of the few keys PhotoKit allows in a
+    /// `PHFetchOptions` predicate — `originalFilename` is not, and using it
+    /// crashes with `NSInvalidArgumentException` (`PHQuery
+    /// _filterPredicateFromFetchOptionsPredicate:`).
+    static func photoFetchPredicate(isVideo: Bool) -> NSPredicate {
+        let mediaType: PHAssetMediaType = isVideo ? .video : .image
+        return NSPredicate(format: "mediaType == %d", mediaType.rawValue)
+    }
+
     private static func matchingPhotoAssetIds(forFileAt path: String) -> [String] {
         let url = URL(fileURLWithPath: path)
         let filename = url.lastPathComponent
@@ -547,9 +575,8 @@ public enum ActionExecutor {
 
         let isVideo = (try? url.resourceValues(forKeys: [.typeIdentifierKey]).typeIdentifier)
             .flatMap(UTType.init)?.conforms(to: .movie) ?? false
-        let mediaType: PHAssetMediaType = isVideo ? .video : .image
         let options = PHFetchOptions()
-        options.predicate = NSPredicate(format: "mediaType == %d", mediaType.rawValue)
+        options.predicate = photoFetchPredicate(isVideo: isVideo)
 
         let existing = PHAsset.fetchAssets(with: options)
         var ids: [String] = []

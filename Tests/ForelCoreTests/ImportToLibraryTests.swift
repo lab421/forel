@@ -1,5 +1,8 @@
 import Testing
 import Foundation
+#if canImport(Photos)
+import Photos
+#endif
 @testable import ForelCore
 
 /// Covers the format/parameter logic of the Import to Library action that can be
@@ -85,6 +88,79 @@ import Foundation
         #expect(throws: (any Error).self) {
             try ActionExecutor.execute(action, path: audio)
         }
+    }
+
+    // MARK: - Duplicate-detection predicates (regression guards)
+    //
+    // These pin down three crashes/bugs found in manual testing:
+    // - AppleScript rejects a compound `whose (a) or (b)` clause with a syntax
+    //   error (-10003); the fix is to issue each predicate as a separate
+    //   `whose` check rather than combining them with `or`.
+    // - Matching copied imports by byte size alone caused false positives: any
+    //   unrelated track sharing that exact size made "already imported"
+    //   detection stick forever, even after the real match was deleted from
+    //   the library. The fix also compares the destination filename.
+    // - PHFetchOptions only allows a small set of predicate keys; using
+    //   `originalFilename` throws NSInvalidArgumentException at fetch time.
+    //   The fix narrows by `mediaType` (an allowed key) and matches filename
+    //   in code afterwards.
+
+    @Test func musicTVSizeAndNameCheckNeverUsesACompoundWhoseClause() throws {
+        let dir = TempDir()
+        let file = dir.file("song.mp3", contents: "audio-bytes")
+        let fragment = try #require(ActionExecutor.musicTVSizeAndNameCheck(path: file, onMatch: "return true"))
+
+        // AppleScript rejects "whose (a) or (b)" combined in a single clause;
+        // this fragment must filter by size only, then confirm in a loop.
+        #expect(!fragment.contains(" or "))
+        #expect(fragment.contains("whose size is"))
+    }
+
+    @Test func musicTVSizeAndNameCheckMatchesByFilenameNotJustSize() throws {
+        let dir = TempDir()
+        let file = dir.file("song.mp3", contents: "audio-bytes")
+        let fragment = try #require(ActionExecutor.musicTVSizeAndNameCheck(path: file, onMatch: "return true"))
+
+        // Matching on size alone caused false positives against unrelated
+        // tracks of the same byte size; the destination filename must also be
+        // checked via a path suffix (Music relocates the file, so it's not an
+        // exact path match), with a leading separator so "song.mp3" can't
+        // match a track actually named "mysong.mp3".
+        #expect(fragment.contains("ends with \"/song.mp3\""))
+        #expect(fragment.contains(#"if (POSIX path of (location of t)) ends with "/song.mp3" then return true"#))
+    }
+
+    @Test func musicTVSizeAndNameCheckUsesTheGivenOnMatchStatement() throws {
+        let dir = TempDir()
+        let file = dir.file("song.mp3", contents: "audio-bytes")
+        let fragment = try #require(ActionExecutor.musicTVSizeAndNameCheck(path: file, onMatch: "delete t"))
+        #expect(fragment.contains("then delete t"))
+    }
+
+    @Test func musicTVSizeAndNameCheckReturnsNilWhenSourceFileIsMissing() {
+        #expect(ActionExecutor.musicTVSizeAndNameCheck(path: "/nonexistent/path/song.mp3", onMatch: "return true") == nil)
+    }
+
+    #if canImport(Photos)
+    @Test func photoFetchPredicateFiltersByMediaTypeNeverByFilename() {
+        for isVideo in [true, false] {
+            let predicate = ActionExecutor.photoFetchPredicate(isVideo: isVideo)
+            // originalFilename is not a supported PHFetchOptions predicate key —
+            // using it crashes PHAsset.fetchAssets(with:) outright.
+            #expect(!predicate.predicateFormat.contains("originalFilename"))
+            #expect(predicate.predicateFormat.contains("mediaType"))
+        }
+        let imageFormat = ActionExecutor.photoFetchPredicate(isVideo: false).predicateFormat
+        let videoFormat = ActionExecutor.photoFetchPredicate(isVideo: true).predicateFormat
+        #expect(imageFormat != videoFormat)
+    }
+    #endif
+
+    @Test func fileByteSizeReturnsSizeForExistingFileAndNilForMissingFile() {
+        let dir = TempDir()
+        let file = dir.file("data.bin", contents: String(repeating: "x", count: 42))
+        #expect(ActionExecutor.fileByteSize(file) == 42)
+        #expect(ActionExecutor.fileByteSize("/nonexistent/path/missing.bin") == nil)
     }
 
     // MARK: - Persistence round-trip
