@@ -790,7 +790,7 @@ private struct ActionOptionsView: View {
             switch action.kind {
             case .runShortcut:
                 shortcutOptions
-            case .moveToFolder, .copyToFolder:
+            case .moveToFolder, .copyToFolder, .importToLibrary:
                 conflictResolutionOptions
             case .rename:
                 renameOptions
@@ -803,14 +803,18 @@ private struct ActionOptionsView: View {
     }
 
     private var conflictResolutionOptions: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let defaultResolution = action.kind == .importToLibrary ? MoveConflictResolution.skip.rawValue : MoveConflictResolution.rename.rawValue
+        let options = action.kind == .importToLibrary
+            ? MoveConflictResolution.allCases.filter { $0 != .rename }.map(\.rawValue)
+            : MoveConflictResolution.allCases.map(\.rawValue)
+        return VStack(alignment: .leading, spacing: 6) {
             Text("If a file already exists")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(ForelTheme.secondaryText)
 
             StringSelectMenu(
-                selection: paramBinding(ActionParam.onConflict, defaultValue: MoveConflictResolution.rename.rawValue),
-                options: MoveConflictResolution.allCases.map(\.rawValue),
+                selection: paramBinding(ActionParam.onConflict, defaultValue: defaultResolution),
+                options: options,
                 label: { value in MoveConflictResolution(rawValue: value)?.label ?? value }
             )
             .frame(maxWidth: .infinity, alignment: .leading)

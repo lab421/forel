@@ -244,9 +244,9 @@ public enum ActionExecutor {
         }
     }
 
-    static func conflictResolution(_ action: Action) -> MoveConflictResolution {
-        guard let raw = action.params[ActionParam.onConflict]?.stringValue else { return .rename }
-        return MoveConflictResolution(rawValue: raw) ?? .rename
+    static func conflictResolution(_ action: Action, default defaultResolution: MoveConflictResolution = .rename) -> MoveConflictResolution {
+        guard let raw = action.params[ActionParam.onConflict]?.stringValue else { return defaultResolution }
+        return MoveConflictResolution(rawValue: raw) ?? defaultResolution
     }
 
     private static func renameFile(_ action: Action, path: String) throws -> Applied {
@@ -331,7 +331,23 @@ public enum ActionExecutor {
             throw ActionError("File format not supported by \(libraryType.label) — requires \(formatDescription(for: libraryType))")
         }
 
+        if let accessMessage = ensureLibraryAccess(libraryType: libraryType) {
+            throw ActionError("Import to \(libraryType.label) — \(accessMessage)")
+        }
+
         let playlist = action.params[ActionParam.targetPlaylist]?.stringValue ?? ""
+
+        let resolution = conflictResolution(action, default: .skip)
+        if resolution == .skip {
+            if try libraryContainsFile(path, libraryType: libraryType) {
+                throw ActionError("Skip — file already exists in \(libraryType.label)")
+            }
+        } else if resolution == .replace {
+            if try libraryContainsFile(path, libraryType: libraryType) {
+                try removeFromLibrary(path, libraryType: libraryType)
+            }
+        }
+
         try performImport(path: path, libraryType: libraryType, playlist: playlist)
         return Applied(newPath: path, undo: .none)
     }
@@ -356,6 +372,28 @@ public enum ActionExecutor {
         case .music: return "an audio file (MP3, AAC, WAV, AIFF, ALAC, etc.)"
         case .photos: return "an image or video file (JPEG, PNG, TIFF, HEIC, RAW, MP4, MOV, etc.)"
         case .tv: return "a video file (MP4, MOV, M4V, etc.)"
+        }
+    }
+
+    private static func libraryContainsFile(_ path: String, libraryType: LibraryType) throws -> Bool {
+        switch libraryType {
+        case .music:
+            return try musicTVLibraryContainsFile(app: "Music", path: path)
+        case .photos:
+            return photosLibraryContainsFile(path)
+        case .tv:
+            return try musicTVLibraryContainsFile(app: "TV", path: path)
+        }
+    }
+
+    private static func removeFromLibrary(_ path: String, libraryType: LibraryType) throws {
+        switch libraryType {
+        case .music:
+            try removeFromMusicTVLibrary(app: "Music", path: path)
+        case .photos:
+            try removeFromPhotosLibrary(path)
+        case .tv:
+            try removeFromMusicTVLibrary(app: "TV", path: path)
         }
     }
 
@@ -413,6 +451,77 @@ public enum ActionExecutor {
         """
         try runAppleScript(script)
     }
+
+    private static func musicTVLibraryContainsFile(app: String, path: String) throws -> Bool {
+        let escaped = appleScriptEscapePath(path)
+        let script = """
+        tell application "\(app)"
+            set fileRef to (POSIX file "\(escaped)") as alias
+            try
+                set matched to (every track whose location is fileRef)
+                return (count of matched) > 0
+            on error
+                return false
+            end try
+        end tell
+        """
+        let result = try runAppleScript(script)
+        return result == "true"
+    }
+
+    private static func removeFromMusicTVLibrary(app: String, path: String) throws {
+        let escaped = appleScriptEscapePath(path)
+        let script = """
+        tell application "\(app)"
+            set fileRef to (POSIX file "\(escaped)") as alias
+            try
+                set matched to (every track whose location is fileRef)
+                repeat with t in matched
+                    delete t
+                end repeat
+            end try
+        end tell
+        """
+        try runAppleScript(script)
+    }
+
+    // MARK: - Photos import
+
+    private static func photosLibraryContainsFile(_ path: String) -> Bool {
+        #if canImport(Photos)
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else { return false }
+        let url = URL(fileURLWithPath: path)
+        let filename = url.lastPathComponent
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "originalFilename == %@", filename)
+        let existing = PHAsset.fetchAssets(with: options)
+        return existing.count > 0
+        #else
+        return false
+        #endif
+    }
+
+    private static func removeFromPhotosLibrary(_ path: String) throws {
+        #if canImport(Photos)
+        guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == .authorized else { return }
+        let url = URL(fileURLWithPath: path)
+        let filename = url.lastPathComponent
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "originalFilename == %@", filename)
+        let existing = PHAsset.fetchAssets(with: options)
+        guard existing.count > 0 else { return }
+        var localIds: [String] = []
+        existing.enumerateObjects { asset, _, _ in
+            localIds.append(asset.localIdentifier)
+        }
+        try PHPhotoLibrary.shared().performChangesAndWait {
+            let assets = PHAsset.fetchAssets(withLocalIdentifiers: localIds, options: nil)
+            PHAssetChangeRequest.deleteAssets(assets)
+        }
+        #endif
+    }
+
     private static func importToPhotos(path: String, album: String = "") throws {
         #if canImport(Photos)
         if let msg = ensureLibraryAccess(libraryType: .photos) {
@@ -763,9 +872,26 @@ public enum ActionExecutor {
                 )
             }
 
+            let resolution = conflictResolution(action, default: .skip)
+            let alreadyExists = try libraryContainsFile(path, libraryType: libraryType)
+
+            if alreadyExists && resolution == .skip {
+                return ActionPlan(
+                    kind: action.kind,
+                    description: "Skip — file already exists in \(libraryType.label)",
+                    sourcePath: path,
+                    targetPath: nil,
+                    status: .wouldSkip,
+                    finalPath: path,
+                    copiedPath: nil,
+                    isTerminal: false
+                )
+            }
+
+            let descSuffix = alreadyExists && resolution == .replace ? " (replacing existing file)" : ""
             return ActionPlan(
                 kind: action.kind,
-                description: "Import to \(libraryType.label)",
+                description: "Import to \(libraryType.label)\(descSuffix)",
                 sourcePath: path,
                 targetPath: nil,
                 status: .wouldRun,
