@@ -7,6 +7,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Added
 - Added an Import to Library action that can add files to the Music, Photos, or TV native macOS libraries. When a file is already present you can choose to skip it (leave the library untouched) or replace it (remove the existing entry before re-importing). File format compatibility is checked before each import, and importing into Photos requires granting access in System Settings.
+- The Contents condition now uses on-device Vision OCR and the Apple Neural Engine to extract text from scanned PDFs and images — everything stays private and works offline, with no data sent to the cloud.
+- Added image OCR support for WebP, GIF, BMP, JPEG 2000, and Photoshop files.
+- Added content extraction support for Office template formats (.dotx, .xltx, .potx).
 
 ### Changed
 - Activity and Dry Run text (file paths, messages, rule names) can now be selected and copied.
@@ -63,6 +66,8 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Added
 - Added metadata conditions for matching files by download website and download app, backed by macOS where-from metadata.
+- The Contents condition now matches text inside PDFs (including scanned PDFs via OCR), Word documents, Excel spreadsheets (.xlsx), PowerPoint presentations (.pptx), Apple iWork documents (Pages, Numbers, Keynote), OpenDocument files (.odt, .ods, .odp), RTF files, and images (via OCR), and the Dry Run shows which content was read.
+- The Contents condition can also match other indexed formats (.xls, .ppt, Pages, Numbers, Keynote, OpenDocument, EPUB) through the macOS Spotlight index, for "contains" matching when the file has been indexed.
 
 ### Changed
 - The rule editor now warns that all-level subfolder scans can slow execution in folders with many files.

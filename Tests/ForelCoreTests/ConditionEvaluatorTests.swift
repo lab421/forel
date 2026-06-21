@@ -29,7 +29,12 @@ import Darwin
         #expect(ConditionEvaluator.evaluate(makeCondition(.name, .endsWith, "2026"), path: file))
         #expect(ConditionEvaluator.evaluate(makeCondition(.name, .matchesRegex, #"invoice-\d{4}"#), path: file))
         #expect(ConditionEvaluator.evaluate(makeCondition(.extension_, .is, ".pdf"), path: file))
-        #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "paid"), path: file))
+
+        // Contents now runs the extraction pipeline; a real plain-text file
+        // exercises the string operators (a text file named ".PDF" is not a
+        // valid PDF and is intentionally not read as text).
+        let textFile = dir.file("invoice-2026.txt", contents: "paid in full")
+        #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "paid"), path: textFile))
     }
 
     @Test func contentsConditionReadsFileAndMatchesEveryStringOperator() throws {
@@ -57,7 +62,7 @@ import Darwin
         #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .doesNotContain, "anything"), path: binary))
 
         let large = (dir.path as NSString).appendingPathComponent("large.txt")
-        let data = Data(repeating: UInt8(ascii: "a"), count: 10 * 1024 * 1024 + 1)
+        let data = Data(repeating: UInt8(ascii: "a"), count: 100 * 1024 * 1024 + 1)
         try data.write(to: URL(fileURLWithPath: large))
         #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "a"), path: large))
     }

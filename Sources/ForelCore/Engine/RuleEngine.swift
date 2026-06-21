@@ -29,12 +29,16 @@ public struct ConditionPreview: Sendable {
     public let operator_: Operator
     public let value: String
     public let matched: Bool
+    /// Optional secondary line shown in the Dry Run — e.g. for `contents`, which
+    /// extraction strategy was used ("PDF text") or why nothing was read.
+    public let detail: String?
 
-    public init(kind: ConditionKind, operator_: Operator, value: String, matched: Bool) {
+    public init(kind: ConditionKind, operator_: Operator, value: String, matched: Bool, detail: String? = nil) {
         self.kind = kind
         self.operator_ = operator_
         self.value = value
         self.matched = matched
+        self.detail = detail
     }
 }
 
@@ -110,9 +114,7 @@ public enum RuleEngine {
             for ruleIndex in target.startRuleIndex..<rules.count {
                 let rule = rules[ruleIndex]
                 guard !blockedRuleIds.contains(rule.id) else { continue }
-                guard rule.enabled, ruleInScope(rule, depth: currentDepth) else { continue }
-                let conditionResults = rule.conditions.map { ConditionEvaluator.evaluate($0, path: currentPath) }
-                guard conditionResultsMatch(conditionResults, rule.conditionMatch) else { continue }
+                guard rule.enabled, ruleMatches(rule, path: currentPath, depth: currentDepth) else { continue }
 
                 let result = runActions(rule, path: currentPath, batchId: batchId)
                 history.append(contentsOf: result.history)
@@ -221,7 +223,25 @@ public enum RuleEngine {
 
     private static func conditionPreviews(_ rule: Rule, path: String) -> [ConditionPreview] {
         rule.conditions.map { condition in
-            ConditionPreview(
+            // `contents` runs the extraction pipeline once and reports which
+            // strategy was used, so the Dry Run can show what was actually read.
+            if condition.kind == .contents {
+                let result = ConditionEvaluator.evaluateContents(condition, path: path)
+                let detail: String
+                if let message = result.message {
+                    detail = "\(result.strategy.label) — \(message)"
+                } else {
+                    detail = result.strategy.label
+                }
+                return ConditionPreview(
+                    kind: condition.kind,
+                    operator_: condition.operator,
+                    value: condition.value,
+                    matched: result.matched,
+                    detail: detail
+                )
+            }
+            return ConditionPreview(
                 kind: condition.kind,
                 operator_: condition.operator,
                 value: condition.value,
@@ -236,6 +256,34 @@ public enum RuleEngine {
         case .all: return results.allSatisfy { $0 }
         case .any: return results.contains(true)
         }
+    }
+
+    /// Like `ruleInScope` + condition matching combined, but evaluates cheap
+    /// conditions first and short-circuits, so an expensive `contents`
+    /// extraction (PDF text, OCR, zip parsing, Spotlight) only runs when it
+    /// can still change the outcome — e.g. a failing name check in an `.all`
+    /// rule skips the OCR entirely. Reordering is safe because `.all` and
+    /// `.any` are order-independent. Used by `run`, which only needs a
+    /// yes/no answer; `previewFile` keeps the original order and evaluates
+    /// every condition on purpose, to show each one's result in the Dry Run.
+    private static func ruleMatches(_ rule: Rule, path: String, depth: Int) -> Bool {
+        guard ruleInScope(rule, depth: depth) else { return false }
+        if rule.conditions.isEmpty { return true }
+
+        let ordered = rule.conditions.sorted { evaluationCost($0.kind) < evaluationCost($1.kind) }
+        switch rule.conditionMatch {
+        case .all:
+            return ordered.allSatisfy { ConditionEvaluator.evaluate($0, path: path) }
+        case .any:
+            return ordered.contains { ConditionEvaluator.evaluate($0, path: path) }
+        }
+    }
+
+    /// Relative cost of evaluating a condition, used only to order evaluation so
+    /// the cheap checks can short-circuit before the expensive ones. `contents`
+    /// can read/parse the whole file (and run OCR), so it is always evaluated last.
+    private static func evaluationCost(_ kind: ConditionKind) -> Int {
+        kind == .contents ? 1 : 0
     }
 
     private static func ruleInScope(_ rule: Rule, depth: Int) -> Bool {

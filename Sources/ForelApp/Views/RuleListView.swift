@@ -280,14 +280,23 @@ private struct PreviewSheet: View {
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(ForelTheme.secondaryText)
                                 ForEach(Array(rulePreview.conditions.enumerated()), id: \.offset) { _, condition in
-                                    HStack(spacing: 6) {
-                                        Image(systemName: condition.matched ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                            .font(.system(size: 9))
-                                            .foregroundStyle(condition.matched ? ForelTheme.accent : .red.opacity(0.85))
-                                        Text(condition.label)
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(ForelTheme.secondaryText)
-                                            .lineLimit(1)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: condition.matched ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(condition.matched ? ForelTheme.accent : .red.opacity(0.85))
+                                            Text(condition.label)
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(ForelTheme.secondaryText)
+                                                .lineLimit(1)
+                                        }
+                                        if let detail = condition.detail {
+                                            Text(detail)
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(ForelTheme.secondaryText)
+                                                .lineLimit(1)
+                                                .padding(.leading, 15)
+                                        }
                                     }
                                     .padding(.leading, 6)
                                 }

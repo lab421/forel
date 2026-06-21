@@ -8,10 +8,15 @@ let package = Package(
         .library(name: "ForelCore", targets: ["ForelCore"]),
         .executable(name: "ForelApp", targets: ["ForelApp"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/weichsel/ZIPFoundation.git", from: "0.9.18"),
+    ],
     targets: [
         .target(
             name: "ForelCore",
-            dependencies: []
+            dependencies: [
+                .product(name: "ZIPFoundation", package: "ZIPFoundation"),
+            ]
         ),
         .executableTarget(
             name: "ForelApp",

@@ -43,9 +43,28 @@ forel/
 - `Sources/ForelCore` contains models, persistence, watcher, and rule engine logic.
 - `Tests/ForelCoreTests` contains the core unit tests. Add or update tests with behavior changes.
 
+## Execution pipeline
+
+```
+Input (FSEvents / Run Now / Dry Run)
+        ↓
+Rule Engine (per file)
+  ├─ Scope check (recursion depth)
+  ├─ Condition matching (sorted by evaluation cost)
+  └─ Plan actions (conflict‑aware, plan‑before‑act)
+        ↓
+Action Executor (execute or skip)
+        ↓
+History / Undo (SQLite)
+```
+
+All three execution paths (Dry Run, Run Now, watcher) share the same `plan()`
+logic — only Dry Run skips `execute()`. `previewFile()` and `run()` both use a
+`PendingFile` queue for chain processing (copies enqueued, renames update path).
+
 ## Persistence and rules
 
-- Rules, conditions, actions, and history are stored in SQLite.
+- Rules, conditions, actions, and history are stored in SQLite via the in-house `Database` wrapper.
 - The rule engine lives in `Sources/ForelCore/Engine`.
 - UI changes that affect persistence should be backed by tests in `Tests/ForelCoreTests`.
 - Rule behavior changes must be checked across all three execution paths:

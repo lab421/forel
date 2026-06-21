@@ -124,6 +124,8 @@ public extension ConditionKind {
         switch self {
         case .downloadedFromWebsite, .downloadedWithApp, .rawWhereFromMetadata:
             return "Uses macOS download metadata. Availability depends on the app that created the file."
+        case .contents:
+            return "Matches text from plain files, PDFs, Word documents, and images via OCR when available."
         default:
             return nil
         }

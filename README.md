@@ -150,6 +150,29 @@ forel/
 | Updates | GitHub Releases check | Detects new tagged releases; ad-hoc signed builds are updated by manual reinstall, not in-place patching |
 | Build | Swift Package Manager | Single toolchain for development, test, and release |
 
+**Execution pipeline:**
+
+```
+Input
+  - FSEvents (real‑time watcher)
+  - Run Now (manual — whole folder)
+  - Dry Run / Preview (manual — whole folder)
+        ↓
+Rule Engine (per file, sorted by cost)
+  ├─ Scope check (recursion depth)
+  ├─ Condition matching (name, extension, kind,
+  │   size, date, tags, color label, contents, …)
+  └─ Plan actions (conflict‑aware)
+        ↓
+Action Executor
+  ├─ Move / Copy / Rename
+  ├─ Tag / Color label
+  ├─ Trash / Delete
+  └─ Run Script / Shortcut
+        ↓
+History / Undo (SQLite)
+```
+
 ---
 
 ## Roadmap
@@ -173,6 +196,54 @@ forel/
 - [ ] Upload actions
 - [ ] Native notifications on rule actions
 - [ ] AI features
+
+## Content matching
+
+The **Contents** condition matches text found *inside* files. Everything is read
+locally — no cloud, OCR runs on-device. When a file's text can't be read, the Dry
+Run tells you why.
+
+```
+File path
+  │
+  ├─ Known plain text (.txt, .md, .json, …) ────► read as UTF‑8 / UTF‑16 / ISO Latin 1
+  │
+  ├─ PDF ──► text layer ─(empty)─► Vision OCR (Apple Neural Engine)
+  │
+  ├─ RTF / .doc/.docx ──► AppKit document reader (main thread)
+  │
+  ├─ .xlsx/.xltx / .pptx/.potx / .odt/.ods/.odp ──► ZIP → XML → strip tags
+  │
+  ├─ .pages / .numbers / .key ──► ZIP → Preview.pdf → PDF text
+  │
+  ├─ Images (.png, .jpg, .heic, .webp, .gif, …) ──► Vision OCR (Apple Neural Engine)
+  │
+  ├─ .xls / .ppt / .epub ──► Spotlight query (contains only)
+  │
+  └─ Unknown extension ──► try plain text ─(binary/undecodable)─► no match
+```
+
+| Type | Formats | Limits |
+|------|---------|--------|
+| Plain text | `.txt` `.md` `.csv` `.tsv` `.json` `.xml` `.yaml` `.yml` `.html` `.css` `.js` `.ts` `.swift` `.rs` `.py` `.rb` `.go` `.java` `.c` `.cpp` `.h` `.log`, plus any other text file (`.ini`, `.conf`, no extension, …) | 100 MB |
+| PDF | `.pdf` (text layer, or OCR for scanned PDFs) | 100 MB / 100 pages · OCR 20 pages |
+| Rich text | `.rtf` `.rtfd` | 100 MB |
+| Word | `.doc` `.docx` `.dotx` | 100 MB |
+| Excel | `.xlsx` `.xltx` | 100 MB |
+| PowerPoint | `.pptx` `.potx` | 100 MB |
+| Apple iWork | `.pages` `.numbers` `.key` | 100 MB |
+| OpenDocument | `.odt` `.ods` `.odp` | 100 MB |
+| Images (OCR) | `.png` `.jpg` `.jpeg` `.heic` `.tiff` `.tif` `.webp` `.gif` `.bmp` `.jp2` `.psd` | 25 MB / 12000 px |
+| Spotlight fallback | `.xls` `.ppt` `.epub` | `contains` only |
+
+> [!NOTE]
+> **Apple iWork** files are read from the preview the app saves inside the
+> document; one saved without a preview falls back to Spotlight.
+>
+> The **Spotlight fallback** is used for formats Forel can't read directly. It
+> relies on macOS having already indexed the file and can only answer the
+> `contains` operator (not `is`, `starts with`, regex, …). When a file isn't
+> indexed, it simply doesn't match.
 
 ## Contributing
 
