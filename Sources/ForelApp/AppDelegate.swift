@@ -20,6 +20,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             setUpStatusBar()
         }
         showMainWindowOnFirstLaunch()
+        if CommandLine.arguments.contains("-forelAfterUpdate") {
+            updater.loadReleaseNotesFromChangelog()
+            openMainWindow()
+        }
     }
 
     /// A brand-new install otherwise only shows up as a menu bar icon

@@ -26,6 +26,7 @@ final class UpdaterManager: ObservableObject {
 
         let tagName: String
         let htmlUrl: URL
+        let body: String
         let assets: [Asset]
         let draft: Bool
         let prerelease: Bool
@@ -33,6 +34,7 @@ final class UpdaterManager: ObservableObject {
         enum CodingKeys: String, CodingKey {
             case tagName = "tag_name"
             case htmlUrl = "html_url"
+            case body
             case assets
             case draft
             case prerelease
@@ -58,6 +60,8 @@ final class UpdaterManager: ObservableObject {
     @Published private(set) var isChecking = false
     @Published private(set) var isInstalling = false
     @Published private(set) var installError: String?
+    @Published var showReleaseNotes = true
+    @Published var releaseNotes: (version: String, body: String, url: URL)? = ("1.0.0", "- Correction bug X\n- Nouveau filtre Y", URL(string: "https://github.com/lab421/forel/releases/tag/v1.0.0")!)
 
     private let db: Database
     private var timer: Timer?
@@ -189,6 +193,65 @@ final class UpdaterManager: ObservableObject {
         release.tagName.hasPrefix("v") ? String(release.tagName.dropFirst()) : release.tagName
     }
 
+    /// Loads the section of CHANGELOG.md for the currently installed version
+    /// and populates `releaseNotes` so the UI can show a sheet.
+    func loadReleaseNotesFromChangelog() {
+        let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        loadReleaseNotesFromChangelog(version: current)
+    }
+
+    /// Loads the section of CHANGELOG.md matching `version` (or the first
+    /// versioned section if `version` is nil).
+    func loadReleaseNotesFromChangelog(version: String?) {
+        guard let url = Bundle.module.url(forResource: "CHANGELOG", withExtension: "md"),
+              let content = try? String(contentsOf: url, encoding: .utf8) else { return }
+
+        let lines = content.components(separatedBy: .newlines)
+        let header = version.map { "## [\($0)]" }
+        var sectionLines: [String] = []
+        var inSection = false
+        var foundFirst = false
+
+        for line in lines {
+            if line.hasPrefix("## [") {
+                if inSection { break }
+                if let header {
+                    if line.hasPrefix(header) {
+                        inSection = true
+                    }
+                } else if !foundFirst {
+                    inSection = true
+                    foundFirst = true
+                }
+                continue
+            }
+            if inSection {
+                sectionLines.append(line)
+            }
+        }
+
+        let body = sectionLines.drop { $0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        let v = version ?? Self.findFirstVersion(in: lines)
+        if let url = URL(string: "https://github.com/\(Self.repo)/releases/tag/v\(v)") {
+            releaseNotes = (v, body, url)
+        }
+        showReleaseNotes = true
+    }
+
+    private static func findFirstVersion(in lines: [String]) -> String {
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("## [") {
+                let start = trimmed.index(trimmed.startIndex, offsetBy: 4)
+                if let end = trimmed.firstIndex(of: "]") {
+                    return String(trimmed[start..<end])
+                }
+            }
+        }
+        return "0.0.0"
+    }
+
     static func isNewer(_ candidate: String, than current: String) -> Bool {
         compareVersions(candidate, current) == .orderedDescending
     }
@@ -305,7 +368,7 @@ final class UpdaterManager: ObservableObject {
         /usr/bin/hdiutil detach "$MNT" -quiet 2>/dev/null || /usr/bin/hdiutil detach "$MNT" -force -quiet 2>/dev/null || true
         /bin/rmdir "$MNT" 2>/dev/null
         /bin/rm -f "$DMG" "$SCRIPT"
-        /usr/bin/open "$LAUNCH"
+        /usr/bin/open "$LAUNCH" --args -forelAfterUpdate
         """
         let scriptURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("forel-update-\(pid)-\(UUID().uuidString).sh")

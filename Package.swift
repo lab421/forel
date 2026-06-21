@@ -16,7 +16,7 @@ let package = Package(
         .executableTarget(
             name: "ForelApp",
             dependencies: ["ForelCore"],
-            resources: [.copy("Resources")]
+            resources: [.copy("Resources"), .copy("../../CHANGELOG.md")]
         ),
         .testTarget(
             name: "ForelCoreTests",
