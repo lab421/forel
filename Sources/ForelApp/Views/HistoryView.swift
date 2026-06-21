@@ -181,6 +181,7 @@ private struct BatchHistorySection: View {
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
             }
         }
+        .textSelection(.enabled)
     }
 }
 

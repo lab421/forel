@@ -10,9 +10,8 @@ All notable changes to Forel are documented here. Format loosely follows
 - Added image OCR support for WebP, GIF, BMP, JPEG 2000, and Photoshop files.
 - Added content extraction support for Office template formats (.dotx, .xltx, .potx).
 
-### Fixed
-- Fixed content extraction from Office documents and OpenDocument files sometimes missing text when the internal XML contained `>` characters inside comments.
-- RTF, RTFD, Word (.doc/.docx) files now respect a 100 MB size limit instead of attempting to load oversized documents.
+### Changed
+- Activity and Dry Run text (file paths, messages, rule names) can now be selected and copied.
 
 ## [1.0.0] - 2026-06-21
 

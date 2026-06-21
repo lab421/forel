@@ -197,8 +197,6 @@ History / Undo (SQLite)
 - [ ] Native notifications on rule actions
 - [ ] AI features
 
----
-
 ## Content matching
 
 The **Contents** condition matches text found *inside* files. Everything is read
