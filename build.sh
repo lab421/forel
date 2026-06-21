@@ -174,6 +174,8 @@ case "$command" in
   <true/>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>Forel can import images and videos into your Photos library as part of automated rules.</string>
 </dict>
 </plist>
 EOF

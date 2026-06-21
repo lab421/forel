@@ -1,4 +1,8 @@
 import Foundation
+import UniformTypeIdentifiers
+#if canImport(Photos)
+import Photos
+#endif
 
 public struct ActionError: Error, CustomStringConvertible {
     public let message: String
@@ -182,6 +186,8 @@ public enum ActionExecutor {
             return try runScript(action, path: path)
         case .runShortcut:
             return try runShortcut(action, path: path)
+        case .importToLibrary:
+            return try importToLibrary(action, path: path)
         }
     }
 
@@ -311,6 +317,256 @@ public enum ActionExecutor {
         let inputMode = shortcutInputMode(action)
         try ShortcutRunner.run(name: name, input: shortcutInput(mode: inputMode, path: path))
         return Applied(newPath: path, undo: .none)
+    }
+
+    // MARK: - Import to Library
+
+    private static func importToLibrary(_ action: Action, path: String) throws -> Applied {
+        let libraryTypeRaw = action.params[ActionParam.libraryType]?.stringValue ?? ""
+        guard let libraryType = LibraryType(rawValue: libraryTypeRaw) else {
+            throw ActionError("Import to Library requires a 'library_type' parameter")
+        }
+        let resolution = conflictResolution(action)
+
+        guard canImportToLibrary(path, libraryType: libraryType) else {
+            throw ActionError("File format not supported by \(libraryType.label) — requires \(formatDescription(for: libraryType))")
+        }
+
+        if resolution == .skip {
+            if try libraryContainsFile(path, libraryType: libraryType) {
+                throw ActionError("Skip — file already exists in \(libraryType.label)")
+            }
+        }
+
+        if resolution == .replace {
+            try removeFromLibrary(path, libraryType: libraryType)
+        }
+
+        try performImport(path: path, libraryType: libraryType)
+        return Applied(newPath: path, undo: .none)
+    }
+
+    static func canImportToLibrary(_ path: String, libraryType: LibraryType) -> Bool {
+        guard let typeID = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.typeIdentifierKey]).typeIdentifier,
+              let utType = UTType(typeID) else {
+            return false
+        }
+        switch libraryType {
+        case .music:
+            return utType.conforms(to: .audio)
+        case .photos:
+            return utType.conforms(to: .image) || utType.conforms(to: .movie)
+        case .tv:
+            return utType.conforms(to: .movie)
+        }
+    }
+
+    static func formatDescription(for libraryType: LibraryType) -> String {
+        switch libraryType {
+        case .music: return "an audio file (MP3, AAC, WAV, AIFF, ALAC, etc.)"
+        case .photos: return "an image or video file (JPEG, PNG, TIFF, HEIC, RAW, MP4, MOV, etc.)"
+        case .tv: return "a video file (MP4, MOV, M4V, etc.)"
+        }
+    }
+
+    private static func libraryContainsFile(_ path: String, libraryType: LibraryType) throws -> Bool {
+        switch libraryType {
+        case .music:
+            return try musicTVLibraryContainsFile(app: "Music", path: path)
+        case .photos:
+            return photosLibraryContainsFile(path)
+        case .tv:
+            return try musicTVLibraryContainsFile(app: "TV", path: path)
+        }
+    }
+
+    private static func removeFromLibrary(_ path: String, libraryType: LibraryType) throws {
+        switch libraryType {
+        case .music:
+            try removeFromMusicTVLibrary(app: "Music", path: path)
+        case .photos:
+            try removeFromPhotosLibrary(path)
+        case .tv:
+            try removeFromMusicTVLibrary(app: "TV", path: path)
+        }
+    }
+
+    private static func performImport(path: String, libraryType: LibraryType) throws {
+        switch libraryType {
+        case .music:
+            try importViaAppleScript(app: "Music", path: path)
+        case .photos:
+            try importToPhotos(path: path)
+        case .tv:
+            try importViaAppleScript(app: "TV", path: path)
+        }
+    }
+
+    // MARK: - AppleScript helpers
+
+    @discardableResult
+    private static func runAppleScript(_ script: String) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        try process.run()
+        process.waitUntilExit()
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        let errorMsg = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard process.terminationStatus == 0 else {
+            throw ActionError("AppleScript failed: \(errorMsg)")
+        }
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private static func appleScriptEscapePath(_ path: String) -> String {
+        path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private static func importViaAppleScript(app: String, path: String) throws {
+        let escaped = appleScriptEscapePath(path)
+        let script = """
+        tell application "\(app)"
+            set theFile to (POSIX file "\(escaped)") as alias
+            add theFile
+        end tell
+        """
+        try runAppleScript(script)
+    }
+
+    private static func musicTVLibraryContainsFile(app: String, path: String) throws -> Bool {
+        let escaped = appleScriptEscapePath(path)
+        let script = """
+        tell application "\(app)"
+            set targetPath to "\(escaped)"
+            set found to false
+            try
+                set matchedItems to (every track whose location is not missing value)
+                repeat with itemRef in matchedItems
+                    set loc to location of itemRef
+                    try
+                        set posixPath to POSIX path of (loc as text)
+                        if posixPath is targetPath then
+                            set found to true
+                            exit repeat
+                        end if
+                    end try
+                end repeat
+            end try
+            return found
+        end tell
+        """
+        let result = try runAppleScript(script)
+        return result == "true"
+    }
+
+    private static func removeFromMusicTVLibrary(app: String, path: String) throws {
+        let escaped = appleScriptEscapePath(path)
+        let script = """
+        tell application "\(app)"
+            set targetPath to "\(escaped)"
+            try
+                set matchedItems to (every track whose location is not missing value)
+                repeat with itemRef in matchedItems
+                    set loc to location of itemRef
+                    try
+                        set posixPath to POSIX path of (loc as text)
+                        if posixPath is targetPath then
+                            delete itemRef
+                        end if
+                    end try
+                end repeat
+            end try
+        end tell
+        """
+        try runAppleScript(script)
+    }
+
+    // MARK: - Photos import
+
+    private static func photosLibraryContainsFile(_ path: String) -> Bool {
+        #if canImport(Photos)
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else { return false }
+        let url = URL(fileURLWithPath: path)
+        let filename = url.lastPathComponent
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "originalFilename == %@", filename)
+        let existing = PHAsset.fetchAssets(with: options)
+        return existing.count > 0
+        #else
+        return false
+        #endif
+    }
+
+    private static func removeFromPhotosLibrary(_ path: String) throws {
+        #if canImport(Photos)
+        guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == .authorized else { return }
+        let url = URL(fileURLWithPath: path)
+        let filename = url.lastPathComponent
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "originalFilename == %@", filename)
+        let existing = PHAsset.fetchAssets(with: options)
+        guard existing.count > 0 else { return }
+        var localIds: [String] = []
+        existing.enumerateObjects { asset, _, _ in
+            localIds.append(asset.localIdentifier)
+        }
+        try PHPhotoLibrary.shared().performChangesAndWait {
+            let assets = PHAsset.fetchAssets(withLocalIdentifiers: localIds, options: nil)
+            PHAssetChangeRequest.deleteAssets(assets)
+        }
+        #endif
+    }
+
+    private static func importToPhotos(path: String) throws {
+        #if canImport(Photos)
+        try ensurePhotosAuthorization()
+        let url = URL(fileURLWithPath: path)
+        try PHPhotoLibrary.shared().performChangesAndWait {
+            let ext = url.pathExtension.lowercased()
+            let videoExtensions = Set(["mov", "mp4", "m4v", "avi", "mts", "m2ts"])
+            if videoExtensions.contains(ext),
+               let utType = UTType(filenameExtension: ext),
+               utType.conforms(to: .movie) {
+                PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+            } else {
+                PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: url)
+            }
+        }
+        #else
+        throw ActionError("Photos import is not available on this platform")
+        #endif
+    }
+
+    private static func ensurePhotosAuthorization() throws {
+        #if canImport(Photos)
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        switch status {
+        case .authorized, .limited:
+            return
+        case .denied, .restricted:
+            throw ActionError("Photos library access denied. Grant access in System Settings > Privacy & Security > Photos.")
+        case .notDetermined:
+            let semaphore = DispatchSemaphore(value: 0)
+            var result: PHAuthorizationStatus = .denied
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
+                result = status
+                semaphore.signal()
+            }
+            semaphore.wait()
+            guard result == .authorized || result == .limited else {
+                throw ActionError("Photos library access not granted.")
+            }
+        @unknown default:
+            throw ActionError("Photos library access status unknown.")
+        }
+        #endif
     }
 
     /// Reverses a previously executed action using its stored `Undo`.
@@ -540,6 +796,63 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .importToLibrary:
+            let libraryTypeRaw = action.params[ActionParam.libraryType]?.stringValue ?? ""
+            guard let libraryType = LibraryType(rawValue: libraryTypeRaw) else {
+                throw ActionError("Import to Library requires a 'library_type' parameter")
+            }
+            guard canImportToLibrary(path, libraryType: libraryType) else {
+                throw ActionError("File format not supported by \(libraryType.label) — requires \(formatDescription(for: libraryType))")
+            }
+
+            #if canImport(Photos)
+            if libraryType == .photos {
+                let authStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+                if authStatus == .notDetermined {
+                    return ActionPlan(
+                        kind: action.kind,
+                        description: "Import to Photos — authorization required",
+                        sourcePath: path,
+                        targetPath: nil,
+                        status: .needsConfirmation,
+                        finalPath: path,
+                        copiedPath: nil,
+                        isTerminal: false
+                    )
+                }
+                if authStatus != .authorized && authStatus != .limited {
+                    throw ActionError("Photos library access denied. Grant access in System Settings > Privacy & Security > Photos.")
+                }
+            }
+            #endif
+
+            let resolution = conflictResolution(action)
+            let description = "Import to \(libraryType.label)"
+            if resolution == .skip {
+                let alreadyExists = try libraryContainsFile(path, libraryType: libraryType)
+                if alreadyExists {
+                    return ActionPlan(
+                        kind: action.kind,
+                        description: "Skip — file already exists in \(libraryType.label)",
+                        sourcePath: path,
+                        targetPath: nil,
+                        status: .wouldSkip,
+                        finalPath: path,
+                        copiedPath: nil,
+                        isTerminal: false
+                    )
+                }
+            }
+            return ActionPlan(
+                kind: action.kind,
+                description: description,
+                sourcePath: path,
+                targetPath: nil,
+                status: .wouldRun,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: false
+            )
         }
     }
 
@@ -558,7 +871,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut:
+        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .importToLibrary:
             return true
         }
     }

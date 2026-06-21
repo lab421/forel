@@ -685,6 +685,8 @@ private struct ActionRow: View {
             GlassField(placeholder: "Bash script (file path in $FOREL_FILE)", text: paramBinding(ActionParam.script))
         case .runShortcut:
             ShortcutPicker(selection: paramBinding(ActionParam.shortcutName))
+        case .importToLibrary:
+            LibraryTypePicker(selection: paramBinding(ActionParam.libraryType, defaultValue: LibraryType.music.rawValue))
         case .moveToTrash, .delete:
             Text("No parameters")
                 .font(.system(size: 11))
@@ -702,9 +704,9 @@ private struct ActionRow: View {
         )
     }
 
-    private func paramBinding(_ key: String) -> Binding<String> {
+    private func paramBinding(_ key: String, defaultValue: String = "") -> Binding<String> {
         Binding(
-            get: { action.params[key]?.stringValue ?? "" },
+            get: { action.params[key]?.stringValue ?? defaultValue },
             set: { newValue in
                 var dict: [String: JSONValue] = [:]
                 if case .object(let existing) = action.params { dict = existing }
@@ -752,7 +754,7 @@ private struct ActionOptionsView: View {
             switch action.kind {
             case .runShortcut:
                 shortcutOptions
-            case .moveToFolder, .copyToFolder:
+            case .moveToFolder, .copyToFolder, .importToLibrary:
                 conflictResolutionOptions
             case .rename:
                 renameOptions
@@ -888,6 +890,19 @@ private struct ShortcutPicker: View {
                 isLoading = false
             }
         }
+    }
+}
+
+private struct LibraryTypePicker: View {
+    @Binding var selection: String
+
+    var body: some View {
+        StringSelectMenu(
+            selection: $selection,
+            options: LibraryType.allCases.map(\.rawValue),
+            label: { value in LibraryType(rawValue: value)?.label ?? value }
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

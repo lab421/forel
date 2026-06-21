@@ -113,9 +113,32 @@ public enum ActionKind: String, Codable, Equatable, Sendable {
     case setColorLabel = "set_color_label"
     case runScript = "run_script"
     case runShortcut = "run_shortcut"
+    case importToLibrary = "import_to_library"
 
     public init(dbValue: String) {
         self = ActionKind(rawValue: dbValue) ?? .moveToFolder
+    }
+}
+
+public enum LibraryType: String, CaseIterable, Codable, Equatable, Sendable {
+    case music
+    case photos
+    case tv
+
+    public var label: String {
+        switch self {
+        case .music: return "Music"
+        case .photos: return "Photos"
+        case .tv: return "TV"
+        }
+    }
+
+    public var iconSystemName: String {
+        switch self {
+        case .music: return "music.note"
+        case .photos: return "photo.on.rectangle"
+        case .tv: return "tv"
+        }
     }
 }
 

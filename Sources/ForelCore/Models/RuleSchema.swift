@@ -164,6 +164,7 @@ public enum ActionParam {
     public static let shortcutName = "shortcut_name"
     public static let shortcutInputMode = "shortcut_input_mode"
     public static let cleanFileName = "clean_file_name"
+    public static let libraryType = "library_type"
 }
 
 /// The abstract shape of an action parameter; the UI maps it to a concrete editor.
@@ -174,6 +175,7 @@ public enum ActionParamKind: Sendable, Equatable {
     case colorLabel
     case script
     case shortcut
+    case libraryType
 }
 
 public struct ActionParamSpec: Sendable, Equatable {
@@ -201,6 +203,7 @@ public extension ActionKind {
         case .setColorLabel: return "Set color label"
         case .runScript: return "Run script"
         case .runShortcut: return "Run shortcut"
+        case .importToLibrary: return "Import to library"
         }
     }
 
@@ -215,6 +218,7 @@ public extension ActionKind {
         case .setColorLabel: return "paintpalette"
         case .runScript: return "terminal"
         case .runShortcut: return "square.stack.3d.up"
+        case .importToLibrary: return "tray.full"
         }
     }
 
@@ -224,7 +228,7 @@ public extension ActionKind {
     /// have none, instead of showing an empty "No options" popover.
     var hasOptions: Bool {
         switch self {
-        case .moveToFolder, .copyToFolder, .runShortcut, .rename:
+        case .moveToFolder, .copyToFolder, .runShortcut, .rename, .importToLibrary:
             return true
         case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
             return false
@@ -247,6 +251,8 @@ public extension ActionKind {
             return [ActionParamSpec(key: ActionParam.script, kind: .script)]
         case .runShortcut:
             return [ActionParamSpec(key: ActionParam.shortcutName, kind: .shortcut)]
+        case .importToLibrary:
+            return [ActionParamSpec(key: ActionParam.libraryType, kind: .libraryType)]
         case .moveToTrash, .delete:
             return []
         }
@@ -285,6 +291,7 @@ public enum RuleSchema {
     public static let actionKinds: [ActionKind] = [
         .moveToFolder, .copyToFolder, .rename, .moveToTrash, .delete,
         .addTag, .removeTag, .setColorLabel, .runScript, .runShortcut,
+        .importToLibrary,
     ]
 
     /// Resolves the value editor for a condition, combining the kind's base

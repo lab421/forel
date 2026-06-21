@@ -3,6 +3,11 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Added an Import to Library action that can add files to the Music, Photos, or TV native macOS libraries. Supports conflict resolution options: rename (always import), replace (remove existing entry before re-importing), and skip (leave untouched when already present). File format compatibility is checked before each import — the Photos access requires prior authorization in System Settings.
+
 ## [1.0.0] - 2026-06-21
 
 🎉🍾 **Forel is exiting beta.** This release marks the transition to a stable. Faster, safer, and ready for everyday use.
