@@ -3,6 +3,14 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- The Contents condition now uses on-device Vision OCR and the Apple Neural Engine to extract text from scanned PDFs and images — everything stays private and works offline, with no data sent to the cloud.
+
+### Fixed
+- Fixed content extraction from Office documents and OpenDocument files sometimes missing text when the internal XML contained `>` characters inside comments.
+
 ## [1.0.0] - 2026-06-21
 
 🎉🍾 **Forel is exiting beta.** This release marks the transition to a stable. Faster, safer, and ready for everyday use.

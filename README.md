@@ -150,6 +150,29 @@ forel/
 | Updates | GitHub Releases check | Detects new tagged releases; ad-hoc signed builds are updated by manual reinstall, not in-place patching |
 | Build | Swift Package Manager | Single toolchain for development, test, and release |
 
+**Execution pipeline:**
+
+```
+Input
+  - FSEvents (real‑time watcher)
+  - Run Now (manual — whole folder)
+  - Dry Run / Preview (manual — whole folder)
+        ↓
+Rule Engine (per file, sorted by cost)
+  ├─ Scope check (recursion depth)
+  ├─ Condition matching (name, extension, kind,
+  │   size, date, tags, color label, contents, …)
+  └─ Plan actions (conflict‑aware)
+        ↓
+Action Executor
+  ├─ Move / Copy / Rename
+  ├─ Tag / Color label
+  ├─ Trash / Delete
+  └─ Run Script / Shortcut
+        ↓
+History / Undo (SQLite)
+```
+
 ---
 
 ## Roadmap
@@ -182,6 +205,26 @@ The **Contents** condition matches text found *inside* files. Everything is read
 locally — no cloud, OCR runs on-device. When a file's text can't be read, the Dry
 Run tells you why.
 
+```
+File path
+  │
+  ├─ Known plain text (.txt, .md, .json, …) ────► read as UTF‑8 / UTF‑16 / ISO Latin 1
+  │
+  ├─ PDF ──► text layer ─(empty)─► Vision OCR (Apple Neural Engine)
+  │
+  ├─ RTF / .doc/.docx ──► AppKit document reader (main thread)
+  │
+  ├─ .xlsx / .pptx / .odt/.ods/.odp ──► ZIP → XML → strip tags
+  │
+  ├─ .pages / .numbers / .key ──► ZIP → Preview.pdf → PDF text
+  │
+  ├─ Images (.png, .jpg, .heic, …) ──► Vision OCR (Apple Neural Engine)
+  │
+  ├─ .xls / .ppt / .epub ──► Spotlight query (contains only)
+  │
+  └─ Unknown extension ──► try plain text ─(binary/undecodable)─► no match
+```
+
 | Type | Formats | Limits |
 |------|---------|--------|
 | Plain text | `.txt` `.md` `.csv` `.tsv` `.json` `.xml` `.yaml` `.yml` `.html` `.css` `.js` `.ts` `.swift` `.rs` `.py` `.rb` `.go` `.java` `.c` `.cpp` `.h` `.log`, plus any other text file (`.ini`, `.conf`, no extension, …) | 50 MB |
@@ -205,12 +248,6 @@ Run tells you why.
 > indexed, it simply doesn't match.
 >
 > Unsupported files simply don't match the Contents condition.
-
----
-> [!WARNING]
-> Forel is currently in **beta**. Expect bugs, missing features, and breaking changes between versions.
-
----
 
 ## Contributing
 
