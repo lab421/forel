@@ -5,6 +5,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- Added expandable rule cards that show each rule's conditions and actions directly in the rule list.
+
 ### Changed
 - Dry Run now shows each matched file's full path beneath its name.
 

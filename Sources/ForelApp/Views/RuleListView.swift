@@ -15,11 +15,14 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import SwiftUI
+import AppKit
 import ForelCore
 
 struct RuleListView: View {
     @EnvironmentObject var model: AppModel
     @State private var editingRule: Rule?
+    @State private var collapsedRuleIds: Set<String> = []
+    @State private var expandedDisabledRuleIds: Set<String> = []
 
     private var selectedFolder: WatchedFolder? {
         model.folders.first { $0.id == model.selectedFolderId }
@@ -52,7 +55,13 @@ struct RuleListView: View {
             } else {
                 List {
                     ForEach(Array(model.rules.enumerated()), id: \.element.id) { index, rule in
-                        RuleCard(rule: rule, order: index + 1, onEdit: { editingRule = rule })
+                        RuleCard(
+                            rule: rule,
+                            order: index + 1,
+                            isExpanded: isExpanded(rule),
+                            onToggleExpanded: { toggleExpanded(rule) },
+                            onEdit: { editingRule = rule }
+                        )
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -85,6 +94,26 @@ struct RuleListView: View {
         var ids = model.rules.map(\.id)
         ids.move(fromOffsets: source, toOffset: destination)
         model.reorderRules(ids)
+    }
+
+    private func isExpanded(_ rule: Rule) -> Bool {
+        rule.enabled ? !collapsedRuleIds.contains(rule.id) : expandedDisabledRuleIds.contains(rule.id)
+    }
+
+    private func toggleExpanded(_ rule: Rule) {
+        if rule.enabled {
+            if collapsedRuleIds.contains(rule.id) {
+                collapsedRuleIds.remove(rule.id)
+            } else {
+                collapsedRuleIds.insert(rule.id)
+            }
+        } else {
+            if expandedDisabledRuleIds.contains(rule.id) {
+                expandedDisabledRuleIds.remove(rule.id)
+            } else {
+                expandedDisabledRuleIds.insert(rule.id)
+            }
+        }
     }
 
     private var header: some View {
@@ -175,60 +204,94 @@ private struct RuleCard: View {
     @EnvironmentObject var model: AppModel
     let rule: Rule
     let order: Int
+    let isExpanded: Bool
+    let onToggleExpanded: () -> Void
     let onEdit: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: 11))
                     .foregroundStyle(ForelTheme.secondaryText.opacity(0.6))
-                ZStack {
-                    Circle().fill(ForelTheme.accent.opacity(0.16))
-                    Text("\(order)")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(ForelTheme.accent)
+                    .frame(width: 18, height: 24)
+                    .pointingHandCursor()
+
+                Button(action: onToggleExpanded) {
+                    HStack(spacing: 8) {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(ForelTheme.secondaryText.opacity(0.75))
+                            .frame(width: 12)
+
+                        ZStack {
+                            Circle().fill(ForelTheme.accent.opacity(0.16))
+                            Text("\(order)")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(ForelTheme.accent)
+                        }
+                        .frame(width: 22, height: 22)
+                    }
+                    .frame(width: 54, height: 30)
+                    .contentShape(Rectangle())
                 }
-                .frame(width: 22, height: 22)
-            }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
 
-            Toggle("", isOn: enabledBinding)
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .tint(ForelTheme.accent)
-                .controlSize(.small)
+                Toggle("", isOn: enabledBinding)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .tint(ForelTheme.accent)
+                    .controlSize(.small)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(rule.name)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(ForelTheme.primaryText)
-                HStack(spacing: 6) {
-                    metaPill(icon: "line.3.horizontal.decrease.circle", text: "\(rule.conditions.count)")
-                    metaPill(icon: "bolt.fill", text: "\(rule.actions.count)")
-                    Text(rule.conditionMatch == .all ? "match all" : "match any")
-                        .font(.system(size: 10))
-                        .foregroundStyle(ForelTheme.secondaryText)
+                Button(action: onToggleExpanded) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(rule.name)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(ForelTheme.primaryText)
+                        HStack(spacing: 6) {
+                            metaPill(icon: "line.3.horizontal.decrease.circle", text: "\(rule.conditions.count)")
+                            metaPill(icon: "bolt.fill", text: "\(rule.actions.count)")
+                            Text(rule.conditionMatch == .all ? "match all" : "match any")
+                                .font(.system(size: 10))
+                                .foregroundStyle(ForelTheme.secondaryText)
+                        }
+                    }
                 }
-            }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
 
-            Spacer(minLength: 8)
+                Spacer(minLength: 8)
 
-            Button(action: onEdit) {
-                Image(systemName: "pencil")
-            }
-            .buttonStyle(IconButtonStyle())
+                Button(action: onEdit) {
+                    Image(systemName: "pencil")
+                }
+                .buttonStyle(IconButtonStyle())
 
-            Button(role: .destructive) {
-                model.deleteRule(rule)
-            } label: {
-                Image(systemName: "trash")
+                Button(role: .destructive) {
+                    model.deleteRule(rule)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(IconButtonStyle(role: .destructive))
             }
-            .buttonStyle(IconButtonStyle(role: .destructive))
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+
+            if isExpanded {
+                Divider()
+                    .overlay(ForelTheme.divider)
+                    .padding(.horizontal, 12)
+                RuleDetails(rule: rule)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+            }
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 12)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ForelTheme.surface))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isExpanded ? ForelTheme.accent.opacity(0.55) : ForelTheme.surfaceBorder)
+        )
         .opacity(rule.enabled ? 1 : 0.6)
     }
 
@@ -242,6 +305,176 @@ private struct RuleCard: View {
 
     private var enabledBinding: Binding<Bool> {
         Binding(get: { rule.enabled }, set: { model.toggleRule(rule, enabled: $0) })
+    }
+}
+
+private struct RuleDetails: View {
+    let rule: Rule
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            detailSection(
+                label: "IF",
+                rows: conditionRows,
+                emptyText: "Matches every file in scope."
+            )
+
+            detailSection(
+                label: "DO",
+                rows: actionRows,
+                emptyText: "No actions configured."
+            )
+        }
+        .textSelection(.enabled)
+    }
+
+    private var conditionRows: [RuleDetailRow] {
+        rule.conditions.map { condition in
+            RuleDetailRow(
+                icon: condition.kind.iconSystemName,
+                badge: condition.kind.label,
+                title: "\(condition.operator.label) \(condition.value)",
+                detail: nil
+            )
+        }
+    }
+
+    private var actionRows: [RuleDetailRow] {
+        rule.actions.sorted { $0.position < $1.position }.map { action in
+            let summary = actionSummary(action)
+            return RuleDetailRow(
+                icon: action.kind.iconSystemName,
+                badge: action.kind.label,
+                title: summary.title,
+                detail: summary.detail
+            )
+        }
+    }
+
+    private func detailSection(label: String, rows: [RuleDetailRow], emptyText: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .frame(width: 22, alignment: .trailing)
+                .padding(.top, rows.isEmpty ? 1 : 6)
+
+            VStack(alignment: .leading, spacing: 6) {
+                if rows.isEmpty {
+                    Text(emptyText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(ForelTheme.secondaryText)
+                        .frame(minHeight: 24, alignment: .center)
+                } else {
+                    ForEach(rows) { row in
+                        ruleDetailRow(row)
+                    }
+                }
+            }
+        }
+    }
+
+    private func ruleDetailRow(_ row: RuleDetailRow) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: row.icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(ForelTheme.accent)
+                .frame(width: 14)
+
+            Text(row.badge.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(ForelTheme.accent)
+                .lineLimit(1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(ForelTheme.accent.opacity(0.14))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(ForelTheme.accent.opacity(0.25))
+                )
+
+            Text(row.title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(ForelTheme.primaryText)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            if let detail = row.detail, !detail.isEmpty {
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 2)
+    }
+
+    private func actionSummary(_ action: Action) -> (title: String, detail: String?) {
+        switch action.kind {
+        case .moveToFolder:
+            return ("to folder", action.params[ActionParam.destination]?.stringValue)
+        case .copyToFolder:
+            return ("to folder", action.params[ActionParam.destination]?.stringValue)
+        case .rename:
+            return ("to \(action.params[ActionParam.pattern]?.stringValue ?? "")", action.params[ActionParam.cleanFileName]?.boolValue == true ? "clean file name" : nil)
+        case .moveToTrash:
+            return ("move to Trash", nil)
+        case .delete:
+            return ("delete permanently", nil)
+        case .addTag:
+            return ("add \(tagList(action))", nil)
+        case .removeTag:
+            return ("remove \(tagList(action))", nil)
+        case .setColorLabel:
+            let color = action.params[ActionParam.color]?.stringValue ?? ""
+            return (color.isEmpty ? "clear color label" : "set to \(color)", nil)
+        case .runScript:
+            let script = action.params[ActionParam.script]?.stringValue ?? ""
+            let firstLine = script.split(separator: "\n").first.map(String.init) ?? ""
+            return (firstLine.isEmpty ? "run script" : firstLine, nil)
+        case .runShortcut:
+            let name = action.params[ActionParam.shortcutName]?.stringValue ?? ""
+            return (name.isEmpty ? "run shortcut" : name, ActionExecutor.shortcutInputMode(action).label)
+        case .importToLibrary:
+            let library = LibraryType(rawValue: action.params[ActionParam.libraryType]?.stringValue ?? "")?.label ?? "Library"
+            let playlist = action.params[ActionParam.targetPlaylist]?.stringValue ?? ""
+            return ("import to \(library)", playlist.isEmpty ? nil : playlist)
+        }
+    }
+
+    private func tagList(_ action: Action) -> String {
+        if let tags = action.params[ActionParam.tags]?.arrayValue?.compactMap(\.stringValue), !tags.isEmpty {
+            return tags.joined(separator: ", ")
+        }
+        if let tag = action.params["tag"]?.stringValue, !tag.isEmpty {
+            return tag
+        }
+        return "tag"
+    }
+}
+
+private struct RuleDetailRow: Identifiable {
+    let id = UUID()
+    let icon: String
+    let badge: String
+    let title: String
+    let detail: String?
+}
+
+private extension View {
+    func pointingHandCursor() -> some View {
+        onHover { isHovering in
+            if isHovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
     }
 }
 
