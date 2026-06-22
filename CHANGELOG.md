@@ -3,6 +3,11 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+- Dry Run now shows each matched file's full path beneath its name.
+
 ## [1.0.1] - 2026-06-22
 
 ### Added

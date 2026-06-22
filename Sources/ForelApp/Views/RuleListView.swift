@@ -291,6 +291,11 @@ private struct PreviewSheet: View {
                                 Image(systemName: "doc.fill").font(.system(size: 11)).foregroundStyle(ForelTheme.accent)
                                 Text(match.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
                             }
+                            Text(match.path)
+                                .font(.system(size: 10))
+                                .foregroundStyle(ForelTheme.secondaryText)
+                                .lineLimit(1)
+                                .truncationMode(.head)
                             ForEach(match.rules, id: \.ruleId) { rulePreview in
                                 Text(rulePreview.ruleName)
                                     .font(.system(size: 11, weight: .medium))
