@@ -97,7 +97,7 @@ write_info_plist() {
   <key>CFBundleExecutable</key>
   <string>ForelApp</string>
   <key>CFBundleIdentifier</key>
-  <string>com.forel.app</string>
+  <string>com.lab421.forel</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>

@@ -28,7 +28,8 @@ extension ISO8601DateFormatter {
 /// SQLite-backed persistence for watched folders, rules, conditions, actions,
 /// custom tags, action history and app settings. Mirrors the Rust `db` module
 /// schema exactly so the existing alpha database at
-/// `~/Library/Application Support/com.forel.app/forel.db` keeps working.
+/// `~/Library/Application Support/com.lab421.forel/forel.db` (migrated
+/// automatically from the legacy `com.forel.app` location) keeps working.
 public final class Database: @unchecked Sendable {
     public static let currentSchemaVersion: Int64 = 8
 

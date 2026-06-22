@@ -152,6 +152,8 @@ jobs:
             app "Forel.app"
 
             zap trash: [
+              "~/Library/Application Support/com.lab421.forel",
+              "~/Library/Caches/com.lab421.forel",
               "~/Library/Application Support/com.forel.app",
               "~/Library/Caches/com.forel.app",
             ]

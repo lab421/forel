@@ -63,8 +63,9 @@ final class AppModel: ObservableObject {
     private var historyCleanupTimer: AnyCancellable?
 
     init() throws {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("com.forel.app", isDirectory: true)
+        let appSupportRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let appSupport = appSupportRoot.appendingPathComponent("com.lab421.forel", isDirectory: true)
+        Self.migrateLegacyAppSupportDirectoryIfNeeded(root: appSupportRoot, newDirectory: appSupport)
         try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         let dbPath = appSupport.appendingPathComponent("forel.db").path
 
@@ -96,6 +97,19 @@ final class AppModel: ObservableObject {
         reloadFolders()
         startWatchingEnabledFolders()
         startHistoryCleanupTimer()
+    }
+
+    /// Forel's bundle identifier moved from `com.forel.app` (`.app` isn't a
+    /// valid reverse-DNS component on macOS) to `com.lab421.forel`. Existing
+    /// users have their database and settings under the old identifier's
+    /// Application Support folder; move that folder to the new location so
+    /// they don't lose rules or history. No-ops once migrated, and never
+    /// overwrites a new-location folder that already exists.
+    private static func migrateLegacyAppSupportDirectoryIfNeeded(root: URL, newDirectory: URL) {
+        let legacyDirectory = root.appendingPathComponent("com.forel.app", isDirectory: true)
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: legacyDirectory.path), !fm.fileExists(atPath: newDirectory.path) else { return }
+        try? fm.moveItem(at: legacyDirectory, to: newDirectory)
     }
 
     func applyDockIconPreference(keepingWindowsVisible: Bool = false) {

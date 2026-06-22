@@ -16,6 +16,7 @@ All notable changes to Forel are documented here. Format loosely follows
 - Activity and Dry Run text (file paths, messages, rule names) can now be selected and copied.
 - Import to Library now only offers Skip and Replace as conflict options (Rename removed), with Skip as the default.
 - The action kind and condition kind pickers now show SF Symbol icons and are grouped into labelled sections.
+- Forel's app identifier moved to `com.lab421.forel`. Existing rules, history, and settings carry over automatically.
 
 ### Fixed
 - The watcher now also ignores Microsoft Office lock files (`~$...`) and macOS resource-fork files (`._...`), in addition to `.DS_Store`.
