@@ -31,6 +31,7 @@ repo_root="$script_dir"
 build_root="$repo_root/.build"
 dist_dir="$repo_root/dist/release"
 bundle_root="${TMPDIR:-/tmp}/Forel.app"
+dev_bundle="${TMPDIR:-/tmp}/Forel-dev.app"
 staging_root="${TMPDIR:-/tmp}/Forel-dmg"
 icon_source="$repo_root/Sources/ForelApp/Resources/AppIcon.png"
 iconset_dir="${TMPDIR:-/tmp}/Forel.iconset"
@@ -48,6 +49,77 @@ generate_icns() {
   done
 
   iconutil -c icns "$iconset_dir" -o "$icns_path" >/dev/null
+}
+
+# Copies the built binary (+ resource bundle, if any) for $config ("debug" or
+# "release") into a fresh "$dest_app/Contents/{MacOS,Resources}". Shared by
+# `dev` and `package` so the two don't drift out of sync.
+assemble_app_bundle() {
+  local config="$1" dest_app="$2"
+  local binary_path resource_bundle contents_dir macos_dir resources_dir
+
+  binary_path="$(find "$build_root" -type f -path "*/$config/ForelApp" -print -quit)"
+  if [[ -z "$binary_path" ]]; then
+    echo "Could not find ForelApp in .build after swift build" >&2
+    exit 1
+  fi
+  resource_bundle="$(find "$build_root" -type d -path "*/$config/*_ForelApp.bundle" -print -quit)"
+
+  contents_dir="$dest_app/Contents"
+  macos_dir="$contents_dir/MacOS"
+  resources_dir="$contents_dir/Resources"
+  rm -rf "$dest_app"
+  mkdir -p "$macos_dir" "$resources_dir"
+
+  cp "$binary_path" "$macos_dir/ForelApp"
+  chmod +x "$macos_dir/ForelApp"
+  if [[ -n "$resource_bundle" ]]; then
+    cp -R "$resource_bundle" "$resources_dir/"
+  fi
+}
+
+# Writes Info.plist into $1, with $2 as both CFBundleShortVersionString and
+# CFBundleVersion, plus any extra keys (already-indented <key>/<value> XML)
+# passed as $3. Shared by `dev` and `package`, which each pass their own
+# extras (dev needs Automation's usage string but no Dock icon/category;
+# package is the reverse) on top of the identical boilerplate.
+write_info_plist() {
+  local contents_dir="$1" version_number="$2" extra_keys="${3:-}"
+  cat > "$contents_dir/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>Forel</string>
+  <key>CFBundleExecutable</key>
+  <string>ForelApp</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.forel.app</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>Forel</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>${version_number}</string>
+  <key>CFBundleVersion</key>
+  <string>${version_number}</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>Forel can import images and videos into your Photos library as part of automated rules.</string>
+${extra_keys}
+</dict>
+</plist>
+EOF
 }
 
 command="${1:-release}"
@@ -70,7 +142,26 @@ version="${2:-}"
 case "$command" in
   dev)
     cd "$repo_root"
-    swift run ForelApp
+    # Build and run from inside a debug .app bundle rather than the bare
+    # `swift run` binary. macOS attributes TCC checks (Photos, Automation) to
+    # the bundle identity declared in Info.plist; an unbundled binary has none,
+    # so those checks get misattributed to whatever launched it (e.g. the
+    # terminal you're using) instead of Forel, making them unreliable to test.
+    swift build
+
+    assemble_app_bundle "debug" "$dev_bundle"
+    contents_dir="$dev_bundle/Contents"
+    macos_dir="$contents_dir/MacOS"
+
+    write_info_plist "$contents_dir" "0.0.0-dev" '  <key>NSAppleEventsUsageDescription</key>
+  <string>Forel uses automation to add files to the Music and TV libraries as part of automated rules.</string>'
+
+    # Ad-hoc sign so TCC has a stable bundle identity to attach grants to.
+    codesign --force --deep --sign - "$dev_bundle" >/dev/null 2>&1
+    # Exec the binary inside the bundle (not `open`) so stdout/stderr stay
+    # attached to this terminal while macOS still reads the adjacent
+    # Info.plist for the bundle identity TCC checks need.
+    exec "$macos_dir/ForelApp"
     ;;
 
   build)
@@ -120,65 +211,13 @@ case "$command" in
       generate_icns
     fi
 
-    binary_path="$(find "$build_root" -type f -path "*/release/ForelApp" -print -quit)"
-    if [[ -z "$binary_path" ]]; then
-      echo "Could not find ForelApp in .build after swift build" >&2
-      exit 1
-    fi
-
-    resource_bundle="$(find "$build_root" -type d -name "*_ForelApp.bundle" -print -quit)"
+    assemble_app_bundle "release" "$bundle_root"
     contents_dir="$bundle_root/Contents"
-    macos_dir="$contents_dir/MacOS"
-    resources_dir="$contents_dir/Resources"
 
-    rm -rf "$bundle_root"
-    mkdir -p "$macos_dir" "$resources_dir"
-
-    cp "$binary_path" "$macos_dir/ForelApp"
-    chmod +x "$macos_dir/ForelApp"
-
-    if [[ -n "$resource_bundle" ]]; then
-      cp -R "$resource_bundle" "$resources_dir/"
-    fi
-
-    cat > "$contents_dir/Info.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key>
-  <string>en</string>
-  <key>CFBundleDisplayName</key>
+    write_info_plist "$contents_dir" "$version_number" '  <key>CFBundleIconFile</key>
   <string>Forel</string>
-  <key>CFBundleExecutable</key>
-  <string>ForelApp</string>
-  <key>CFBundleIconFile</key>
-  <string>Forel</string>
-  <key>CFBundleIdentifier</key>
-  <string>com.forel.app</string>
-  <key>CFBundleInfoDictionaryVersion</key>
-  <string>6.0</string>
-  <key>CFBundleName</key>
-  <string>Forel</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>${version_number}</string>
-  <key>CFBundleVersion</key>
-  <string>${version_number}</string>
   <key>LSApplicationCategoryType</key>
-  <string>public.app-category.productivity</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>14.0</string>
-  <key>LSUIElement</key>
-  <true/>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-  <key>NSPhotoLibraryUsageDescription</key>
-  <string>Forel can import images and videos into your Photos library as part of automated rules.</string>
-</dict>
-</plist>
-EOF
+  <string>public.app-category.productivity</string>'
 
     mkdir -p "$dist_dir"
     rm -rf "$dist_dir/Forel.app"

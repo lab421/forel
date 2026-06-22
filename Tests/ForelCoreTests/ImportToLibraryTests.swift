@@ -141,6 +141,21 @@ import Photos
         #expect(ActionExecutor.musicTVSizeAndNameCheck(path: "/nonexistent/path/song.mp3", onMatch: "return true") == nil)
     }
 
+    // Pins down a fourth bug found in manual testing: the Automation
+    // permission probe used `tell application "X" to get name`, but
+    // `name`/`version` are part of every scriptable app's Required Suite,
+    // which macOS answers without enforcing Automation consent at all — so
+    // the check always reported "granted" regardless of the real grant,
+    // confirmed by it showing granted right after resetting permissions.
+    // `count of tracks` reads real library data, the same class of event the
+    // actual import sends, so it's gated identically.
+    @Test func automationProbeScriptReadsRealDataNotJustRequiredSuiteMetadata() {
+        let script = ActionExecutor.automationProbeScript(app: "Music")
+        #expect(!script.contains("get name"))
+        #expect(script.contains("count of tracks"))
+        #expect(script.contains("\"Music\""))
+    }
+
     #if canImport(Photos)
     @Test func photoFetchPredicateFiltersByMediaTypeNeverByFilename() {
         for isVideo in [true, false] {

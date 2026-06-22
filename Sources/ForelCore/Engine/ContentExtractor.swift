@@ -487,13 +487,17 @@ public enum ContentExtractor {
     /// by image and scanned-PDF extraction. Times out after 30 seconds to avoid
     /// hanging the caller when the Vision framework is unresponsive.
     private static func recognizeText(in cgImage: CGImage) -> String? {
-        let request = VNRecognizeTextRequest()
+        nonisolated(unsafe) let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        nonisolated(unsafe) let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
 
         let semaphore = DispatchSemaphore(value: 0)
-        var resultText: String?
+        // Safe despite the `unsafe` in the name: the semaphore wait below
+        // blocks until the background closure signals, so there's no actual
+        // concurrent access — just the compiler unable to see that VNRequest
+        // types aren't Sendable for a reason that applies here.
+        nonisolated(unsafe) var resultText: String?
         DispatchQueue.global(qos: .userInitiated).async {
             guard (try? handler.perform([request])) != nil, let observations = request.results else {
                 semaphore.signal()

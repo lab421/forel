@@ -400,8 +400,9 @@ public enum ActionExecutor {
     }
 
     /// Whether the given app already has a running process, checked via System
-    /// Events so we don't launch the app itself just to ask.
-    private static func isAppRunning(_ app: String) -> Bool {
+    /// Events so we don't launch the app itself just to ask. Shared with
+    /// `PermissionsChecker`, which surfaces the same check in Settings.
+    static func isAppRunning(_ app: String) -> Bool {
         let script = "tell application \"System Events\" to (exists (process \"\(appleScriptEscapePath(app))\"))"
         return (try? runAppleScript(script)) == "true"
     }
@@ -431,7 +432,7 @@ public enum ActionExecutor {
     // MARK: - AppleScript helpers
 
     @discardableResult
-    private static func runAppleScript(_ script: String) throws -> String {
+    static func runAppleScript(_ script: String) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", script]
@@ -450,7 +451,7 @@ public enum ActionExecutor {
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    private static func appleScriptEscapePath(_ path: String) -> String {
+    static func appleScriptEscapePath(_ path: String) -> String {
         path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
     }
 
@@ -707,22 +708,32 @@ public enum ActionExecutor {
     }
 
     /// `tell application "X" to ...` launches the app if it isn't already
-    /// running, even for a no-op command like `get name`. When `launchIfNeeded`
+    /// running, even for the no-op probe command below. When `launchIfNeeded`
     /// is `false` (Dry Run) and the app isn't running, we skip the live check
     /// rather than launch it just to preview a rule — Run Now will surface a
     /// real denial if automation access turns out to be missing.
     private static func ensureMusicTVAccess(libraryType: LibraryType, launchIfNeeded: Bool) -> String? {
         let appName = libraryType == .music ? "Music" : "TV"
         if !launchIfNeeded && !isAppRunning(appName) { return nil }
-        let script = """
-        tell application "\(appName)" to get name
-        """
         do {
-            try runAppleScript(script)
+            try runAppleScript(automationProbeScript(app: appName))
             return nil
         } catch {
             return "automation access not granted. Allow Forel to control \(appName) in System Settings > Privacy & Security > Automation."
         }
+    }
+
+    /// AppleScript used to test whether Forel actually has Automation
+    /// permission for `app`. `tell application "X" to get name` is *not*
+    /// enough — `name`/`version` are part of every scriptable app's Required
+    /// Suite, which macOS answers without enforcing Automation consent at all
+    /// (they're treated as harmless metadata, not user data), so that probe
+    /// always reports success regardless of the real grant. `count of tracks`
+    /// reads actual library data and is the same class of Apple Event the real
+    /// import (`add theFile`) sends, so it's gated identically. Shared with
+    /// `PermissionsChecker`, which surfaces the same probe in Settings.
+    static func automationProbeScript(app: String) -> String {
+        "tell application \"\(app)\" to count of tracks"
     }
 
     /// Reverses a previously executed action using its stored `Undo`.

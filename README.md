@@ -4,7 +4,7 @@
 
 # Forel
 
-**The Hazel alternative for macOS. Free and open source.**
+**The Hazel alternative for macOS. Open source and privacy-focused.**
 
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&logo=apple)](https://www.apple.com/macos/)
 [![Swift 6](https://img.shields.io/badge/Swift-6-orange?style=flat-square&logo=swift)](https://www.swift.org)
@@ -22,7 +22,7 @@ This project is built and maintained for free, on personal time. A ⭐ on the re
 </div>
 
 
-> **Free, open source, and 100% on-device, local, no account, no subscription, no telemetry.**
+> **Open source, 100% on-device, local-first, no account, no telemetry.**
 
 **Install with [Homebrew](https://brew.sh):**
 
@@ -32,7 +32,7 @@ brew install --cask lab421/tap/forel
 
 ## Why Forel
 
-Forel is a free, open-source, community-driven take on folder automation for macOS.
+Forel is an open-source, community-driven take on folder automation for macOS.
 
 Define rules once watch folders, match files, and move, rename, tag, or label them automatically then let Forel run quietly in your menu bar.
 
@@ -52,13 +52,13 @@ Downloads/
 
 Set up a rule once. Forel handles the rest — even when the window is closed.
 
-And everything happens **on your Mac**. No cloud. No API keys. No subscription. Your files never leave your machine.
+And everything happens **on your Mac**. No cloud. No API keys. Your files never leave your machine.
 
 ---
 
 ## Highlights
 
-- **Free & open source** — no license fee, no subscription, GPLv3-licensed.
+- **Open source (GPLv3)** — source code available, community-driven development.
 - **100% on-device** — no cloud, no API keys, no account. Your files never leave your Mac.
 - **Rule-based** — match by name, extension, kind, size, date, tags, or color label.
 - **Native menu-bar app** — runs quietly in the background; toggle rules without opening the window.

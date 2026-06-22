@@ -54,6 +54,8 @@ struct SettingsView: View {
                         .padding(.horizontal, 14)
                     }
 
+                    PermissionsSection()
+
                     SectionLabel(title: "Updates")
                     if updater.updateAvailable {
                         UpdateAvailableBanner(
