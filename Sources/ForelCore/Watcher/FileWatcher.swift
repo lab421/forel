@@ -100,7 +100,7 @@ public final class FileWatcher: @unchecked Sendable {
             let isCreateOrRename = flag & UInt32(kFSEventStreamEventFlagItemCreated) != 0
                 || flag & UInt32(kFSEventStreamEventFlagItemRenamed) != 0
             guard isCreateOrRename else { continue }
-            if (path as NSString).lastPathComponent == ".DS_Store" { continue }
+            if SystemFileFilter.isExcluded((path as NSString).lastPathComponent) { continue }
             handler(path)
         }
     }

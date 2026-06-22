@@ -13,7 +13,7 @@
 
 <br/>
 
-This project is built and maintained for free, on personal time. A ⭐ on the repo is the simplest way to say thanks and helps Forel get discovered by others who might need it. For anyone who wants to go further, you can support the work with a [buy me a coffee](https://buymeacoffee.com/lionelguic9) ☕ 
+This project is built and maintained on my personal time. A ⭐ on the repo is the simplest way to say thanks and helps Forel get discovered by others who might need it. For anyone who wants to go further, you can support the work with a [buy me a coffee](https://buymeacoffee.com/lionelguic9) ☕ 
 
 
 

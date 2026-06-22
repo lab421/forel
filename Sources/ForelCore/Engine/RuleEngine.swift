@@ -321,6 +321,7 @@ public enum RuleEngine {
     private static func walkEntriesInner(root: String, maxDepth: Int?, depth: Int, visit: (ScopedPath) -> Void) {
         guard let children = try? FileManager.default.contentsOfDirectory(atPath: root) else { return }
         for child in children.sorted() {
+            if SystemFileFilter.isExcluded(child) { continue }
             let childPath = (root as NSString).appendingPathComponent(child)
             visit(ScopedPath(path: childPath, depth: depth))
 

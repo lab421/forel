@@ -67,10 +67,15 @@ logic — only Dry Run skips `execute()`. `previewFile()` and `run()` both use a
 - Rules, conditions, actions, and history are stored in SQLite via the in-house `Database` wrapper.
 - The rule engine lives in `Sources/ForelCore/Engine`.
 - UI changes that affect persistence should be backed by tests in `Tests/ForelCoreTests`.
-- Rule behavior changes must be checked across all three execution paths:
-  Dry Run preview, manual Run Now, and automatic watcher execution. Scope,
-  recursion depth, matching, and action-chain changes should include tests or
-  explicit verification that these paths stay consistent.
+- Any change to rule behavior **or** to core file-system-touching internals —
+  folder enumeration (`RuleEngine.walkEntriesInner`), file filtering/exclusion
+  (`SystemFileFilter`), watcher event handling (`FileWatcher`), action
+  execution, scope, recursion depth, matching, action chains — must be
+  checked across all three execution paths: Dry Run preview, manual Run Now,
+  and automatic watcher execution. These share most of their underlying code,
+  but not all of it, so it's easy to fix or change something on one path
+  (e.g. the watcher) and forget the others (e.g. Dry Run's folder scan).
+  Include tests or explicit verification that all three stay consistent.
 
 ## Build and test commands
 

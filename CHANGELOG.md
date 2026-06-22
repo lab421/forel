@@ -17,6 +17,9 @@ All notable changes to Forel are documented here. Format loosely follows
 - Import to Library now only offers Skip and Replace as conflict options (Rename removed), with Skip as the default.
 - The action kind and condition kind pickers now show SF Symbol icons and are grouped into labelled sections.
 
+### Fixed
+- The watcher now also ignores Microsoft Office lock files (`~$...`) and macOS resource-fork files (`._...`), in addition to `.DS_Store`.
+
 ## [1.0.0] - 2026-06-21
 
 🎉🍾 **Forel is exiting beta.** This release marks the transition to a stable. Faster, safer, and ready for everyday use.

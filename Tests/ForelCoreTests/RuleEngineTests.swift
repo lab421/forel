@@ -264,6 +264,18 @@ import Foundation
         #expect(entries.allSatisfy { $0.depth == 0 })
     }
 
+    @Test func walkEntriesSkipsMacOSAndOfficeSystemFiles() throws {
+        let dir = TempDir()
+        let real = dir.file("report.pdf")
+        _ = dir.file(".DS_Store")
+        _ = dir.file("._report.pdf") // AppleDouble resource fork
+        _ = dir.file("~$budget.docx") // Office lock file for an open document
+
+        let entries = RuleEngine.walkEntries(root: dir.path, maxDepth: 0)
+
+        #expect(entries.map(\.path) == [real])
+    }
+
     @Test func evaluateFileExecutesMatchingRulesAndSkipsNonMatchingRules() throws {
         let dir = TempDir()
         let file = dir.file("photo.jpg", contents: "image")
