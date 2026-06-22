@@ -444,6 +444,8 @@ private struct RuleDetails: View {
             let library = LibraryType(rawValue: action.params[ActionParam.libraryType]?.stringValue ?? "")?.label ?? "Library"
             let playlist = action.params[ActionParam.targetPlaylist]?.stringValue ?? ""
             return ("import to \(library)", playlist.isEmpty ? nil : playlist)
+        case .uncompress:
+            return ("uncompress ZIP", MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
         }
     }
 

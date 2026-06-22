@@ -130,6 +130,7 @@ public enum ActionKind: String, Codable, Equatable, Sendable {
     case runScript = "run_script"
     case runShortcut = "run_shortcut"
     case importToLibrary = "import_to_library"
+    case uncompress
 
     public init(dbValue: String) {
         self = ActionKind(rawValue: dbValue) ?? .moveToFolder

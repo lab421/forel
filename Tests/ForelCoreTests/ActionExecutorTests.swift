@@ -65,6 +65,61 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: (dir.path as NSString).appendingPathComponent("report-archived.txt.txt")))
     }
 
+    @Test func uncompressZipExtractsSingleRootItemAndMovesArchiveAway() throws {
+        let dir = TempDir()
+        let staging = dir.dir("staging")
+        try "hello".write(toFile: (staging as NSString).appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
+        let zip = (dir.path as NSString).appendingPathComponent("download.zip")
+        try makeZip(in: staging, items: ["report.txt"], destination: zip)
+        try FileManager.default.removeItem(atPath: staging)
+
+        let action = makeAction(.uncompress, .object([:]))
+        let plan = try ActionExecutor.plan(action, path: zip)
+        #expect(plan.targetPath == (dir.path as NSString).appendingPathComponent("report.txt"))
+        #expect(plan.finalPath == plan.targetPath)
+
+        let applied = try ActionExecutor.execute(action, path: zip)
+
+        #expect(applied.newPath == (dir.path as NSString).appendingPathComponent("report.txt"))
+        #expect(try String(contentsOfFile: applied.newPath, encoding: .utf8) == "hello")
+        #expect(!FileManager.default.fileExists(atPath: zip))
+        #expect(applied.undo == .none)
+    }
+
+    @Test func uncompressZipWithMultipleRootItemsExtractsIntoWrapperFolder() throws {
+        let dir = TempDir()
+        let staging = dir.dir("staging")
+        try "a".write(toFile: (staging as NSString).appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try "b".write(toFile: (staging as NSString).appendingPathComponent("b.txt"), atomically: true, encoding: .utf8)
+        let zip = (dir.path as NSString).appendingPathComponent("bundle.zip")
+        try makeZip(in: staging, items: ["a.txt", "b.txt"], destination: zip)
+        try FileManager.default.removeItem(atPath: staging)
+
+        let applied = try ActionExecutor.execute(makeAction(.uncompress, .object([:])), path: zip)
+
+        #expect(applied.newPath == (dir.path as NSString).appendingPathComponent("bundle"))
+        #expect(FileManager.default.fileExists(atPath: (applied.newPath as NSString).appendingPathComponent("a.txt")))
+        #expect(FileManager.default.fileExists(atPath: (applied.newPath as NSString).appendingPathComponent("b.txt")))
+        #expect(!FileManager.default.fileExists(atPath: zip))
+    }
+
+    @Test func uncompressSkipConflictPlansAndDoesNotExtract() throws {
+        let dir = TempDir()
+        _ = dir.file("report.txt", contents: "existing")
+        let staging = dir.dir("staging")
+        try "new".write(toFile: (staging as NSString).appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
+        let zip = (dir.path as NSString).appendingPathComponent("download.zip")
+        try makeZip(in: staging, items: ["report.txt"], destination: zip)
+        try FileManager.default.removeItem(atPath: staging)
+
+        let action = makeAction(.uncompress, .object([ActionParam.onConflict: .string(MoveConflictResolution.skip.rawValue)]))
+        let plan = try ActionExecutor.plan(action, path: zip)
+
+        #expect(plan.status == .wouldSkip)
+        #expect(plan.finalPath == zip)
+        #expect(try String(contentsOfFile: (dir.path as NSString).appendingPathComponent("report.txt"), encoding: .utf8) == "existing")
+    }
+
     @Test func revertMoveRestoresFileToOriginalLocation() throws {
         let dir = TempDir()
         let file = dir.file("note.txt", contents: "hello")
@@ -297,5 +352,18 @@ import Foundation
             "run", "Archive", "--input-path", "/tmp/a.txt",
         ])
         #expect(ShortcutRunner.arguments(name: "Archive", input: .none) == ["run", "Archive"])
+    }
+}
+
+func makeZip(in directory: String, items: [String], destination: String) throws {
+    let zip = Process()
+    zip.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+    zip.currentDirectoryURL = URL(fileURLWithPath: directory)
+    zip.arguments = ["-r", "-q", destination] + items
+    zip.standardError = FileHandle.nullDevice
+    try zip.run()
+    zip.waitUntilExit()
+    if zip.terminationStatus != 0 {
+        throw ActionError("zip exited with status \(zip.terminationStatus)")
     }
 }

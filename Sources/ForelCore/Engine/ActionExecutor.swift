@@ -16,6 +16,7 @@
 
 import Foundation
 import UniformTypeIdentifiers
+import ZIPFoundation
 #if canImport(Photos)
 import Photos
 #endif
@@ -204,6 +205,8 @@ public enum ActionExecutor {
             return try runShortcut(action, path: path)
         case .importToLibrary:
             return try importToLibrary(action, path: path)
+        case .uncompress:
+            return try uncompress(action, path: path)
         }
     }
 
@@ -235,6 +238,53 @@ public enum ActionExecutor {
         let dest = try resolveDestination(naiveDest: naiveDest, dir: destDir, fileName: fileName, resolution: conflictResolution(action))
         try FileManager.default.copyItem(atPath: path, toPath: dest)
         return Applied(newPath: path, undo: .none, copiedPath: dest)
+    }
+
+    private struct ZipExtractionPlan {
+        let target: String
+        let stagingParent: String
+        let topLevelItems: [String]
+        let usesWrapperFolder: Bool
+        let conflicts: Bool
+        let resolution: MoveConflictResolution
+    }
+
+    private static func uncompress(_ action: Action, path: String) throws -> Applied {
+        let plan = try zipExtractionPlan(action, path: path)
+        if plan.conflicts, plan.resolution == .skip {
+            throw ActionError("Skip — a file already exists at \(plan.target)")
+        }
+
+        let fm = FileManager.default
+        let archiveURL = URL(fileURLWithPath: path)
+        let tempDir = (plan.stagingParent as NSString).appendingPathComponent(".forel-uncompress-\(UUID().uuidString)")
+        try fm.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(atPath: tempDir) }
+
+        do {
+            try fm.unzipItem(at: archiveURL, to: URL(fileURLWithPath: tempDir))
+        } catch {
+            throw ActionError("Could not uncompress ZIP archive: \(error)")
+        }
+
+        if plan.conflicts, plan.resolution == .replace {
+            _ = try moveIntoDir(path: plan.target, destDir: try trashDir())
+        }
+
+        if plan.usesWrapperFolder {
+            try fm.createDirectory(atPath: plan.target, withIntermediateDirectories: true)
+            for item in plan.topLevelItems {
+                let extracted = (tempDir as NSString).appendingPathComponent(item)
+                let destination = (plan.target as NSString).appendingPathComponent(item)
+                try fm.moveItem(atPath: extracted, toPath: destination)
+            }
+        } else if let item = plan.topLevelItems.first {
+            let extracted = (tempDir as NSString).appendingPathComponent(item)
+            try fm.moveItem(atPath: extracted, toPath: plan.target)
+        }
+
+        _ = try moveIntoDir(path: path, destDir: try trashDir())
+        return Applied(newPath: plan.target, undo: .none)
     }
 
     /// Resolves the actual path a move/copy should write to, given the
@@ -1028,6 +1078,36 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .uncompress:
+            let extraction = try zipExtractionPlan(action, path: path)
+            if extraction.conflicts, extraction.resolution == .skip {
+                return ActionPlan(
+                    kind: action.kind,
+                    description: "Skip — a file already exists at \(extraction.target)",
+                    sourcePath: path,
+                    targetPath: extraction.target,
+                    status: .wouldSkip,
+                    finalPath: path,
+                    copiedPath: nil,
+                    isTerminal: false
+                )
+            }
+
+            let suffix = extraction.conflicts && extraction.resolution == .replace
+                ? " (replacing existing file)"
+                : extraction.conflicts && extraction.resolution == .rename
+                    ? " (renamed to avoid an existing file)"
+                    : ""
+            return ActionPlan(
+                kind: action.kind,
+                description: "Uncompress to \(extraction.target)\(suffix)",
+                sourcePath: path,
+                targetPath: extraction.target,
+                status: .wouldRun,
+                finalPath: extraction.target,
+                copiedPath: nil,
+                isTerminal: false
+            )
         }
     }
 
@@ -1046,7 +1126,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .importToLibrary:
+        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .importToLibrary, .uncompress:
             return true
         }
     }
@@ -1091,6 +1171,68 @@ public enum ActionExecutor {
 
     private static func conflictStatus(_ target: String) -> DryRunStatus {
         FileManager.default.fileExists(atPath: target) ? .blockedByConflict : .wouldRun
+    }
+
+    private static func zipExtractionPlan(_ action: Action, path: String) throws -> ZipExtractionPlan {
+        let url = URL(fileURLWithPath: path)
+        guard url.pathExtension.lowercased() == "zip" else {
+            throw ActionError("Only ZIP archives can be uncompressed right now.")
+        }
+
+        let topLevelItems = try zipTopLevelItems(path: path)
+        guard !topLevelItems.isEmpty else {
+            throw ActionError("ZIP archive is empty.")
+        }
+
+        let parent = (path as NSString).deletingLastPathComponent
+        let resolution = conflictResolution(action)
+        let usesWrapperFolder = topLevelItems.count != 1
+        let naiveTarget: String
+        if usesWrapperFolder {
+            naiveTarget = (parent as NSString).appendingPathComponent(url.deletingPathExtension().lastPathComponent)
+        } else {
+            naiveTarget = (parent as NSString).appendingPathComponent(topLevelItems[0])
+        }
+
+        let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
+        let target: String
+        if conflicts, resolution == .rename {
+            target = uniqueDest(dir: parent, fileName: (naiveTarget as NSString).lastPathComponent)
+        } else {
+            target = naiveTarget
+        }
+
+        return ZipExtractionPlan(
+            target: target,
+            stagingParent: parent,
+            topLevelItems: topLevelItems,
+            usesWrapperFolder: usesWrapperFolder,
+            conflicts: conflicts,
+            resolution: resolution
+        )
+    }
+
+    private static func zipTopLevelItems(path: String) throws -> [String] {
+        let archive: Archive
+        do {
+            archive = try Archive(url: URL(fileURLWithPath: path), accessMode: .read, pathEncoding: nil)
+        } catch {
+            throw ActionError("Could not read ZIP archive: \(error)")
+        }
+
+        var items: Set<String> = []
+        for entry in archive {
+            guard let first = entry.path.split(separator: "/", omittingEmptySubsequences: true).first else {
+                continue
+            }
+            let item = String(first)
+            if item == "__MACOSX" { continue }
+            if item == "." || item == ".." {
+                throw ActionError("ZIP archive contains an invalid entry path.")
+            }
+            items.insert(item)
+        }
+        return items.sorted()
     }
 
     /// Shared by `moveToFolder`/`copyToFolder` planning: the resolved target

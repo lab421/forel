@@ -6,6 +6,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- Added an Uncompress action for ZIP archives, with conflict handling and action chaining on the extracted item.
 - Added expandable rule cards that show each rule's conditions and actions directly in the rule list.
 
 ### Changed

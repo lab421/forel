@@ -286,7 +286,7 @@ private struct ConditionRow: View {
                 .frame(width: 28)
             }
 
-            if let helpText = condition.kind.helpText {
+            if let helpText = rowHelpText {
                 Text(helpText)
                     .font(.system(size: 10))
                     .foregroundStyle(ForelTheme.secondaryText)
@@ -314,6 +314,13 @@ private struct ConditionRow: View {
         case .text:
             GlassField(placeholder: "Value", text: $condition.value)
         }
+    }
+
+    private var rowHelpText: String? {
+        if condition.kind == .kind, condition.value == "archive" {
+            return "Archive matches compressed formats such as ZIP, TAR, GZ, 7Z, RAR, XZ, ZST, TGZ, TBZ, and CAB."
+        }
+        return condition.kind.helpText
     }
 
     private var kindBinding: Binding<ConditionKind> {
@@ -777,6 +784,11 @@ private struct ActionRow: View {
                     }
                 }
             }
+        case .uncompress:
+            Text("ZIP archives only")
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .frame(minHeight: 32, alignment: .center)
         case .moveToTrash, .delete:
             Text("No parameters")
                 .font(.system(size: 11))
@@ -848,7 +860,7 @@ private struct ActionOptionsView: View {
             switch action.kind {
             case .runShortcut:
                 shortcutOptions
-            case .moveToFolder, .copyToFolder, .importToLibrary:
+            case .moveToFolder, .copyToFolder, .importToLibrary, .uncompress:
                 conflictResolutionOptions
             case .rename:
                 renameOptions
