@@ -3,7 +3,7 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.0.1] - 2026-06-22
 
 ### Added
 - Added an Import to Library action that can add files to the Music, Photos, or TV native macOS libraries. When a file is already present you can choose to skip it (leave the library untouched) or replace it (remove the existing entry before re-importing). File format compatibility is checked before each import, and importing into Photos requires granting access in System Settings.
