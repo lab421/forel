@@ -15,6 +15,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Fixed
 - Fixed incomplete browser downloads from Safari, Chrome, Firefox, and other common downloaders being treated as ready documents and moved before the download finished.
+- Fixed the automatic watcher potentially missing files when macOS reports dropped filesystem events by rescanning the affected folder while still skipping unchanged files.
 - Fixed a crash that could happen when dropping a large batch of files into a watched folder while the app window was also active (e.g. running Run Now, switching folders) — all database access from the app now goes through the same lock the watcher already used.
 
 ## [1.0.1] - 2026-06-22

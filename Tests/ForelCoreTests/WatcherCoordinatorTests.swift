@@ -72,6 +72,80 @@ import Foundation
         #expect(try db.listHistory().count == 1)
     }
 
+    @Test func rescanSubtreeProcessesMissedArrivalsAndSkipsUnchangedFiles() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("a.pdf")
+        let destination = dir.dir("PDF")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "pdf copy")
+        rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
+        rule.actions = [makeAction(.copyToFolder, .object([
+            "destination": .string(destination),
+            "on_conflict": .string("replace"),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .rescanSubtree(dir.path))
+        coordinator.handle(event: .rescanSubtree(dir.path))
+
+        let copiedPath = (destination as NSString).appendingPathComponent("a.pdf")
+        #expect(FileManager.default.fileExists(atPath: copiedPath))
+        #expect(try db.listHistory().count == 1)
+        #expect(FileManager.default.fileExists(atPath: file))
+    }
+
+    @Test func rescanSubtreeHonorsRuleDepthAndTemporaryDownloadExclusions() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        _ = dir.file("ready.pdf")
+        _ = dir.file("pending.pdf.crdownload")
+        let nested = dir.dir("Nested")
+        _ = (nested as NSString).appendingPathComponent("deep.pdf")
+        try "deep".write(toFile: (nested as NSString).appendingPathComponent("deep.pdf"), atomically: true, encoding: .utf8)
+        let destination = dir.dir("PDF")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "current folder pdf copy", recursionDepth: 0)
+        rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
+        rule.actions = [makeAction(.copyToFolder, .object([
+            "destination": .string(destination),
+            "on_conflict": .string("rename"),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .rescanSubtree(dir.path))
+
+        #expect(FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("ready.pdf")))
+        #expect(!FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("pending.pdf.crdownload")))
+        #expect(!FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("deep.pdf")))
+        #expect(try db.listHistory().count == 1)
+    }
+
+    @Test func rescanSubtreeFromNestedDirectoryDoesNotEscapeRuleDepth() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let nested = dir.dir("Nested")
+        let nestedFile = (nested as NSString).appendingPathComponent("deep.pdf")
+        try "deep".write(toFile: nestedFile, atomically: true, encoding: .utf8)
+        let destination = dir.dir("PDF")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "current folder pdf copy", recursionDepth: 0)
+        rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
+        rule.actions = [makeAction(.copyToFolder, .object(["destination": .string(destination)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .rescanSubtree(nested))
+
+        #expect(!FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("deep.pdf")))
+        #expect(try db.listHistory().isEmpty)
+    }
+
     /// A duplicate/coalesced FSEvent for the *original* path of a file the
     /// watcher just successfully moved away must not be replanned and fail
     /// with a noisy "doesn't exist" entry — there's nothing left to evaluate.

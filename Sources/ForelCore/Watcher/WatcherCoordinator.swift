@@ -30,13 +30,22 @@ public final class WatcherCoordinator: @unchecked Sendable {
         var watcherRef: FileWatcher!
         watcherRef = FileWatcher(onEvent: { _ in })
         self.watcher = watcherRef
-        self.watcher.replaceHandler { [weak self] path in
-            self?.handle(path: path)
+        self.watcher.replaceHandler { [weak self] event in
+            self?.handle(event: event)
         }
     }
 
     public func add(_ path: String) { watcher.add(path) }
     public func remove(_ path: String) { watcher.remove(path) }
+
+    func handle(event: FileWatcherEvent) {
+        switch event {
+        case .pathArrived(let path):
+            handle(path: path)
+        case .rescanSubtree(let path):
+            handleRescanSubtree(root: path)
+        }
+    }
 
     func handle(path: String) {
         // A duplicate/coalesced FSEvent for a path a prior call already
@@ -113,5 +122,58 @@ public final class WatcherCoordinator: @unchecked Sendable {
         for path in paths {
             recordEvaluatedState(path)
         }
+    }
+
+    private func handleRescanSubtree(root: String) {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir) else { return }
+        guard isDir.boolValue else {
+            handle(path: root)
+            return
+        }
+
+        guard let (folder, rules) = db.withLock({ db -> (WatchedFolder, [Rule])? in
+            guard let folder = try? db.folderForPath(root) else { return nil }
+            let rules = (try? db.listRules(folderId: folder.id)) ?? []
+            return (folder, rules)
+        }) else { return }
+        guard let rootDepth = RuleEngine.pathDepth(root: folder.path, path: root) else { return }
+
+        let maxDepth = RuleEngine.maxRuleDepth(rules)
+        if root != folder.path, !SystemFileFilter.isExcluded((root as NSString).lastPathComponent) {
+            handle(path: root, depth: rootDepth, rules: rules, watchedRoot: folder.path)
+        }
+
+        let remainingDepth: Int?
+        if let maxDepth {
+            let rootChildDepth = root == folder.path ? 0 : rootDepth + 1
+            guard rootChildDepth <= maxDepth else { return }
+            remainingDepth = maxDepth - rootChildDepth
+        } else {
+            remainingDepth = nil
+        }
+
+        RuleEngine.forEachEntry(root: root, maxDepth: remainingDepth) { entry in
+            guard let depth = RuleEngine.pathDepth(root: folder.path, path: entry.path) else { return }
+            handle(path: entry.path, depth: depth, rules: rules, watchedRoot: folder.path)
+        }
+    }
+
+    private func handle(path: String, depth: Int, rules: [Rule], watchedRoot: String) {
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        guard hasPathChangedSinceLastEvaluation(path) else { return }
+
+        let batchId = UUID().uuidString
+        let (matched, history) = RuleEngine.run(path: path, depth: depth, rules: rules, batchId: batchId, root: watchedRoot)
+        for ruleName in matched {
+            onRuleMatched?(ruleName, path)
+        }
+        if !history.isEmpty {
+            db.withLock { db in
+                try? db.insertHistoryEntries(history)
+            }
+            recordEvaluatedResultStates(history)
+        }
+        recordEvaluatedState(path)
     }
 }

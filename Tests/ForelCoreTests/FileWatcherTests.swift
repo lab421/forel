@@ -22,16 +22,28 @@ import Testing
     @Test func reportsCreatedAndRenamedArrivals() {
         #expect(FileWatcher.shouldReportEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemCreated)))
         #expect(FileWatcher.shouldReportEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemRenamed)))
+        #expect(FileWatcher.reportedEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemCreated)) == .pathArrived("/tmp/report.pdf"))
+        #expect(FileWatcher.reportedEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemRenamed)) == .pathArrived("/tmp/report.pdf"))
     }
 
     @Test func doesNotReportExistingFileMetadataOrContentChanges() {
         #expect(!FileWatcher.shouldReportEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemModified)))
         #expect(!FileWatcher.shouldReportEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemXattrMod)))
         #expect(!FileWatcher.shouldReportEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemInodeMetaMod)))
+        #expect(FileWatcher.reportedEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemModified)) == nil)
+        #expect(FileWatcher.reportedEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemXattrMod)) == nil)
+        #expect(FileWatcher.reportedEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemInodeMetaMod)) == nil)
+    }
+
+    @Test func reportsDroppedEventRecoveryAsSubtreeRescan() {
+        #expect(FileWatcher.reportedEvent(path: "/tmp/Downloads", flags: UInt32(kFSEventStreamEventFlagMustScanSubDirs)) == .rescanSubtree("/tmp/Downloads"))
+        #expect(FileWatcher.reportedEvent(path: "/tmp/Downloads", flags: UInt32(kFSEventStreamEventFlagUserDropped)) == .rescanSubtree("/tmp/Downloads"))
+        #expect(FileWatcher.reportedEvent(path: "/tmp/Downloads", flags: UInt32(kFSEventStreamEventFlagKernelDropped)) == .rescanSubtree("/tmp/Downloads"))
     }
 
     @Test func doesNotReportExcludedTemporaryDownloadArrivals() {
         #expect(!FileWatcher.shouldReportEvent(path: "/tmp/report.pdf.download", flags: UInt32(kFSEventStreamEventFlagItemCreated)))
         #expect(!FileWatcher.shouldReportEvent(path: "/tmp/report.pdf.crdownload", flags: UInt32(kFSEventStreamEventFlagItemRenamed)))
+        #expect(FileWatcher.reportedEvent(path: "/tmp/report.pdf.download", flags: UInt32(kFSEventStreamEventFlagMustScanSubDirs)) == nil)
     }
 }

@@ -17,15 +17,21 @@
 import CoreServices
 import Foundation
 
+public enum FileWatcherEvent: Equatable, Sendable {
+    case pathArrived(String)
+    case rescanSubtree(String)
+}
+
 /// Native FSEvents-based replacement for the Rust `notify` watcher. Watches a
-/// dynamic set of folder paths recursively and reports newly arrived file paths:
-/// paths created in, renamed inside, or moved into a watched folder. The
-/// underlying `FSEventStream` cannot have its
+/// dynamic set of folder paths recursively. It normally reports newly arrived
+/// paths (created in, renamed inside, or moved into a watched folder). If
+/// FSEvents says detailed events were dropped, it reports a subtree rescan
+/// request instead. The underlying `FSEventStream` cannot have its
 /// path set mutated in place, so adding/removing a folder recreates the stream
 /// with the updated set — same externally-visible behaviour as the old
 /// `WatcherCmd::Add`/`Remove` channel.
 public final class FileWatcher: @unchecked Sendable {
-    public typealias EventHandler = @Sendable (_ path: String) -> Void
+    public typealias EventHandler = @Sendable (_ event: FileWatcherEvent) -> Void
 
     private var onEvent: EventHandler
     private let lock = NSLock()
@@ -107,15 +113,32 @@ public final class FileWatcher: @unchecked Sendable {
         FSEventStreamRelease(current)
     }
 
-    /// Forel's automatic watcher is arrival-oriented: it starts rules when a
-    /// path appears in the watched tree, not every time an existing file is
-    /// edited. Duplicate/coalesced create/rename events are handled downstream
-    /// by `WatcherCoordinator`'s fingerprint cache.
+    /// Forel's automatic watcher is arrival-oriented in normal operation: it
+    /// starts rules when a path appears in the watched tree, not every time an
+    /// existing file is edited. Duplicate/coalesced create/rename events are
+    /// handled downstream by `WatcherCoordinator`'s fingerprint cache.
     ///
     /// Do not add `ItemModified`/`ItemXattrMod` here casually. Those would make
     /// Forel re-evaluate existing files whenever content, tags, labels, or
     /// download metadata change, which is a broader product behavior than
     /// "run rules for newly arrived files".
+    ///
+    /// `MustScanSubDirs`/dropped events are different: they mean FSEvents lost
+    /// detail and the safe recovery is to rescan the affected subtree. The
+    /// coordinator still skips unchanged paths using its fingerprint cache.
+    static func reportedEvent(path: String, flags: FSEventStreamEventFlags) -> FileWatcherEvent? {
+        if SystemFileFilter.isExcluded((path as NSString).lastPathComponent) { return nil }
+
+        let needsRescan = flags & UInt32(kFSEventStreamEventFlagMustScanSubDirs) != 0
+            || flags & UInt32(kFSEventStreamEventFlagUserDropped) != 0
+            || flags & UInt32(kFSEventStreamEventFlagKernelDropped) != 0
+        if needsRescan {
+            return .rescanSubtree(path)
+        }
+
+        return shouldReportEvent(path: path, flags: flags) ? .pathArrived(path) : nil
+    }
+
     static func shouldReportEvent(path: String, flags: FSEventStreamEventFlags) -> Bool {
         let isArrival = flags & UInt32(kFSEventStreamEventFlagItemCreated) != 0
             || flags & UInt32(kFSEventStreamEventFlagItemRenamed) != 0
@@ -129,8 +152,8 @@ public final class FileWatcher: @unchecked Sendable {
         lock.unlock()
 
         for (index, path) in paths.enumerated() {
-            guard Self.shouldReportEvent(path: path, flags: flags[index]) else { continue }
-            handler(path)
+            guard let event = Self.reportedEvent(path: path, flags: flags[index]) else { continue }
+            handler(event)
         }
     }
 }
