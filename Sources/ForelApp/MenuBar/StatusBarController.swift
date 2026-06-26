@@ -29,6 +29,8 @@ final class StatusBarController: NSObject {
     private let updater: UpdaterManager
     private weak var window: NSWindow?
     private var popover: NSPopover?
+    private var localDismissMonitor: Any?
+    private var globalDismissMonitor: Any?
     private var pausedSubscription: AnyCancellable?
     private var updateSubscription: AnyCancellable?
 
@@ -78,11 +80,54 @@ final class StatusBarController: NSObject {
         let newPopover = NSPopover()
         newPopover.contentViewController = NSHostingController(rootView: panel)
         newPopover.behavior = .transient
+        newPopover.delegate = self
         popover = newPopover
 
         if let button = statusItem.button {
             newPopover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            startDismissEventMonitors()
         }
+    }
+
+    private func startDismissEventMonitors() {
+        stopDismissEventMonitors()
+
+        localDismissMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            self?.closePopoverIfClickIsOutside(event)
+            return event
+        }
+
+        globalDismissMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor in
+                self?.closePopover()
+            }
+        }
+    }
+
+    private func stopDismissEventMonitors() {
+        if let localDismissMonitor {
+            NSEvent.removeMonitor(localDismissMonitor)
+            self.localDismissMonitor = nil
+        }
+        if let globalDismissMonitor {
+            NSEvent.removeMonitor(globalDismissMonitor)
+            self.globalDismissMonitor = nil
+        }
+    }
+
+    private func closePopoverIfClickIsOutside(_ event: NSEvent) {
+        guard let popover, popover.isShown else { return }
+        if event.window == popover.contentViewController?.view.window { return }
+        if let button = statusItem.button, event.window == button.window {
+            let point = button.convert(event.locationInWindow, from: nil)
+            if button.bounds.contains(point) { return }
+        }
+        closePopover()
+    }
+
+    private func closePopover() {
+        guard let popover, popover.isShown else { return }
+        popover.performClose(nil)
     }
 
     private func openForel() {
@@ -175,5 +220,11 @@ final class StatusBarController: NSObject {
         NSBezierPath(ovalIn: NSRect(x: inset, y: inset, width: size - inset * 2, height: size - inset * 2)).fill()
         image.unlockFocus()
         return image
+    }
+}
+
+extension StatusBarController: NSPopoverDelegate {
+    func popoverDidClose(_ notification: Notification) {
+        stopDismissEventMonitors()
     }
 }
