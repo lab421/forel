@@ -116,6 +116,7 @@ import Foundation
         let plan = try ActionExecutor.plan(action, path: zip)
 
         #expect(plan.status == .wouldSkip)
+        #expect(plan.isTerminal)
         #expect(plan.finalPath == zip)
         #expect(try String(contentsOfFile: (dir.path as NSString).appendingPathComponent("report.txt"), encoding: .utf8) == "existing")
     }

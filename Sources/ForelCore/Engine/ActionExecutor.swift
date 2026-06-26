@@ -242,7 +242,6 @@ public enum ActionExecutor {
 
     private struct ZipExtractionPlan {
         let target: String
-        let stagingParent: String
         let topLevelItems: [String]
         let usesWrapperFolder: Bool
         let conflicts: Bool
@@ -257,9 +256,15 @@ public enum ActionExecutor {
 
         let fm = FileManager.default
         let archiveURL = URL(fileURLWithPath: path)
-        let tempDir = (plan.stagingParent as NSString).appendingPathComponent(".forel-uncompress-\(UUID().uuidString)")
+        let replacementDir = try fm.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: archiveURL,
+            create: true
+        ).path
+        let tempDir = (replacementDir as NSString).appendingPathComponent(".forel-uncompress-\(UUID().uuidString)")
         try fm.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
-        defer { try? fm.removeItem(atPath: tempDir) }
+        defer { try? fm.removeItem(atPath: replacementDir) }
 
         do {
             try fm.unzipItem(at: archiveURL, to: URL(fileURLWithPath: tempDir))
@@ -1089,7 +1094,7 @@ public enum ActionExecutor {
                     status: .wouldSkip,
                     finalPath: path,
                     copiedPath: nil,
-                    isTerminal: false
+                    isTerminal: true
                 )
             }
 
@@ -1204,7 +1209,6 @@ public enum ActionExecutor {
 
         return ZipExtractionPlan(
             target: target,
-            stagingParent: parent,
             topLevelItems: topLevelItems,
             usesWrapperFolder: usesWrapperFolder,
             conflicts: conflicts,

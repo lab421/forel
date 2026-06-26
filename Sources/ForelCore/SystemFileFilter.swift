@@ -41,6 +41,7 @@ enum SystemFileFilter {
     static func isExcluded(_ filename: String) -> Bool {
         let lowercased = filename.lowercased()
         return filename == ".DS_Store"
+            || filename.hasPrefix(".forel-uncompress-")
             || filename.hasPrefix("._")
             || filename.hasPrefix("~$")
             || incompleteDownloadPrefixes.contains { filename.hasPrefix($0) }

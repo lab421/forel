@@ -20,6 +20,7 @@ import Testing
 @Suite struct SystemFileFilterTests {
     @Test func excludesKnownNoisySystemFiles() {
         #expect(SystemFileFilter.isExcluded(".DS_Store"))
+        #expect(SystemFileFilter.isExcluded(".forel-uncompress-123456"))
         #expect(SystemFileFilter.isExcluded("._report.pdf")) // AppleDouble resource fork
         #expect(SystemFileFilter.isExcluded("~$budget.docx")) // Office lock file
     }
