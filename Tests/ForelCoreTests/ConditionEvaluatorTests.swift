@@ -141,6 +141,18 @@ import Darwin
         #expect(!ConditionEvaluator.evaluate(makeCondition(.dateModified, .withinLast, "1 week"), path: file))
     }
 
+    @Test func createdAtConditionWithOlderThanHandlesOldFiles() throws {
+        let dir = TempDir()
+        let file = dir.file("test.png", contents: "image")
+        let tenDaysAgo = Date().addingTimeInterval(-10 * 24 * 60 * 60)
+        try FileManager.default.setAttributes([.creationDate: tenDaysAgo], ofItemAtPath: file)
+
+        #expect(ConditionEvaluator.evaluate(makeCondition(.createdAt, .olderThan, "3 days"), path: file))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.createdAt, .olderThan, "1 week"), path: file))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.createdAt, .olderThan, "2 weeks"), path: file))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.createdAt, .withinLast, "3 days"), path: file))
+    }
+
     @Test func kindConditionClassifiesAllPickerOptionsAndSupportsIsNot() throws {
         let dir = TempDir()
         let samples: [(path: String, kind: String)] = [
