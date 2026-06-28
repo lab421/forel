@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  ./build.sh [command] [arch] [version]
+  ./build.sh [command] [arch] [version] [--sign]
 
 Commands:
   dev       Build in debug mode and run ForelApp locally
@@ -16,12 +16,14 @@ Commands:
 Arguments:
   arch      arm64 or x86_64 (defaults to host architecture)
   version   Release version like v1.2.3
+  --sign    Sign the app and DMG with a Developer ID Application certificate
 
 Examples:
   ./build.sh
   ./build.sh dev
   ./build.sh package
   ./build.sh package arm64 v1.2.3
+  ./build.sh package arm64 v1.2.3 --sign
   ./build.sh release x86_64 v1.2.3
 EOF
 }
@@ -36,6 +38,7 @@ staging_root="${TMPDIR:-/tmp}/Forel-dmg"
 icon_source="$repo_root/Sources/ForelApp/Resources/AppIcon.png"
 iconset_dir="${TMPDIR:-/tmp}/Forel.iconset"
 icns_path="$repo_root/dist/Forel.icns"
+code_sign_identity="${CODE_SIGN_IDENTITY:--}"
 
 generate_icns() {
   rm -rf "$iconset_dir"
@@ -136,8 +139,54 @@ if [[ $# -gt 0 ]]; then
   esac
 fi
 
+sign_requested=false
+positional_args=()
+for arg in "$@"; do
+  case "$arg" in
+    --sign)
+      sign_requested=true
+      ;;
+    -*)
+      echo "Unknown option: $arg" >&2
+      usage
+      exit 1
+      ;;
+    *)
+      positional_args+=("$arg")
+      ;;
+  esac
+done
+if [[ ${#positional_args[@]} -gt 0 ]]; then
+  set -- "${positional_args[@]}"
+else
+  set --
+fi
+
+if [[ $# -gt 2 ]]; then
+  echo "Too many arguments" >&2
+  usage
+  exit 1
+fi
+
 arch="${1:-$(uname -m)}"
 version="${2:-}"
+
+if [[ "$sign_requested" == true ]]; then
+  if [[ "$command" != "package" && "$command" != "release" ]]; then
+    echo "--sign is only supported with package or release" >&2
+    exit 1
+  fi
+  if [[ "$code_sign_identity" == "-" ]]; then
+    code_sign_identity="$(
+      security find-identity -v -p codesigning |
+        awk '/Developer ID Application:/ && !identity { identity=$2 } END { print identity }'
+    )"
+    if [[ -z "$code_sign_identity" ]]; then
+      echo "No valid Developer ID Application identity was found in the keychain" >&2
+      exit 1
+    fi
+  fi
+fi
 
 case "$command" in
   dev)
@@ -226,7 +275,15 @@ case "$command" in
       cp "$icns_path" "$dist_dir/Forel.app/Contents/Resources/Forel.icns"
     fi
 
-    codesign --force --deep --sign - "$dist_dir/Forel.app" >/dev/null 2>&1
+    if [[ "$sign_requested" == true ]]; then
+      codesign \
+        --force \
+        --deep \
+        --timestamp \
+        --sign "$code_sign_identity" \
+        "$dist_dir/Forel.app"
+      codesign --verify --deep --strict --verbose=2 "$dist_dir/Forel.app"
+    fi
 
     rm -rf "$staging_root"
     mkdir -p "$staging_root"
@@ -240,6 +297,11 @@ case "$command" in
       -ov \
       -format UDZO \
       "$dmg_path"
+
+    if [[ "$sign_requested" == true ]]; then
+      codesign --force --timestamp --sign "$code_sign_identity" "$dmg_path"
+      codesign --verify --strict --verbose=2 "$dmg_path"
+    fi
 
     echo "Created $dmg_path"
     rm -rf "$iconset_dir" "$staging_root" "$icns_path"

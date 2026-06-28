@@ -2,6 +2,9 @@ name: Release
 
 # Required to publish the Homebrew cask to lab421/homebrew-tap:
 #   HOMEBREW_TAP_TOKEN (a PAT with `contents: write` on that repo)
+# Required to sign release apps and DMGs:
+#   APPLE_SIGNING_CERT_P12_BASE64 (base64-encoded Developer ID Application P12)
+#   APPLE_SIGNING_CERT_PASSWORD (P12 export password)
 
 on:
   push:
@@ -37,6 +40,50 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Import Developer ID certificate
+        env:
+          APPLE_SIGNING_CERT_P12_BASE64: ${{ secrets.APPLE_SIGNING_CERT_P12_BASE64 }}
+          APPLE_SIGNING_CERT_PASSWORD: ${{ secrets.APPLE_SIGNING_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$APPLE_SIGNING_CERT_P12_BASE64" || -z "$APPLE_SIGNING_CERT_PASSWORD" ]]; then
+            echo "Apple signing certificate secrets are missing" >&2
+            exit 1
+          fi
+
+          certificate_path="$RUNNER_TEMP/apple-signing-certificate.p12"
+          keychain_path="$RUNNER_TEMP/forel-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 32)"
+
+          printf '%s' "$APPLE_SIGNING_CERT_P12_BASE64" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -k "$keychain_path" \
+            -P "$APPLE_SIGNING_CERT_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          signing_identity="$(
+            security find-identity -v -p codesigning "$keychain_path" |
+              awk '/Developer ID Application:/ && !identity { identity=$2 } END { print identity }'
+          )"
+          if [[ -z "$signing_identity" ]]; then
+            echo "The P12 does not contain a valid Developer ID Application identity" >&2
+            security find-identity -v -p codesigning "$keychain_path" >&2
+            exit 1
+          fi
+
+          echo "CODE_SIGN_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+
       - name: Build and package
         id: package
         env:
@@ -45,8 +92,14 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          ./build.sh package "$RELEASE_ARCH" "$RELEASE_TAG"
+          ./build.sh package "$RELEASE_ARCH" "$RELEASE_TAG" --sign
           echo "dmg_path=dist/release/Forel-${RELEASE_TAG}-${RELEASE_SUFFIX}.dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Remove signing keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/forel-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/apple-signing-certificate.p12"
 
       - name: Upload release artifact (${{ matrix.suffix }})
         uses: actions/upload-artifact@v4
@@ -98,7 +151,7 @@ jobs:
             echo ""
             echo "1. Download the correct .dmg for your Mac."
             echo "2. Open it and drag **Forel** into **Applications**."
-            echo "3. First launch: the app is ad-hoc signed (not notarized), so right-click **Forel.app -> Open** and confirm. (Or run \`xattr -cr /Applications/Forel.app\`.)"
+            echo "3. Forel is signed with an Apple Developer ID certificate but is not yet notarized. If macOS blocks the first launch, right-click **Forel.app -> Open** and confirm."
             echo "__FOREL_EOF__"
           } >> "$GITHUB_OUTPUT"
 
