@@ -6,7 +6,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Changed
-- Release downloads are now signed with an Apple Developer ID certificate so macOS can verify their publisher.
+- Release downloads are now signed with an Apple Developer ID certificate and notarized by Apple so macOS can verify their publisher.
 
 ### Fixed
 - Fixed exact Name exclusions with file extensions being ignored when combined with other conditions.

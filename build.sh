@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  ./build.sh [command] [arch] [version] [--sign]
+  ./build.sh [command] [arch] [version] [--sign] [--notarize]
 
 Commands:
   dev       Build in debug mode and run ForelApp locally
@@ -17,6 +17,8 @@ Arguments:
   arch      arm64 or x86_64 (defaults to host architecture)
   version   Release version like v1.2.3
   --sign    Sign the app and DMG with a Developer ID Application certificate
+  --notarize
+            Submit and staple the signed app and DMG using Notary API secrets
 
 Examples:
   ./build.sh
@@ -24,6 +26,7 @@ Examples:
   ./build.sh package
   ./build.sh package arm64 v1.2.3
   ./build.sh package arm64 v1.2.3 --sign
+  ./build.sh package arm64 v1.2.3 --sign --notarize
   ./build.sh release x86_64 v1.2.3
 EOF
 }
@@ -38,7 +41,16 @@ staging_root="${TMPDIR:-/tmp}/Forel-dmg"
 icon_source="$repo_root/Sources/ForelApp/Resources/AppIcon.png"
 iconset_dir="${TMPDIR:-/tmp}/Forel.iconset"
 icns_path="$repo_root/dist/Forel.icns"
+entitlements_path="$repo_root/Forel.entitlements"
 code_sign_identity="${CODE_SIGN_IDENTITY:--}"
+notary_work=""
+
+cleanup() {
+  if [[ -n "$notary_work" ]]; then
+    rm -rf "$notary_work"
+  fi
+}
+trap cleanup EXIT
 
 generate_icns() {
   rm -rf "$iconset_dir"
@@ -83,9 +95,8 @@ assemble_app_bundle() {
 
 # Writes Info.plist into $1, with $2 as both CFBundleShortVersionString and
 # CFBundleVersion, plus any extra keys (already-indented <key>/<value> XML)
-# passed as $3. Shared by `dev` and `package`, which each pass their own
-# extras (dev needs Automation's usage string but no Dock icon/category;
-# package is the reverse) on top of the identical boilerplate.
+# passed as $3. Shared by `dev` and `package`, which pass only their
+# build-specific extras on top of the identical boilerplate and privacy keys.
 write_info_plist() {
   local contents_dir="$1" version_number="$2" extra_keys="${3:-}"
   cat > "$contents_dir/Info.plist" <<EOF
@@ -119,10 +130,31 @@ write_info_plist() {
   <true/>
   <key>NSPhotoLibraryUsageDescription</key>
   <string>Forel can import images and videos into your Photos library as part of automated rules.</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Forel uses automation to add files to the Music and TV libraries as part of automated rules.</string>
 ${extra_keys}
 </dict>
 </plist>
 EOF
+}
+
+notarize_and_staple() {
+  local target="$1"
+  local submission="$target"
+
+  if [[ "$target" == *.app ]]; then
+    submission="$notary_work/$(basename "$target").zip"
+    /usr/bin/ditto -c -k --keepParent "$target" "$submission"
+  fi
+
+  echo "Submitting $(basename "$target") to Apple for notarization..."
+  xcrun notarytool submit "$submission" \
+    --key "$notary_work/AuthKey.p8" \
+    --key-id "$NOTARY_KEY_ID" \
+    --issuer "$NOTARY_ISSUER_ID" \
+    --wait
+  xcrun stapler staple "$target"
+  xcrun stapler validate "$target"
 }
 
 command="${1:-release}"
@@ -140,11 +172,15 @@ if [[ $# -gt 0 ]]; then
 fi
 
 sign_requested=false
+notarize_requested=false
 positional_args=()
 for arg in "$@"; do
   case "$arg" in
     --sign)
       sign_requested=true
+      ;;
+    --notarize)
+      notarize_requested=true
       ;;
     -*)
       echo "Unknown option: $arg" >&2
@@ -188,6 +224,24 @@ if [[ "$sign_requested" == true ]]; then
   fi
 fi
 
+if [[ "$notarize_requested" == true ]]; then
+  if [[ "$command" != "package" && "$command" != "release" ]]; then
+    echo "--notarize is only supported with package or release" >&2
+    exit 1
+  fi
+  if [[ "$sign_requested" != true ]]; then
+    echo "--notarize requires --sign" >&2
+    exit 1
+  fi
+  if [[ -z "${NOTARY_API_KEY_P8:-}" || -z "${NOTARY_KEY_ID:-}" || -z "${NOTARY_ISSUER_ID:-}" ]]; then
+    echo "Notarization requires NOTARY_API_KEY_P8, NOTARY_KEY_ID, and NOTARY_ISSUER_ID" >&2
+    exit 1
+  fi
+  notary_work="$(mktemp -d "${TMPDIR:-/tmp}/Forel-notary.XXXXXX")"
+  printf '%s' "$NOTARY_API_KEY_P8" | base64 --decode > "$notary_work/AuthKey.p8"
+  chmod 600 "$notary_work/AuthKey.p8"
+fi
+
 case "$command" in
   dev)
     cd "$repo_root"
@@ -202,8 +256,7 @@ case "$command" in
     contents_dir="$dev_bundle/Contents"
     macos_dir="$contents_dir/MacOS"
 
-    write_info_plist "$contents_dir" "0.0.0-dev" '  <key>NSAppleEventsUsageDescription</key>
-  <string>Forel uses automation to add files to the Music and TV libraries as part of automated rules.</string>'
+    write_info_plist "$contents_dir" "0.0.0-dev"
 
     # Ad-hoc sign so TCC has a stable bundle identity to attach grants to.
     codesign --force --deep --sign - "$dev_bundle" >/dev/null 2>&1
@@ -268,26 +321,42 @@ case "$command" in
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>'
 
-    mkdir -p "$dist_dir"
-    rm -rf "$dist_dir/Forel.app"
-    cp -R "$bundle_root" "$dist_dir/Forel.app"
     if [[ -f "$icns_path" ]]; then
-      cp "$icns_path" "$dist_dir/Forel.app/Contents/Resources/Forel.icns"
+      cp "$icns_path" "$bundle_root/Contents/Resources/Forel.icns"
     fi
 
     if [[ "$sign_requested" == true ]]; then
+      # Sign outside the repository. Folders under Documents can receive
+      # File Provider/provenance metadata after a copy, invalidating an
+      # otherwise-correct signature before the DMG is assembled.
+      xattr -cr "$bundle_root"
       codesign \
         --force \
         --deep \
+        --options runtime \
         --timestamp \
+        --entitlements "$entitlements_path" \
         --sign "$code_sign_identity" \
-        "$dist_dir/Forel.app"
-      codesign --verify --deep --strict --verbose=2 "$dist_dir/Forel.app"
+        "$bundle_root"
+      codesign --verify --deep --strict --verbose=2 "$bundle_root"
+      if [[ "$notarize_requested" == true ]]; then
+        notarize_and_staple "$bundle_root"
+      fi
     fi
+
+    mkdir -p "$dist_dir"
+    rm -rf "$dist_dir/Forel.app"
+    /usr/bin/ditto --noextattr --noqtn "$bundle_root" "$dist_dir/Forel.app"
 
     rm -rf "$staging_root"
     mkdir -p "$staging_root"
-    cp -R "$dist_dir/Forel.app" "$staging_root/Forel.app"
+    /usr/bin/ditto --noextattr --noqtn "$bundle_root" "$staging_root/Forel.app"
+    if [[ "$sign_requested" == true ]]; then
+      codesign --verify --deep --strict --verbose=2 "$staging_root/Forel.app"
+      if [[ "$notarize_requested" == true ]]; then
+        xcrun stapler validate "$staging_root/Forel.app"
+      fi
+    fi
     ln -s /Applications "$staging_root/Applications"
 
     dmg_path="$dist_dir/Forel-${version}-${dmg_suffix}.dmg"
@@ -301,6 +370,10 @@ case "$command" in
     if [[ "$sign_requested" == true ]]; then
       codesign --force --timestamp --sign "$code_sign_identity" "$dmg_path"
       codesign --verify --strict --verbose=2 "$dmg_path"
+      if [[ "$notarize_requested" == true ]]; then
+        notarize_and_staple "$dmg_path"
+        codesign --verify --strict --verbose=2 "$dmg_path"
+      fi
     fi
 
     echo "Created $dmg_path"

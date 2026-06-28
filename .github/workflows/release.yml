@@ -5,6 +5,10 @@ name: Release
 # Required to sign release apps and DMGs:
 #   APPLE_SIGNING_CERT_P12_BASE64 (base64-encoded Developer ID Application P12)
 #   APPLE_SIGNING_CERT_PASSWORD (P12 export password)
+# Required to notarize release apps and DMGs:
+#   NOTARY_API_KEY_P8 (base64-encoded App Store Connect API private key)
+#   NOTARY_KEY_ID (App Store Connect API key ID)
+#   NOTARY_ISSUER_ID (App Store Connect API issuer UUID)
 
 on:
   push:
@@ -15,7 +19,26 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          xcode_app="$(ls -1d /Applications/Xcode*.app | sort -V | tail -n 1)"
+          sudo xcode-select -switch "$xcode_app/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
+      - name: Test
+        run: swift test
+
   build:
+    needs: test
     strategy:
       fail-fast: false
       matrix:
@@ -90,10 +113,38 @@ jobs:
           RELEASE_ARCH: ${{ matrix.arch }}
           RELEASE_SUFFIX: ${{ matrix.suffix }}
           RELEASE_TAG: ${{ github.ref_name }}
+          NOTARY_API_KEY_P8: ${{ secrets.NOTARY_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
           set -euo pipefail
-          ./build.sh package "$RELEASE_ARCH" "$RELEASE_TAG" --sign
+          ./build.sh package "$RELEASE_ARCH" "$RELEASE_TAG" --sign --notarize
           echo "dmg_path=dist/release/Forel-${RELEASE_TAG}-${RELEASE_SUFFIX}.dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Verify notarized release
+        env:
+          DMG_PATH: ${{ steps.package.outputs.dmg_path }}
+        run: |
+          set -euo pipefail
+          xcrun stapler validate "$DMG_PATH"
+          codesign --verify --strict --verbose=2 "$DMG_PATH"
+
+          mount_point="$(mktemp -d "$RUNNER_TEMP/Forel-mount.XXXXXX")"
+          cleanup_mount() {
+            hdiutil detach "$mount_point" >/dev/null 2>&1 || true
+            rmdir "$mount_point" >/dev/null 2>&1 || true
+          }
+          trap cleanup_mount EXIT
+
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount_point" "$DMG_PATH"
+          codesign --verify --deep --strict --verbose=2 "$mount_point/Forel.app"
+          xcrun stapler validate "$mount_point/Forel.app"
+          if ! assessment="$(spctl --assess --type execute --verbose=4 "$mount_point/Forel.app" 2>&1)"; then
+            printf '%s\n' "$assessment" >&2
+            exit 1
+          fi
+          printf '%s\n' "$assessment"
+          grep -Fq "source=Notarized Developer ID" <<< "$assessment"
 
       - name: Remove signing keychain
         if: always()
@@ -151,6 +202,7 @@ jobs:
             echo ""
             echo "1. Download the correct .dmg for your Mac."
             echo "2. Open it and drag **Forel** into **Applications**."
+            echo "3. Forel is signed with an Apple Developer ID certificate and notarized by Apple."
             echo "__FOREL_EOF__"
           } >> "$GITHUB_OUTPUT"
 
