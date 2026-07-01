@@ -5,6 +5,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- Rule editor now validates conditions and actions before saving — empty condition values, invalid regex, empty destination or rename pattern are reported on save instead of silently causing wrong behaviour.
+
 ### Changed
 - Removed the Light/Dark theme override from Settings; Forel now always follows the system appearance.
 - When no rules exist, the action bar is hidden and a centered "New Rule" button is shown in the empty state.
