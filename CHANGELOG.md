@@ -10,6 +10,9 @@ All notable changes to Forel are documented here. Format loosely follows
 - When no rules exist, the action bar is hidden and a centered "New Rule" button is shown in the empty state.
 - The "Clean file name" option in Rename actions now transliterates any script (Cyrillic, Arabic, CJK, German ß…) to a universal ASCII slug.
 
+### Fixed
+- Move to Trash no longer blocks with a "file already at destination" error when an identically-named file is already in the Trash.
+
 ## [1.0.4] - 2026-07-01
 
 ### Changed

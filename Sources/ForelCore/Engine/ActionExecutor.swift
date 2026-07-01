@@ -949,7 +949,7 @@ public enum ActionExecutor {
                 description: "Move to Trash",
                 sourcePath: path,
                 targetPath: target,
-                status: conflictStatus(target),
+                status: .wouldRun,
                 finalPath: target,
                 copiedPath: nil,
                 isTerminal: true
