@@ -2,6 +2,13 @@ name: Release
 
 # Required to publish the Homebrew cask to lab421/homebrew-tap:
 #   HOMEBREW_TAP_TOKEN (a PAT with `contents: write` on that repo)
+# Required to sign release apps and DMGs:
+#   APPLE_SIGNING_CERT_P12_BASE64 (base64-encoded Developer ID Application P12)
+#   APPLE_SIGNING_CERT_PASSWORD (P12 export password)
+# Required to notarize release apps and DMGs:
+#   NOTARY_API_KEY_P8 (base64-encoded App Store Connect API private key)
+#   NOTARY_KEY_ID (App Store Connect API key ID)
+#   NOTARY_ISSUER_ID (App Store Connect API issuer UUID)
 
 on:
   push:
@@ -12,7 +19,26 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          xcode_app="$(ls -1d /Applications/Xcode*.app | sort -V | tail -n 1)"
+          sudo xcode-select -switch "$xcode_app/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
+      - name: Test
+        run: swift test
+
   build:
+    needs: test
     strategy:
       fail-fast: false
       matrix:
@@ -37,16 +63,94 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Import Developer ID certificate
+        env:
+          APPLE_SIGNING_CERT_P12_BASE64: ${{ secrets.APPLE_SIGNING_CERT_P12_BASE64 }}
+          APPLE_SIGNING_CERT_PASSWORD: ${{ secrets.APPLE_SIGNING_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$APPLE_SIGNING_CERT_P12_BASE64" || -z "$APPLE_SIGNING_CERT_PASSWORD" ]]; then
+            echo "Apple signing certificate secrets are missing" >&2
+            exit 1
+          fi
+
+          certificate_path="$RUNNER_TEMP/apple-signing-certificate.p12"
+          keychain_path="$RUNNER_TEMP/forel-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 32)"
+
+          printf '%s' "$APPLE_SIGNING_CERT_P12_BASE64" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -k "$keychain_path" \
+            -P "$APPLE_SIGNING_CERT_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          signing_identity="$(
+            security find-identity -v -p codesigning "$keychain_path" |
+              awk '/Developer ID Application:/ && !identity { identity=$2 } END { print identity }'
+          )"
+          if [[ -z "$signing_identity" ]]; then
+            echo "The P12 does not contain a valid Developer ID Application identity" >&2
+            security find-identity -v -p codesigning "$keychain_path" >&2
+            exit 1
+          fi
+
+          echo "CODE_SIGN_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+
       - name: Build and package
         id: package
         env:
           RELEASE_ARCH: ${{ matrix.arch }}
           RELEASE_SUFFIX: ${{ matrix.suffix }}
           RELEASE_TAG: ${{ github.ref_name }}
+          NOTARY_API_KEY_P8: ${{ secrets.NOTARY_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
           set -euo pipefail
-          ./build.sh package "$RELEASE_ARCH" "$RELEASE_TAG"
+          ./build.sh package "$RELEASE_ARCH" "$RELEASE_TAG" --sign --notarize
           echo "dmg_path=dist/release/Forel-${RELEASE_TAG}-${RELEASE_SUFFIX}.dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Verify notarized release
+        env:
+          DMG_PATH: ${{ steps.package.outputs.dmg_path }}
+        run: |
+          set -euo pipefail
+          xcrun stapler validate "$DMG_PATH"
+          codesign --verify --strict --verbose=2 "$DMG_PATH"
+
+          mount_point="$(mktemp -d "$RUNNER_TEMP/Forel-mount.XXXXXX")"
+          cleanup_mount() {
+            hdiutil detach "$mount_point" >/dev/null 2>&1 || true
+            rmdir "$mount_point" >/dev/null 2>&1 || true
+          }
+          trap cleanup_mount EXIT
+
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount_point" "$DMG_PATH"
+          codesign --verify --deep --strict --verbose=2 "$mount_point/Forel.app"
+          xcrun stapler validate "$mount_point/Forel.app"
+          if ! assessment="$(spctl --assess --type execute --verbose=4 "$mount_point/Forel.app" 2>&1)"; then
+            printf '%s\n' "$assessment" >&2
+            exit 1
+          fi
+          printf '%s\n' "$assessment"
+          grep -Fq "source=Notarized Developer ID" <<< "$assessment"
+
+      - name: Remove signing keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/forel-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/apple-signing-certificate.p12"
 
       - name: Upload release artifact (${{ matrix.suffix }})
         uses: actions/upload-artifact@v4
@@ -98,7 +202,7 @@ jobs:
             echo ""
             echo "1. Download the correct .dmg for your Mac."
             echo "2. Open it and drag **Forel** into **Applications**."
-            echo "3. First launch: the app is ad-hoc signed (not notarized), so right-click **Forel.app -> Open** and confirm. (Or run \`xattr -cr /Applications/Forel.app\`.)"
+            echo "3. Forel is signed with an Apple Developer ID certificate and notarized by Apple."
             echo "__FOREL_EOF__"
           } >> "$GITHUB_OUTPUT"
 
