@@ -191,6 +191,7 @@ History / Undo (SQLite)
 - [x] Automatic cleaning database
 - [x] Uncompress actions
 - [x] Shortcuts actions
+- [ ] Validate actions / conditions before save
 - [ ] Export / Import rules
 - [ ] Toggle extension hidden / visible
 - [ ] Compress actions

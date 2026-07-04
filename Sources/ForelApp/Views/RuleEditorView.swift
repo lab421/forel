@@ -23,6 +23,9 @@ import Photos
 
 struct RuleEditorView: View {
     @State private var rule: Rule
+    @State private var showConditionError = false
+    @State private var showActionError = false
+    @State private var errorDismissTask: Task<Void, Never>?
     @EnvironmentObject private var model: AppModel
     let onSave: (Rule) -> Void
     let onCancel: () -> Void
@@ -79,6 +82,11 @@ struct RuleEditorView: View {
                                     rule.conditions.removeAll { $0.id == condition.id }
                                 }
                             }
+                            if showConditionError, let issue = conditionIssues.first {
+                                Text(issue.message)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.red)
+                            }
                         }
                         .padding(18)
                     }
@@ -103,6 +111,11 @@ struct RuleEditorView: View {
                                     rule.actions.removeAll { $0.id == action.id }
                                 }
                             }
+                            if showActionError, let issue = actionIssues.first {
+                                Text(issue.message)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.red)
+                            }
                         }
                         .padding(18)
                     }
@@ -120,10 +133,27 @@ struct RuleEditorView: View {
                     .foregroundStyle(ForelTheme.primaryText)
                 Spacer()
                 Button("Cancel", action: onCancel).buttonStyle(SecondaryButtonStyle())
-                Button("Save") { onSave(rule) }
+                Button("Save") {
+                    if hasInvalidCondition || hasInvalidAction {
+                        showConditionError = hasInvalidCondition
+                        showActionError = hasInvalidAction
+                        errorDismissTask?.cancel()
+                        errorDismissTask = Task {
+                            try? await Task.sleep(for: .seconds(5))
+                            guard !Task.isCancelled else { return }
+                            showConditionError = false
+                            showActionError = false
+                        }
+                    } else {
+                        showConditionError = false
+                        showActionError = false
+                        errorDismissTask?.cancel()
+                        onSave(rule)
+                    }
+                }
                     .buttonStyle(PrimaryButtonStyle())
                     .keyboardShortcut(.defaultAction)
-                    .disabled(rule.name.trimmingCharacters(in: .whitespaces).isEmpty || hasInvalidRegexCondition)
+                    .disabled(rule.name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(22)
@@ -132,13 +162,20 @@ struct RuleEditorView: View {
         .background(WindowActivationBridge(showsDockIcon: model.showDockIcon))
     }
 
-    /// A rule with an unparsable regex would just silently never match at
-    /// run time; block saving it instead of letting that ship invisibly.
-    private var hasInvalidRegexCondition: Bool {
-        rule.conditions.contains { condition in
-            guard condition.operator == .matchesRegex, !condition.value.isEmpty else { return false }
-            return (try? NSRegularExpression(pattern: condition.value)) == nil
-        }
+    private var conditionIssues: [RuleValidator.Issue] {
+        RuleValidator.validate(rule.conditions)
+    }
+
+    private var hasInvalidCondition: Bool {
+        !conditionIssues.isEmpty
+    }
+
+    private var actionIssues: [RuleValidator.Issue] {
+        RuleValidator.validate(rule.actions)
+    }
+
+    private var hasInvalidAction: Bool {
+        !actionIssues.isEmpty
     }
 
     private func placeholder(_ text: String) -> some View {
@@ -1287,3 +1324,5 @@ private enum DateValueFormatter {
         formatter.string(from: date)
     }
 }
+
+
