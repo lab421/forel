@@ -7,6 +7,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Added
 - Rule editor now validates conditions and actions before saving — empty condition values, invalid regex, empty destination or rename pattern are reported on save instead of silently causing wrong behaviour.
+- About Forel panel now shows the app icon, name and version.
 
 ### Changed
 - Removed the Light/Dark theme override from Settings; Forel now always follows the system appearance.
