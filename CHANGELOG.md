@@ -3,7 +3,7 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.0.5] - 2026-07-06
 
 ### Added
 - Rule editor now validates conditions and actions before saving — empty condition values, invalid regex, empty destination or rename pattern are reported on save instead of silently causing wrong behaviour.
