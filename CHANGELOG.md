@@ -10,6 +10,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Fixed
 - Opening Forel's main window from the menu-bar quick panel now reliably switches the top menu bar to Forel's own menu (Forel, File, Edit, View…) instead of sometimes leaving the previous app's menu showing.
+- Opening the Permissions tab in Settings no longer hitches while it checks whether Music/TV are running.
 
 ## [1.0.5] - 2026-07-06
 

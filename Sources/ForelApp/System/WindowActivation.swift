@@ -44,9 +44,14 @@ enum WindowActivation {
     }
 
     private static var activationOptions: NSApplication.ActivationOptions {
-        // rawValue keeps compatibility with the legacy "ignore other apps"
-        // bit without referencing the deprecated symbol directly.
-        NSApplication.ActivationOptions(rawValue: 1 | 2)
+        // rawValue 1 is the legacy "ignore other apps" bit, kept without
+        // referencing the deprecated symbol directly. Deliberately excludes
+        // rawValue 2 (`.activateAllWindows`): that flag un-hides *every*
+        // window of the app on activation, including ones intentionally
+        // ordered out (e.g. the main window while only Settings should be
+        // shown) — it was the cause of "Settings" in the quick panel opening
+        // the main Forel window instead.
+        NSApplication.ActivationOptions(rawValue: 1)
     }
 }
 

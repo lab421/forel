@@ -26,7 +26,6 @@ struct QuickPanelView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var updater: UpdaterManager
     let onOpenMainWindow: () -> Void
-    let onOpenSettings: () -> Void
     let onQuit: () -> Void
 
     var body: some View {
@@ -101,7 +100,6 @@ struct QuickPanelView: View {
 
                 HStack(spacing: 8) {
                     QuickPanelFooterButton(title: "Open Forel", systemImage: "arrow.up.forward.app", action: onOpenMainWindow)
-                    QuickPanelFooterButton(title: "Settings", systemImage: "gearshape", action: onOpenSettings)
                     QuickPanelFooterButton(title: "Quit", systemImage: "power", action: onQuit)
                 }
             }
