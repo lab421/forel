@@ -5,6 +5,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- Watcher notifications: a new toggle in Settings lets you enable or disable system notifications when automatic rules process files.
+
 ### Changed
 - Settings now opens in its own window, with a "Settings…" item under the Forel menu and the standard ⌘, shortcut, instead of being a pane inside the main window.
 
