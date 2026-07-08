@@ -103,6 +103,12 @@ struct SettingsView: View {
                     isOn: dockIconBinding
                 )
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                ToggleRow(
+                    title: "Watcher notifications",
+                    subtitle: "Notify when automatic rules process files",
+                    isOn: watcherNotificationsBinding
+                )
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("Keep history for").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
