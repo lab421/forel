@@ -27,6 +27,22 @@ enum WindowActivation {
         NSRunningApplication.current.activate(options: activationOptions)
     }
 
+    /// Activating synchronously right after a window is shown or a popover
+    /// is dismissed races the window server and the accessory→regular
+    /// activation-policy switch (which needs a moment to take effect), and
+    /// can leave Forel's menu bar (Forel/File/Edit/View…) not swapped in
+    /// even though the window itself comes to the front. Deferring a tick,
+    /// then again shortly after, avoids that race — use this instead of
+    /// calling `activate` directly from a UI action.
+    static func activateSoon(_ window: NSWindow?, showsDockIcon: Bool = true) {
+        DispatchQueue.main.async {
+            activate(window, showsDockIcon: showsDockIcon)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            activate(window, showsDockIcon: showsDockIcon)
+        }
+    }
+
     private static var activationOptions: NSApplication.ActivationOptions {
         // rawValue keeps compatibility with the legacy "ignore other apps"
         // bit without referencing the deprecated symbol directly.

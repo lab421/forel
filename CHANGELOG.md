@@ -3,6 +3,11 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- Opening Forel's main window from the menu-bar quick panel now reliably switches the top menu bar to Forel's own menu (Forel, File, Edit, View…) instead of sometimes leaving the previous app's menu showing.
+
 ## [1.0.5] - 2026-07-06
 
 ### Added

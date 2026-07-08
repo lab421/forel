@@ -130,18 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func openMainWindow() {
         let targetWindow = NSApp.windows.first { !($0 is NSPanel) }
-        // Called synchronously from SwiftUI's onAppear, while the window is
-        // still mid-appearance: activating right here races the window
-        // server and can leave Forel behind whatever app was frontmost.
-        // Deferring a tick (and again shortly after, since the regular/
-        // accessory policy switch itself needs a moment to take effect)
-        // matches what `WindowActivationBridge` already does elsewhere.
-        DispatchQueue.main.async {
-            WindowActivation.activate(targetWindow, showsDockIcon: self.model?.showDockIcon != false)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            WindowActivation.activate(targetWindow, showsDockIcon: self.model?.showDockIcon != false)
-        }
+        WindowActivation.activateSoon(targetWindow, showsDockIcon: model?.showDockIcon != false)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
