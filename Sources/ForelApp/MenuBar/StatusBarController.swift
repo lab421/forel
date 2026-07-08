@@ -132,7 +132,7 @@ final class StatusBarController: NSObject {
 
     private func openForel() {
         let targetWindow = window ?? NSApp.windows.first { !($0 is NSPanel) }
-        WindowActivation.activate(targetWindow, showsDockIcon: model.showDockIcon)
+        WindowActivation.activateSoon(targetWindow, showsDockIcon: model.showDockIcon)
     }
 
     /// Menu bar glyph: a crisp vector `leaf.fill` SF Symbol, with a colour dot

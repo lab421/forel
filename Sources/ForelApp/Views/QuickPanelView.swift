@@ -100,10 +100,6 @@ struct QuickPanelView: View {
 
                 HStack(spacing: 8) {
                     QuickPanelFooterButton(title: "Open Forel", systemImage: "arrow.up.forward.app", action: onOpenMainWindow)
-                    QuickPanelFooterButton(title: "Settings", systemImage: "gearshape") {
-                        model.detailRoute = .settings
-                        onOpenMainWindow()
-                    }
                     QuickPanelFooterButton(title: "Quit", systemImage: "power", action: onQuit)
                 }
             }

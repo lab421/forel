@@ -42,5 +42,29 @@ struct ForelMacApp: App {
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 900, height: 620)
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Forel") {
+                    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "alpha"
+                    let icon = Bundle.module.url(forResource: "AppIcon", withExtension: "png").flatMap { NSImage(contentsOf: $0) }
+                    NSApplication.shared.orderFrontStandardAboutPanel(options: [
+                        .applicationName: "Forel",
+                        .applicationVersion: version,
+                        .applicationIcon: icon as Any,
+                    ])
+                }
+            }
+        }
+
+        // A real `Settings` scene (not an in-app route) so Settings behaves
+        // like every other macOS app: its own window, a "Settings…" item
+        // under the Forel menu, and the standard ⌘, shortcut, all wired up
+        // automatically by SwiftUI.
+        Settings {
+            SettingsView()
+                .environmentObject(model)
+                .environmentObject(updater)
+        }
+        .windowResizability(.contentSize)
     }
 }

@@ -6,6 +6,19 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Changed
+- Settings now opens in its own window, with a "Settings…" item under the Forel menu and the standard ⌘, shortcut, instead of being a pane inside the main window.
+
+### Fixed
+- Opening Forel's main window from the menu-bar quick panel now reliably switches the top menu bar to Forel's own menu (Forel, File, Edit, View…) instead of sometimes leaving the previous app's menu showing.
+- Opening the Permissions tab in Settings no longer hitches while it checks whether Music/TV are running.
+
+## [1.0.5] - 2026-07-06
+
+### Added
+- Rule editor now validates conditions and actions before saving — empty condition values, invalid regex, empty destination or rename pattern are reported on save instead of silently causing wrong behaviour.
+- About Forel panel now shows the app icon, name and version.
+
+### Changed
 - Removed the Light/Dark theme override from Settings; Forel now always follows the system appearance.
 - When no rules exist, the action bar is hidden and a centered "New Rule" button is shown in the empty state.
 - The "Clean file name" option in Rename actions now transliterates any script (Cyrillic, Arabic, CJK, German ß…) to a universal ASCII slug.
