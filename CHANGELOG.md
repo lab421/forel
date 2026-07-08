@@ -37,6 +37,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [1.0.3] - 2026-06-22
 
 ### Added
+- Added grouped watcher notifications that summarize automatically applied rule actions without sending one alert per file, with a Settings toggle to turn them on or off.
 - Added an Uncompress action for ZIP archives, with conflict handling and action chaining on the extracted item.
 - Added the ability to change the path of an existing watched folder while keeping its rules.
 

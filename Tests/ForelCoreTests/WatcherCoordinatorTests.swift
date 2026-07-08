@@ -19,6 +19,23 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct WatcherCoordinatorTests {
+    private final class SummaryBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var values: [WatcherActivitySummary] = []
+
+        func append(_ summary: WatcherActivitySummary) {
+            lock.lock()
+            values.append(summary)
+            lock.unlock()
+        }
+
+        func snapshot() -> [WatcherActivitySummary] {
+            lock.lock()
+            defer { lock.unlock() }
+            return values
+        }
+    }
+
     private func makeDB() throws -> Database {
         try Database(path: ":memory:")
     }
@@ -42,6 +59,55 @@ import Foundation
         #expect(FileManager.default.fileExists(atPath: movedPath))
         #expect(!FileManager.default.fileExists(atPath: file))
         #expect(try db.listHistory().count == 1)
+    }
+
+    @Test func watcherActivityReportsAppliedActionsOnly() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("a.txt")
+        let destination = dir.dir("Archive")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "archive")
+        rule.conditions = [makeCondition(.extension_, .is, "txt", ruleId: rule.id)]
+        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        let summaries = SummaryBox()
+        coordinator.onActivity = { summary in
+            summaries.append(summary)
+        }
+
+        coordinator.handle(path: file)
+
+        #expect(summaries.snapshot() == [
+            WatcherActivitySummary(actionCount: 1, fileCount: 1, ruleNames: ["archive"])
+        ])
+    }
+
+    @Test func watcherActivityDoesNotReportSkippedActions() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("a.txt")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "already there")
+        rule.conditions = [makeCondition(.extension_, .is, "txt", ruleId: rule.id)]
+        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(dir.path)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        let summaries = SummaryBox()
+        coordinator.onActivity = { summary in
+            summaries.append(summary)
+        }
+
+        coordinator.handle(path: file)
+
+        #expect(summaries.snapshot().isEmpty)
+        #expect(try db.listHistory().count == 1)
+        #expect(try db.listHistory()[0].status == .skipped)
     }
 
     @Test func handleHonorsCompleteFilenameExclusionsCombinedWithRegex() throws {

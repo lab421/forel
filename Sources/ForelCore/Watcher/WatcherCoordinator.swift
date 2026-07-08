@@ -16,6 +16,12 @@
 
 import Foundation
 
+public struct WatcherActivitySummary: Equatable, Sendable {
+    public let actionCount: Int
+    public let fileCount: Int
+    public let ruleNames: [String]
+}
+
 /// Wires `FileWatcher` events to the database and rule engine: for every
 /// created/renamed path, finds the owning watched folder, loads its rules,
 /// evaluates them, and persists any resulting action history. Mirrors
@@ -26,6 +32,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
     private let activeProcessingLock = NSLock()
     private var activeProcessingRoots: [String: Int] = [:]
     public var onRuleMatched: (@Sendable (String, String) -> Void)?
+    public var onActivity: (@Sendable (WatcherActivitySummary) -> Void)?
 
     public init(db: Database) {
         self.db = db
@@ -84,6 +91,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
                 try? db.insertHistoryEntries(history)
             }
             recordEvaluatedResultStates(history)
+            notifyActivity(from: history)
         }
         recordEvaluatedState(path)
     }
@@ -204,7 +212,23 @@ public final class WatcherCoordinator: @unchecked Sendable {
                 try? db.insertHistoryEntries(history)
             }
             recordEvaluatedResultStates(history)
+            notifyActivity(from: history)
         }
         recordEvaluatedState(path)
+    }
+
+    private func notifyActivity(from history: [HistoryEntry]) {
+        guard let summary = Self.activitySummary(from: history) else { return }
+        onActivity?(summary)
+    }
+
+    static func activitySummary(from history: [HistoryEntry]) -> WatcherActivitySummary? {
+        let applied = history.filter { $0.status == .applied }
+        guard !applied.isEmpty else { return nil }
+        return WatcherActivitySummary(
+            actionCount: applied.count,
+            fileCount: Set(applied.map(\.originalPath)).count,
+            ruleNames: Array(Set(applied.map(\.ruleName))).sorted()
+        )
     }
 }

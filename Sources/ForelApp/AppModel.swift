@@ -18,8 +18,10 @@ import Foundation
 import ForelCore
 import Combine
 import AppKit
+import UserNotifications
 
 private let historyCleanupInterval: TimeInterval = 3600
+private let watcherNotificationDelay: Duration = .seconds(5)
 
 /// Central observable state for the SwiftUI app: owns the database, the
 /// watcher coordinator, and the in-memory view of folders/rules. Mirrors the
@@ -46,6 +48,7 @@ final class AppModel: ObservableObject {
     @Published var detailRoute: DetailRoute = .rules
     @Published var accentPreset: AccentPreset = .default
     @Published var showDockIcon: Bool = true
+    @Published var watcherNotificationsEnabled: Bool = true
     @Published var historyMaxDays: Int = 30
     /// Bumped whenever the accent colour changes, so views can force a full
     /// re-render with `.id(model.accentVersion)` — `ForelTheme.accent` is a
@@ -64,6 +67,8 @@ final class AppModel: ObservableObject {
     private let previewMatchLimit = 500
     private let ruleRunStatsWindowDays = 30
     private var historyCleanupTimer: AnyCancellable?
+    private var pendingWatcherNotification = PendingWatcherNotification()
+    private var watcherNotificationTask: Task<Void, Never>?
 
     init() throws {
         let appSupportRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -75,6 +80,11 @@ final class AppModel: ObservableObject {
         let db = try Database(path: dbPath)
         self.db = db
         self.coordinator = WatcherCoordinator(db: db)
+        self.coordinator.onActivity = { [weak self] summary in
+            Task { @MainActor in
+                self?.queueWatcherNotification(summary)
+            }
+        }
         // Default to paused (watching off) on a fresh install — a brand-new
         // user hasn't set up any rules yet, and starting to watch folders
         // immediately means triggering permission prompts and risking rule-less
@@ -90,6 +100,9 @@ final class AppModel: ObservableObject {
 
         let storedShowDockIcon = db.withLock { db in try? db.getSetting("show_dock_icon") }
         self.showDockIcon = storedShowDockIcon.map { $0 == "1" } ?? true
+
+        let storedWatcherNotificationsEnabled = db.withLock { db in try? db.getSetting("watcher_notifications_enabled") }
+        self.watcherNotificationsEnabled = storedWatcherNotificationsEnabled.map { $0 == "1" } ?? true
 
         let storedMaxDays = db.withLock { db in (try? db.getSetting("history_max_days")).flatMap { Int($0) } }
         self.historyMaxDays = min(max(storedMaxDays ?? 30, 1), 30)
@@ -154,6 +167,15 @@ final class AppModel: ObservableObject {
         applyDockIconPreference(keepingWindowsVisible: true)
     }
 
+    func setWatcherNotificationsEnabled(_ enabled: Bool) {
+        watcherNotificationsEnabled = enabled
+        db.withLock { db in try? db.setSetting("watcher_notifications_enabled", enabled ? "1" : "0") }
+        guard !enabled else { return }
+        watcherNotificationTask?.cancel()
+        watcherNotificationTask = nil
+        pendingWatcherNotification = PendingWatcherNotification()
+    }
+
     func setAccentPreset(_ preset: AccentPreset) {
         accentPreset = preset
         ForelTheme.apply(preset)
@@ -183,6 +205,45 @@ final class AppModel: ObservableObject {
             .autoconnect()
             .sink { [weak self] _ in self?.runHistoryCleanup() }
         runHistoryCleanup()
+    }
+
+    private func queueWatcherNotification(_ summary: WatcherActivitySummary) {
+        guard watcherNotificationsEnabled else { return }
+        pendingWatcherNotification.add(summary)
+        guard watcherNotificationTask == nil else { return }
+        watcherNotificationTask = Task { [weak self] in
+            try? await Task.sleep(for: watcherNotificationDelay)
+            await self?.flushWatcherNotification()
+        }
+    }
+
+    private func flushWatcherNotification() async {
+        watcherNotificationTask = nil
+        guard watcherNotificationsEnabled else {
+            pendingWatcherNotification = PendingWatcherNotification()
+            return
+        }
+        guard let notification = pendingWatcherNotification.makeNotification() else { return }
+        pendingWatcherNotification = PendingWatcherNotification()
+
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        if settings.authorizationStatus == .notDetermined {
+            _ = try? await center.requestAuthorization(options: [.alert, .sound])
+        }
+        guard (await center.notificationSettings()).authorizationStatus == .authorized else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = notification.title
+        content.body = notification.body
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "forel-watcher-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        try? await center.add(request)
     }
 
     func reloadFolders() {
@@ -606,5 +667,47 @@ final class AppModel: ObservableObject {
     private func showError(_ message: String) {
         alertTitle = "Error"
         errorMessage = message
+    }
+}
+
+private struct PendingWatcherNotification {
+    var actionCount = 0
+    var fileCount = 0
+    var ruleCounts: [String: Int] = [:]
+
+    mutating func add(_ summary: WatcherActivitySummary) {
+        actionCount += summary.actionCount
+        fileCount += summary.fileCount
+        for ruleName in summary.ruleNames {
+            ruleCounts[ruleName, default: 0] += 1
+        }
+    }
+
+    mutating func makeNotification() -> (title: String, body: String)? {
+        guard actionCount > 0 else { return nil }
+
+        let actionLabel = actionCount == 1 ? "action" : "actions"
+        let fileLabel = fileCount == 1 ? "file" : "files"
+        let title = "Forel applied \(actionCount) \(actionLabel)"
+
+        let ruleNames = ruleCounts
+            .sorted { lhs, rhs in
+                lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value > rhs.value
+            }
+            .map(\.key)
+        let visibleRules = ruleNames.prefix(3)
+        let remainingRuleCount = max(0, ruleNames.count - visibleRules.count)
+        let rulesText: String
+        if visibleRules.isEmpty {
+            rulesText = "No rules"
+        } else {
+            rulesText = visibleRules.joined(separator: ", ")
+                + (remainingRuleCount > 0 ? " and \(remainingRuleCount) more" : "")
+        }
+
+        return (
+            title,
+            "\(fileCount) \(fileLabel) processed. Rules: \(rulesText)."
+        )
     }
 }
