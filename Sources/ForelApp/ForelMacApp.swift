@@ -55,5 +55,16 @@ struct ForelMacApp: App {
                 }
             }
         }
+
+        // A real `Settings` scene (not an in-app route) so Settings behaves
+        // like every other macOS app: its own window, a "Settings…" item
+        // under the Forel menu, and the standard ⌘, shortcut, all wired up
+        // automatically by SwiftUI.
+        Settings {
+            SettingsView()
+                .environmentObject(model)
+                .environmentObject(updater)
+        }
+        .windowResizability(.contentSize)
     }
 }

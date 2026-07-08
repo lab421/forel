@@ -26,9 +26,10 @@ private let historyCleanupInterval: TimeInterval = 3600
 /// surface of the old `useForelStore` Zustand store, but as direct Swift
 @MainActor
 final class AppModel: ObservableObject {
-    /// Which screen the detail pane shows. Settings and History are in-app
-    /// views (not separate windows) reached from the sidebar or menu bar.
-    enum DetailRoute { case rules, history, settings }
+    /// Which screen the detail pane shows. History is an in-app view reached
+    /// from the sidebar; Settings is its own window (see `ForelMacApp`'s
+    /// `Settings` scene), matching standard macOS app structure.
+    enum DetailRoute { case rules, history }
 
     @Published var folders: [WatchedFolder] = []
     @Published var selectedFolderId: String?

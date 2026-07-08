@@ -31,8 +31,6 @@ struct ContentView: View {
                 RuleListView()
             case .history:
                 HistoryView()
-            case .settings:
-                SettingsView()
             }
         }
         .toolbarBackground(ForelTheme.background, for: .windowToolbar)

@@ -72,6 +72,10 @@ final class StatusBarController: NSObject {
                 self?.popover?.performClose(nil)
                 self?.openForel()
             },
+            onOpenSettings: { [weak self] in
+                self?.popover?.performClose(nil)
+                self?.openSettingsWindow()
+            },
             onQuit: { NSApp.terminate(nil) }
         )
         .environmentObject(model)
@@ -133,6 +137,16 @@ final class StatusBarController: NSObject {
     private func openForel() {
         let targetWindow = window ?? NSApp.windows.first { !($0 is NSPanel) }
         WindowActivation.activateSoon(targetWindow, showsDockIcon: model.showDockIcon)
+    }
+
+    /// The quick panel is a plain `NSPopover`, outside SwiftUI's `Settings`
+    /// scene, so `@Environment(\.openSettings)` isn't wired up for it here.
+    /// `showSettingsWindow:` is the underlying AppKit action SwiftUI's
+    /// `Settings` scene registers its "Settings…" menu item with, so sending
+    /// it directly opens the same window from anywhere in the app.
+    private func openSettingsWindow() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        WindowActivation.activateSoon(NSApp.keyWindow, showsDockIcon: model.showDockIcon)
     }
 
     /// Menu bar glyph: a crisp vector `leaf.fill` SF Symbol, with a colour dot

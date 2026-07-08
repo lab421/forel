@@ -109,7 +109,7 @@ struct SettingsView: View {
             Spacer(minLength: 0)
         }
         .padding(16)
-        .frame(minWidth: 460)
+        .frame(width: 460, height: 560)
         .background(ForelTheme.background)
         .onAppear {
             let storedLogin = (try? model.db.getSetting("launch_at_login")) ?? nil
@@ -119,13 +119,7 @@ struct SettingsView: View {
 
     private var header: some View {
         ViewHeader(title: "Settings", subtitle: "Forel preferences", systemImage: "gearshape") {
-            Button {
-                model.detailRoute = .rules
-            } label: {
-                Image(systemName: "chevron.backward")
-            }
-            .buttonStyle(IconButtonStyle())
-            .help("Back to rules")
+            EmptyView()
         }
     }
 

@@ -20,6 +20,7 @@ import UniformTypeIdentifiers
 
 struct SidebarView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.openSettings) private var openSettings
     @State private var draggedFolderId: String?
     @State private var insertionIndex: Int?
 
@@ -85,7 +86,7 @@ struct SidebarView: View {
 
             HStack {
                 FooterLink(title: "Settings", systemImage: "gearshape") {
-                    model.detailRoute = .settings
+                    openSettings()
                 }
                 .help("Settings")
                 Spacer()
