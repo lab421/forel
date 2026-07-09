@@ -24,7 +24,7 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 280, ideal: 270, max: 320)
-                .toolbar(removing: .sidebarToggle)
+                .modifier(SidebarToggleRemovalModifier())
         } detail: {
             switch model.detailRoute {
             case .rules:
@@ -55,5 +55,17 @@ struct ContentView: View {
                 }
             }
         )
+    }
+}
+
+/// `.toolbar(removing: .sidebarToggle)` requires macOS 14+; there's no
+/// equivalent way to remove the default sidebar toggle on macOS 13.
+private struct SidebarToggleRemovalModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.toolbar(removing: .sidebarToggle)
+        } else {
+            content
+        }
     }
 }

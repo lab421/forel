@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Forel",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v13)],
     products: [
         .library(name: "ForelCore", targets: ["ForelCore"]),
         .executable(name: "ForelApp", targets: ["ForelApp"]),

@@ -123,7 +123,7 @@ write_info_plist() {
   <key>CFBundleVersion</key>
   <string>${version_number}</string>
   <key>LSMinimumSystemVersion</key>
-  <string>14.0</string>
+  <string>13.0</string>
   <key>LSUIElement</key>
   <true/>
   <key>NSHighResolutionCapable</key>

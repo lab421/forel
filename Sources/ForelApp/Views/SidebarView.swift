@@ -20,7 +20,6 @@ import UniformTypeIdentifiers
 
 struct SidebarView: View {
     @EnvironmentObject var model: AppModel
-    @Environment(\.openSettings) private var openSettings
     @State private var draggedFolderId: String?
     @State private var insertionIndex: Int?
 
@@ -85,10 +84,14 @@ struct SidebarView: View {
             Spacer(minLength: 0)
 
             HStack {
-                FooterLink(title: "Settings", systemImage: "gearshape") {
-                    openSettings()
+                if #available(macOS 14.0, *) {
+                    SettingsFooterLink()
+                } else {
+                    FooterLink(title: "Settings", systemImage: "gearshape") {
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    }
+                    .help("Settings")
                 }
-                .help("Settings")
                 Spacer()
             }
         }
@@ -211,6 +214,18 @@ struct SidebarView: View {
         if let path = FolderPicker.choose(startingAt: folder.path) {
             model.updateFolderPath(folder, path: path)
         }
+    }
+}
+
+@available(macOS 14.0, *)
+private struct SettingsFooterLink: View {
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        FooterLink(title: "Settings", systemImage: "gearshape") {
+            openSettings()
+        }
+        .help("Settings")
     }
 }
 
