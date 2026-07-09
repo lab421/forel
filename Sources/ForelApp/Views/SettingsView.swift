@@ -22,6 +22,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var updater: UpdaterManager
+    @EnvironmentObject var license: LicenseManager
     @State private var launchAtLogin = LoginItem.isEnabled
     @State private var selectedCategory: SettingsCategory = .general
 
@@ -64,6 +65,9 @@ struct SettingsView: View {
                     generalPane
                 case .permissions:
                     PermissionsSection()
+                case .license:
+                    LicenseSettingsView()
+                        .environmentObject(license)
                 case .updates:
                     updatesPane
                 case .about:
@@ -212,7 +216,7 @@ struct SettingsView: View {
 }
 
 private enum SettingsCategory: CaseIterable, Identifiable {
-    case general, permissions, updates, about
+    case general, permissions, license, updates, about
 
     var id: Self { self }
 
@@ -220,6 +224,7 @@ private enum SettingsCategory: CaseIterable, Identifiable {
         switch self {
         case .general: "General"
         case .permissions: "Permissions"
+        case .license: "License"
         case .updates: "Updates"
         case .about: "About"
         }
@@ -229,19 +234,17 @@ private enum SettingsCategory: CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape.fill"
         case .permissions: "lock.shield.fill"
+        case .license: "key.fill"
         case .updates: "arrow.triangle.2.circlepath"
         case .about: "info.circle.fill"
         }
     }
 
-    /// A fixed, distinctly-colored badge per category (as in System Settings)
-    /// rather than the single theme accent — it's what makes the sidebar
-    /// scannable at a glance, so it intentionally doesn't follow the user's
-    /// chosen accent color.
     var tint: Color {
         switch self {
         case .general: Color(red: 0.36, green: 0.34, blue: 0.90)
         case .permissions: Color(red: 0.95, green: 0.55, blue: 0.13)
+        case .license: Color(red: 0.20, green: 0.45, blue: 0.80)
         case .updates: Color(red: 0.20, green: 0.70, blue: 0.45)
         case .about: Color(red: 0.31, green: 0.55, blue: 0.95)
         }

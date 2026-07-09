@@ -1,0 +1,171 @@
+import SwiftUI
+import AppKit
+import ForelCore
+
+struct LicenseSettingsView: View {
+    @EnvironmentObject var license: LicenseManager
+    @Environment(\.openURL) private var openURL
+    @State private var licenseKey = ""
+    @State private var showingDeactivationConfirmation = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SectionLabel(title: "License Status")
+            GlassCard {
+                HStack(spacing: 12) {
+                    Image(systemName: statusSymbol)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(statusColor)
+                        .frame(width: 28)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(statusTitle)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(ForelTheme.primaryText)
+                        Text(statusSubtitle)
+                            .font(.system(size: 11))
+                            .foregroundStyle(ForelTheme.secondaryText)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 14)
+            }
+
+            if case .licensed = license.state {
+                SectionLabel(title: "Licensed Device")
+                GlassCard {
+                    SettingsActionRow(
+                        title: license.deviceName,
+                        subtitle: license.licenseKey,
+                        buttonTitle: "Deactivate",
+                        action: { showingDeactivationConfirmation = true }
+                    )
+                }
+            } else {
+                SectionLabel(title: "Activate License")
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        GlassField(placeholder: "License Key", text: $licenseKey)
+                            .onSubmit { activate() }
+
+                        HStack {
+                            Button("Buy Forel") {
+                                if let url = URL(string: "https://forel.app") {
+                                    openURL(url)
+                                }
+                            }
+                            .buttonStyle(.link)
+
+                            Spacer()
+
+                            Button("Activate", action: activate)
+                                .buttonStyle(.borderedProminent)
+                                .disabled(
+                                    licenseKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        || license.isWorking
+                                )
+                        }
+                    }
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 14)
+                }
+            }
+
+            if let errorMessage = license.errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if license.isWorking {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .frame(maxWidth: 460)
+        .confirmationDialog(
+            "Deactivate this license? You can activate it on another Mac.",
+            isPresented: $showingDeactivationConfirmation
+        ) {
+            Button("Deactivate", role: .destructive) {
+                Task { await license.deactivate() }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private func activate() {
+        Task {
+            await license.activate(licenseKey: licenseKey)
+            if case .licensed = license.state {
+                licenseKey = ""
+            }
+        }
+    }
+
+    private var statusSymbol: String {
+        switch license.state {
+        case .licensed: "checkmark.seal.fill"
+        case .trial: "clock.fill"
+        case .trialUnverified: "wifi.slash"
+        case .trialExpired, .invalid: "exclamationmark.triangle.fill"
+        case .bypassed: "checkmark.circle.fill"
+        }
+    }
+
+    private var statusColor: Color {
+        switch license.state {
+        case .licensed, .bypassed: .green
+        case .trial, .trialUnverified: .orange
+        case .trialExpired, .invalid: .red
+        }
+    }
+
+    private var statusTitle: String {
+        switch license.state {
+        case .licensed: "License Active"
+        case .trial: "Trial Mode"
+        case .trialUnverified: "Trial Unverified"
+        case .trialExpired: "Trial Expired"
+        case .invalid: "License Invalid"
+        case .bypassed: "License Not Required"
+        }
+    }
+
+    private var statusSubtitle: String {
+        switch license.state {
+        case .licensed:
+            "Forel is activated and fully functional."
+        case .trial:
+            trialRemainingText(days: license.trialDaysRemaining)
+                ?? "Trial is active."
+        case .trialUnverified:
+            "Could not verify trial status with the server. Check your internet connection."
+        case .trialExpired:
+            "Your trial has ended. Activate a license to continue using Forel."
+        case .invalid(let reason):
+            reasonText(reason)
+        case .bypassed:
+            "License is not required in this build."
+        }
+    }
+
+    private func trialRemainingText(days: Int?) -> String? {
+        guard let days else { return nil }
+        return days == 1
+            ? "1 day remaining in trial."
+            : "\(days) days remaining in trial."
+    }
+
+    private func reasonText(_ reason: LicenseInvalidReason) -> String {
+        switch reason {
+        case .licenseNotFound: "License key not found."
+        case .licenseDisabled: "This license has been disabled."
+        case .licenseExpired: "This license has expired."
+        case .deviceNotActivated: "This device has not been activated."
+        case .deviceDeactivated: "This device has been deactivated."
+        case .unknown: "An unknown license error occurred."
+        }
+    }
+}

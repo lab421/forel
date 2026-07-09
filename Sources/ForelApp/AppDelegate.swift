@@ -15,6 +15,8 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import AppKit
+import Combine
+import ForelCore
 
 /// Closing the window hides it instead of quitting; Forel keeps running in
 /// the menu bar. Quit is only available from the status item menu.
@@ -23,6 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var statusBarController: StatusBarController?
     private var model: AppModel?
     private var updater: UpdaterManager?
+    let license = LicenseManager()
+    private var subscriptions = Set<AnyCancellable>()
 
     /// `@NSApplicationDelegateAdaptor` requires a zero-argument initializer;
     /// the app's model/updater are handed in afterward once SwiftUI has
@@ -36,6 +40,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             setUpStatusBar()
         }
         showMainWindowOnFirstLaunch()
+
+        license.start()
     }
 
     /// A brand-new install otherwise only shows up as a menu bar icon
@@ -124,9 +130,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusBarController = StatusBarController(
             model: model,
             updater: updater,
-            window: NSApp.windows.first
+            license: license,
+            window: NSApp.windows.first,
+            onOpenLicense: { [weak self] in self?.openMainWindow() }
         )
     }
+
+
 
     private func openMainWindow() {
         let targetWindow = NSApp.windows.first { !($0 is NSPanel) }

@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  ./build.sh [command] [arch] [version] [--sign] [--notarize]
+  ./build.sh [command] [flavor] [arch] [version] [--sign] [--notarize]
 
 Commands:
   dev       Build in debug mode and run ForelApp locally
@@ -14,6 +14,9 @@ Commands:
   release   Alias for: build + package
 
 Arguments:
+  flavor    development, ad-hoc, or app-store
+            (dev defaults to development; build/package default to ad-hoc)
+            The test command is flavor-independent and accepts no flavor.
   arch      arm64 or x86_64 (defaults to host architecture)
   version   Release version like v1.2.3
   --sign    Sign the app and DMG with a Developer ID Application certificate
@@ -23,10 +26,11 @@ Arguments:
 Examples:
   ./build.sh
   ./build.sh dev
-  ./build.sh package
+  ./build.sh test
+  ./build.sh build ad-hoc arm64
   ./build.sh package arm64 v1.2.3
-  ./build.sh package arm64 v1.2.3 --sign
-  ./build.sh package arm64 v1.2.3 --sign --notarize
+  ./build.sh package ad-hoc arm64 v1.2.3 --sign
+  ./build.sh package ad-hoc arm64 v1.2.3 --sign --notarize
   ./build.sh release x86_64 v1.2.3
 EOF
 }
@@ -171,6 +175,47 @@ if [[ $# -gt 0 ]]; then
   esac
 fi
 
+if [[ "$command" == "test" ]]; then
+  if [[ $# -gt 0 ]]; then
+    echo "The test command does not accept a build flavor." >&2
+    exit 1
+  fi
+  flavor="development"
+else
+  if [[ "$command" == "dev" ]]; then
+    flavor="development"
+  else
+    flavor="ad-hoc"
+  fi
+
+  if [[ $# -gt 0 ]]; then
+    case "$1" in
+      development|ad-hoc|app-store)
+        flavor="$1"
+        shift
+        ;;
+    esac
+  fi
+fi
+
+case "$flavor" in
+  development)
+    compilation_condition="FOREL_BUILD_DEVELOPMENT"
+    ;;
+  ad-hoc)
+    compilation_condition="FOREL_BUILD_AD_HOC"
+    ;;
+  app-store)
+    compilation_condition="FOREL_BUILD_APP_STORE"
+    ;;
+  *)
+    echo "Unsupported build flavor: $flavor" >&2
+    exit 1
+    ;;
+esac
+
+swift_flags=(-Xswiftc "-D$compilation_condition")
+
 sign_requested=false
 notarize_requested=false
 positional_args=()
@@ -250,13 +295,14 @@ case "$command" in
     # the bundle identity declared in Info.plist; an unbundled binary has none,
     # so those checks get misattributed to whatever launched it (e.g. the
     # terminal you're using) instead of Forel, making them unreliable to test.
-    swift build
+    swift build "${swift_flags[@]}"
 
     assemble_app_bundle "debug" "$dev_bundle"
     contents_dir="$dev_bundle/Contents"
     macos_dir="$contents_dir/MacOS"
 
-    write_info_plist "$contents_dir" "0.0.0-dev"
+    write_info_plist "$contents_dir" "0.0.0-dev" '  <key>ForelBuildFlavor</key>
+  <string>development</string>'
 
     # Ad-hoc sign so TCC has a stable bundle identity to attach grants to.
     codesign --force --deep --sign - "$dev_bundle" >/dev/null 2>&1
@@ -268,11 +314,13 @@ case "$command" in
 
   build)
     cd "$repo_root"
-    swift build -c release --arch "$arch"
+    swift build -c release --arch "$arch" "${swift_flags[@]}"
     ;;
 
   test)
     cd "$repo_root"
+    # Tests use the development flavor (no direct licensing), so no
+    # compilation condition is passed — plain `swift test` works as before.
     swift test
     ;;
 
@@ -306,7 +354,7 @@ case "$command" in
     esac
 
     cd "$repo_root"
-    swift build -c release --arch "$arch"
+    swift build -c release --arch "$arch" "${swift_flags[@]}"
 
     if [[ -f "$icon_source" ]]; then
       mkdir -p "$repo_root/dist"
@@ -319,7 +367,9 @@ case "$command" in
     write_info_plist "$contents_dir" "$version_number" '  <key>CFBundleIconFile</key>
   <string>Forel</string>
   <key>LSApplicationCategoryType</key>
-  <string>public.app-category.productivity</string>'
+  <string>public.app-category.productivity</string>
+  <key>ForelBuildFlavor</key>
+  <string>'"$flavor"'</string>'
 
     if [[ -f "$icns_path" ]]; then
       cp "$icns_path" "$bundle_root/Contents/Resources/Forel.icns"
