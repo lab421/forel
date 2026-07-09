@@ -1,16 +1,35 @@
 import CryptoKit
 import Foundation
 
-public enum OfflineLicenseToken {
-    public static let productionPublicKeyRaw = Data(
-        base64Encoded: "U0CobIap9nWvOjGXe0Xg8jY37k86j1l2bJTny4GYsNI="
-    )!
+/// Decoded, verified payload of a signed offline token minted by the license
+/// server's `/activate`, `/validate`, and `/trial/status` endpoints.
+public struct OfflineLicensePayload: Equatable, Sendable {
+    /// `nil` for a trial token, which proves a trial period rather than a
+    /// purchased license.
+    public var licenseKey: String?
+    public var deviceID: String
+    public var productID: String
+    /// `nil` means the token never expires (the server's current offline
+    /// grace setting) and must be treated as always valid.
+    public var validUntil: Date?
+}
 
+public enum OfflineLicenseTokenError: Error, Equatable, Sendable {
+    case malformed
+    case invalidSignature
+    case deviceMismatch
+    case expired
+}
+
+public enum OfflineLicenseToken {
+    /// Verifies a `base64url(payload).base64url(signature)` token: checks the
+    /// Ed25519 signature over the raw payload bytes, then that it was issued
+    /// for `deviceID` and hasn't passed its `validUntil` (if any).
     public static func verify(
         _ token: String,
         deviceID: String,
         now: Date,
-        publicKeyRaw: Data = productionPublicKeyRaw
+        publicKeyRaw: Data
     ) throws -> OfflineLicensePayload {
         let parts = token.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 2,
@@ -58,6 +77,9 @@ public enum OfflineLicenseToken {
 }
 
 private extension OfflineLicenseToken {
+    /// The license server issues `valid_until` via JS `Date.toISOString()`,
+    /// which always includes millisecond fractional seconds. Built fresh per
+    /// call rather than cached, since `ISO8601DateFormatter` isn't `Sendable`.
     static func dateFormatter() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

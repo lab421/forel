@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import ForelCore
+import Lab421Licensing
 
 struct LicenseSettingsView: View {
     @EnvironmentObject var license: LicenseManager
@@ -71,8 +71,8 @@ struct LicenseSettingsView: View {
                 }
             }
 
-            if let errorMessage = license.errorMessage {
-                Text(errorMessage)
+            if let lastError = license.lastError {
+                Text(lastError.localizedDescription)
                     .font(.system(size: 11))
                     .foregroundStyle(Color.red)
                     .fixedSize(horizontal: false, vertical: true)
@@ -123,49 +123,10 @@ struct LicenseSettingsView: View {
     }
 
     private var statusTitle: String {
-        switch license.state {
-        case .licensed: "License Active"
-        case .trial: "Trial Mode"
-        case .trialUnverified: "Trial Unverified"
-        case .trialExpired: "Trial Expired"
-        case .invalid: "License Invalid"
-        case .bypassed: "License Not Required"
-        }
+        license.state.localizedTitle
     }
 
     private var statusSubtitle: String {
-        switch license.state {
-        case .licensed:
-            "Forel is activated and fully functional."
-        case .trial:
-            trialRemainingText(days: license.trialDaysRemaining)
-                ?? "Trial is active."
-        case .trialUnverified:
-            "Could not verify trial status with the server. Check your internet connection."
-        case .trialExpired:
-            "Your trial has ended. Activate a license to continue using Forel."
-        case .invalid(let reason):
-            reasonText(reason)
-        case .bypassed:
-            "License is not required in this build."
-        }
-    }
-
-    private func trialRemainingText(days: Int?) -> String? {
-        guard let days else { return nil }
-        return days == 1
-            ? "1 day remaining in trial."
-            : "\(days) days remaining in trial."
-    }
-
-    private func reasonText(_ reason: LicenseInvalidReason) -> String {
-        switch reason {
-        case .licenseNotFound: "License key not found."
-        case .licenseDisabled: "This license has been disabled."
-        case .licenseExpired: "This license has expired."
-        case .deviceNotActivated: "This device has not been activated."
-        case .deviceDeactivated: "This device has been deactivated."
-        case .unknown: "An unknown license error occurred."
-        }
+        license.state.localizedSubtitle(appName: ForelLicensing.appName, trialDaysRemaining: license.trialDaysRemaining)
     }
 }

@@ -17,6 +17,7 @@
 import AppKit
 import Combine
 import ForelCore
+import Lab421Licensing
 
 /// Closing the window hides it instead of quitting; Forel keeps running in
 /// the menu bar. Quit is only available from the status item menu.
@@ -25,7 +26,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var statusBarController: StatusBarController?
     private var model: AppModel?
     private var updater: UpdaterManager?
-    let license = LicenseManager()
+    let license = LicenseManager(
+        isEnabled: BuildCapabilities.current.usesDirectLicensing,
+        productID: ForelLicensing.productID,
+        appName: ForelLicensing.appName,
+        deviceNameFallback: "This Mac",
+        secureStore: KeychainLicenseStore(service: ForelLicensing.keychainService),
+        deviceIdentifierProvider: HardwareDeviceIdentifierProvider(userDefaultsSuiteName: ForelLicensing.userDefaultsSuite),
+        offlineTokenPublicKeyRaw: ForelLicensing.productionPublicKeyRaw,
+        baseURL: ForelLicensing.baseURL
+    )
     let settingsNavigation = SettingsNavigation()
     private var subscriptions = Set<AnyCancellable>()
 

@@ -1,24 +1,7 @@
-// Forel - A native macOS file-automation app
-// Copyright (C) 2026  Lab421
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 import CryptoKit
 import Foundation
 import Testing
-import ForelCore
-@testable import ForelApp
+@testable import Lab421Licensing
 
 @MainActor
 struct LicenseManagerTests {
@@ -59,7 +42,7 @@ struct LicenseManagerTests {
         #expect(offlineManager.hasAccess)
     }
 
-    @Test func keychainSaveFailureSurfacesAnActionableMessageWithTheErrorCode() async {
+    @Test func keychainSaveFailureSurfacesAnActionableErrorWithTheErrorCode() async {
         let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
         let store = MemoryLicenseStore()
         store.saveError = KeychainLicenseStore.KeychainError(status: -25300)
@@ -67,7 +50,7 @@ struct LicenseManagerTests {
 
         await manager.activate(licenseKey: "TEST-KEY")
 
-        #expect(manager.errorMessage?.contains("-25300") == true)
+        #expect(manager.lastError == .storage(statusCode: -25300, appName: "Test App"))
     }
 
     @Test func aRecordCopiedFromAnotherMacIsNotTrustedEvenWithLicenseIsValidTrue() async {
@@ -168,7 +151,7 @@ struct LicenseManagerTests {
         #expect(manager.state == .licensed)
         #expect(manager.hasAccess)
         #expect(store.record?.licenseKey == "HAND-SIGNED")
-        #expect(manager.errorMessage == nil)
+        #expect(manager.lastError == nil)
     }
 
     @Test func importLicenseTokenRejectsATokenIssuedForAnotherDevice() async {
@@ -183,7 +166,7 @@ struct LicenseManagerTests {
 
         #expect(manager.state == .trialUnverified)
         #expect(store.record?.licenseKey == nil)
-        #expect(manager.errorMessage != nil)
+        #expect(manager.lastError == .importDeviceMismatch)
     }
 
     @Test func trialStartAndStatusDriveAccess() async {
@@ -402,7 +385,7 @@ struct LicenseManagerTests {
 
         #expect(manager.state == .trial)
         #expect(manager.hasAccess)
-        #expect(manager.errorMessage != nil)
+        #expect(manager.lastError != nil)
     }
 
     @Test func cachedTrialOnlyGrantsAccessAfterStartupVerificationSucceeds() async {
@@ -476,6 +459,94 @@ struct LicenseManagerTests {
         #expect(store.record?.licenseKey == nil)
     }
 
+    @Test func deactivateFailureLeavesTheLicenseActive() async {
+        let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let record = LicenseRecord(
+            lastObservedAt: clock.date,
+            licenseKey: "TEST-KEY",
+            licenseIsValid: true,
+            lastValidatedAt: clock.date,
+            licenseToken: signedToken(privateKey: privateKey, licenseKey: "TEST-KEY", deviceID: "hardware-fingerprint")
+        )
+        let store = MemoryLicenseStore(record: record)
+        let client = MockLicenseClient()
+        await client.setNetworkFailure(true)
+        let manager = makeManager(store: store, client: client, clock: clock, publicKey: privateKey.publicKey)
+
+        await manager.deactivate()
+
+        // A failed deactivation call must not clear the license locally —
+        // otherwise a transient outage would strand the user unlicensed
+        // despite the server never having confirmed the deactivation.
+        #expect(manager.state == .licensed)
+        #expect(manager.hasAccess)
+        #expect(store.record?.licenseKey == "TEST-KEY")
+        #expect(manager.lastError == .serverUnavailable)
+    }
+
+    @Test func activationRejectedByTheServerSurfacesItsMessage() async {
+        let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let store = MemoryLicenseStore()
+        let client = MockLicenseClient()
+        let apiError = LicenseAPIError(code: "SEAT_LIMIT_REACHED", message: "No seats left", field: nil)
+        await client.setActivationError(apiError)
+        let manager = makeManager(store: store, client: client, clock: clock)
+
+        await manager.activate(licenseKey: "TEST-KEY")
+
+        #expect(manager.lastError == .server(apiError))
+        #expect(!manager.hasAccess)
+        #expect(store.record?.licenseKey == nil)
+    }
+
+    @Test func importLicenseTokenRejectsAnExpiredToken() {
+        let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validUntil = Date(timeIntervalSince1970: 1_700_000_000)
+        let store = MemoryLicenseStore()
+        let manager = makeManager(
+            store: store,
+            clock: TestClock(validUntil.addingTimeInterval(1)),
+            publicKey: privateKey.publicKey
+        )
+
+        let token = signedToken(
+            privateKey: privateKey,
+            licenseKey: "EXPIRED",
+            deviceID: "hardware-fingerprint",
+            validUntil: validUntil
+        )
+        manager.importLicenseToken(token)
+
+        #expect(manager.lastError == .importExpired)
+        #expect(store.record?.licenseKey == nil)
+    }
+
+    @Test func importLicenseTokenRejectsAMalformedToken() {
+        let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let manager = makeManager(store: MemoryLicenseStore(), clock: clock)
+
+        manager.importLicenseToken("not-a-token")
+
+        #expect(manager.lastError == .importInvalid)
+    }
+
+    @Test func keychainLoadFailureAtLaunchStartsInASafeDeniedState() {
+        let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let store = MemoryLicenseStore()
+        store.loadError = KeychainLicenseStore.KeychainError(status: -25293)
+        let manager = makeManager(store: store, clock: clock)
+
+        // A corrupted/unreadable Keychain item at launch must not be
+        // mistaken for "no license yet" and silently grant access — it
+        // falls back to the same denied-until-verified state as a fresh
+        // install, and reports why.
+        #expect(manager.state == .trialUnverified)
+        #expect(!manager.hasAccess)
+        #expect(manager.lastError == .storage(statusCode: -25293, appName: "Test App"))
+    }
+
     @Test func networkFailureKeepsPreviouslyValidatedLicenseActive() async {
         let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
         let privateKey = Curve25519.Signing.PrivateKey()
@@ -509,7 +580,7 @@ struct LicenseManagerTests {
 
         #expect(manager.state == .licensed)
         #expect(manager.hasAccess)
-        #expect(manager.errorMessage != nil)
+        #expect(manager.lastError == .validationUnavailable)
     }
 
     @Test func trialPeriodicRefreshUsesADailyInterval() {
@@ -542,10 +613,15 @@ struct LicenseManagerTests {
         #expect(store.saveCount == savesAfterInitialization + 1)
     }
 
-    @Test func nonDirectBuildBypassesLicensing() {
+    @Test func disabledLicensingBypassesAccessChecks() {
         let manager = LicenseManager(
-            capabilities: BuildFlavor.appStore.capabilities,
+            isEnabled: false,
+            productID: "test-product",
+            appName: "Test App",
+            deviceNameFallback: "This Mac",
             secureStore: MemoryLicenseStore(),
+            deviceIdentifierProvider: StaticDeviceIdentifierProvider(deviceID: "hardware-fingerprint"),
+            offlineTokenPublicKeyRaw: Curve25519.Signing.PrivateKey().publicKey.rawRepresentation,
             client: MockLicenseClient()
         )
 
@@ -560,12 +636,15 @@ struct LicenseManagerTests {
         publicKey: Curve25519.Signing.PublicKey = Curve25519.Signing.PrivateKey().publicKey
     ) -> LicenseManager {
         LicenseManager(
-            capabilities: BuildFlavor.adHoc.capabilities,
+            isEnabled: true,
+            productID: "test-product",
+            appName: "Test App",
+            deviceNameFallback: "This Mac",
             secureStore: store,
-            client: client,
             deviceIdentifierProvider: StaticDeviceIdentifierProvider(deviceID: "hardware-fingerprint"),
-            now: { clock.date },
-            offlineTokenPublicKeyRaw: publicKey.rawRepresentation
+            offlineTokenPublicKeyRaw: publicKey.rawRepresentation,
+            client: client,
+            now: { clock.date }
         )
     }
 
@@ -589,13 +668,17 @@ private final class TestClock {
 private final class MemoryLicenseStore: LicenseSecureStoring {
     var record: LicenseRecord?
     var saveError: KeychainLicenseStore.KeychainError?
+    var loadError: KeychainLicenseStore.KeychainError?
     private(set) var saveCount = 0
 
     init(record: LicenseRecord? = nil) {
         self.record = record
     }
 
-    func load() throws -> LicenseRecord? { record }
+    func load() throws -> LicenseRecord? {
+        if let loadError { throw loadError }
+        return record
+    }
 
     func save(_ record: LicenseRecord) throws {
         if let saveError { throw saveError }
@@ -612,6 +695,7 @@ private actor MockLicenseClient: LicenseAPIClientProtocol {
     )
     private var validation: Result<String?, LicenseInvalidReason> = .success(nil)
     private var activationLicenseToken: String?
+    private var activationError: LicenseAPIError?
     private var networkFailure = false
     private(set) var trialStartCount = 0
     private(set) var trialStatusCount = 0
@@ -627,6 +711,10 @@ private actor MockLicenseClient: LicenseAPIClientProtocol {
 
     func setActivationLicenseToken(_ token: String?) {
         self.activationLicenseToken = token
+    }
+
+    func setActivationError(_ error: LicenseAPIError?) {
+        self.activationError = error
     }
 
     func setNetworkFailure(_ networkFailure: Bool) {
@@ -650,6 +738,7 @@ private actor MockLicenseClient: LicenseAPIClientProtocol {
         deviceName: String?,
         deviceProfile: DeviceProfile?
     ) async throws -> String? {
+        if let activationError { throw activationError }
         if networkFailure { throw MockError.network }
         return activationLicenseToken
     }
@@ -667,42 +756,4 @@ private actor MockLicenseClient: LicenseAPIClientProtocol {
 
 private struct StaticDeviceIdentifierProvider: DeviceIdentifierProviding {
     let deviceID: String
-}
-
-/// Mints a `base64url(payload).base64url(signature)` offline token for tests
-/// — the same wire format `OfflineLicenseToken.verify` expects. Duplicated
-/// from `ForelCoreTests/License/OfflineLicenseTokenTests.swift` rather than
-/// shared, since `ForelAppTests` and `ForelCoreTests` are separate test
-/// targets.
-private func signedToken(
-    privateKey: Curve25519.Signing.PrivateKey,
-    licenseKey: String? = nil,
-    deviceID: String,
-    productID: String = "forel",
-    validUntil: Date? = nil
-) -> String {
-    var payload: [String: Any] = [
-        "device_id": deviceID,
-        "product_id": productID,
-    ]
-    if let licenseKey {
-        payload["license_key"] = licenseKey
-    }
-    if let validUntil {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        payload["valid_until"] = formatter.string(from: validUntil)
-    } else {
-        payload["valid_until"] = NSNull()
-    }
-    let payloadData = try! JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-    let signature = try! privateKey.signature(for: payloadData)
-    return base64URLEncode(payloadData) + "." + base64URLEncode(signature)
-}
-
-private func base64URLEncode(_ data: Data) -> String {
-    data.base64EncodedString()
-        .replacingOccurrences(of: "+", with: "-")
-        .replacingOccurrences(of: "/", with: "_")
-        .replacingOccurrences(of: "=", with: "")
 }

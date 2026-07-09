@@ -18,6 +18,7 @@ import AppKit
 import SwiftUI
 import Combine
 import ForelCore
+import Lab421Licensing
 
 /// Menu-bar item: Forel glyph with a green/red status dot. Clicking it shows
 /// a SwiftUI quick panel (`QuickPanelView`) styled as a dark glass popover,

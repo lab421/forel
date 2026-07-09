@@ -1,22 +1,6 @@
-// Forel - A native macOS file-automation app
-// Copyright (C) 2026  Lab421
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 import Foundation
 import Testing
-@testable import ForelCore
+@testable import Lab421Licensing
 
 @Suite(.serialized)
 struct LicenseAPIClientTests {
@@ -42,7 +26,7 @@ struct LicenseAPIClientTests {
         LicenseURLProtocol.reset()
         try await client.startTrial(
             deviceID: "device-1",
-            product: "forel",
+            product: "ombrelle",
             deviceName: "Mac Studio",
             deviceProfile: testProfile
         )
@@ -50,13 +34,13 @@ struct LicenseAPIClientTests {
         #expect(trialStart.url?.path == "/api/v1/trial/start")
         let trialStartBody = try #require(LicenseURLProtocol.lastJSONBody)
         #expect(trialStartBody["device_id"] as? String == "device-1")
-        #expect(trialStartBody["product_id"] as? String == "forel")
+        #expect(trialStartBody["product_id"] as? String == "ombrelle")
         #expect(trialStartBody["device_name"] as? String == "Mac Studio")
         #expect(deviceProfileJSON(trialStartBody) == testProfile)
 
         LicenseURLProtocol.response =
             #"{"success":true,"valid":true,"expires_at":"2024-01-08T00:00:00.000Z","days_remaining":5,"trial_token":"trial-payload.trial-signature"}"#
-        let trialStatus = try await client.trialStatus(deviceID: "device-1", product: "forel")
+        let trialStatus = try await client.trialStatus(deviceID: "device-1", product: "ombrelle")
         switch trialStatus {
         case .success(let status):
             #expect(status.daysRemaining == 5)
@@ -71,7 +55,7 @@ struct LicenseAPIClientTests {
         #expect(LicenseURLProtocol.lastRequest?.url?.path == "/api/v1/trial/status")
         let trialStatusBody = try #require(LicenseURLProtocol.lastJSONBody)
         #expect(trialStatusBody["device_id"] as? String == "device-1")
-        #expect(trialStatusBody["product_id"] as? String == "forel")
+        #expect(trialStatusBody["product_id"] as? String == "ombrelle")
 
         LicenseURLProtocol.response = #"{"success":true,"license_token":"payload.signature"}"#
         let licenseToken = try await client.activate(
@@ -151,7 +135,7 @@ struct LicenseAPIClientTests {
         )
         LicenseURLProtocol.response = #"{"success":true,"valid":false,"reason":"trial_expired"}"#
 
-        let result = try await client.trialStatus(deviceID: "device", product: "forel")
+        let result = try await client.trialStatus(deviceID: "device", product: "ombrelle")
         switch result {
         case .failure(let reason):
             #expect(reason == .trialExpired)

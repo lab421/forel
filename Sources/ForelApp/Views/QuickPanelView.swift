@@ -17,6 +17,7 @@
 import AppKit
 import SwiftUI
 import ForelCore
+import Lab421Licensing
 
 /// The menu-bar quick panel: header with status badge, a "Watching" master
 /// switch, watched-folder toggles, and an activity summary. Deep editing

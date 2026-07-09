@@ -1,5 +1,10 @@
 import Foundation
 
+/// Machine info sent once with `/activate` and `/trial/start`, matching the
+/// `device_profile` shape from the license server's own example (`model`,
+/// `cpu`, `macos_version`). Purely informational — the server stores it as a
+/// free-form JSON blob and never uses it to gate access. No identifier beyond
+/// the existing `device_id` (no separate random UUID).
 public struct DeviceProfile: Encodable, Equatable, Sendable {
     public let model: String
     public let cpu: String
@@ -8,6 +13,24 @@ public struct DeviceProfile: Encodable, Equatable, Sendable {
     public let memoryMB: Int
     public let appVersion: String
     public let preferredLanguage: String
+
+    public init(
+        model: String,
+        cpu: String,
+        macosVersion: String,
+        cpuCount: Int,
+        memoryMB: Int,
+        appVersion: String,
+        preferredLanguage: String
+    ) {
+        self.model = model
+        self.cpu = cpu
+        self.macosVersion = macosVersion
+        self.cpuCount = cpuCount
+        self.memoryMB = memoryMB
+        self.appVersion = appVersion
+        self.preferredLanguage = preferredLanguage
+    }
 
     enum CodingKeys: String, CodingKey {
         case model
@@ -46,9 +69,13 @@ public struct DeviceProfile: Encodable, Equatable, Sendable {
 
     private static func hardwareModel() -> String? {
         var size: size_t = 0
-        guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else { return nil }
+        guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else {
+            return nil
+        }
         var buffer = [CChar](repeating: 0, count: size)
-        guard sysctlbyname("hw.model", &buffer, &size, nil, 0) == 0 else { return nil }
+        guard sysctlbyname("hw.model", &buffer, &size, nil, 0) == 0 else {
+            return nil
+        }
         let bytes = buffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }
         return String(decoding: bytes, as: UTF8.self)
     }

@@ -1,5 +1,68 @@
 import Foundation
 
+public struct LicenseAPIError: Error, Equatable, Sendable {
+    public let code: String
+    public let message: String
+    public let field: String?
+
+    public init(code: String, message: String, field: String?) {
+        self.code = code
+        self.message = message
+        self.field = field
+    }
+}
+
+public enum TrialInvalidReason: String, Codable, Equatable, Error, Sendable {
+    case trialNotStarted = "trial_not_started"
+    case trialExpired = "trial_expired"
+    case unknown
+
+    public init(serverValue: String?) {
+        self = serverValue.flatMap(Self.init(rawValue:)) ?? .unknown
+    }
+}
+
+public struct TrialStatus: Equatable, Sendable {
+    public let daysRemaining: Int
+    public let expiresAt: Date
+    /// Signed proof the trial is genuinely active, verified the same way as
+    /// a license's token. Required to grant access — a `valid: true` answer
+    /// without one is not trusted (see `LicenseManager.state(for:)`).
+    public let trialToken: String?
+
+    public init(daysRemaining: Int, expiresAt: Date, trialToken: String?) {
+        self.daysRemaining = daysRemaining
+        self.expiresAt = expiresAt
+        self.trialToken = trialToken
+    }
+}
+
+public enum LicenseInvalidReason: String, Codable, Equatable, Error, Sendable {
+    case licenseNotFound = "license_not_found"
+    case licenseDisabled = "license_disabled"
+    case licenseExpired = "license_expired"
+    case deviceNotActivated = "device_not_activated"
+    case deviceDeactivated = "device_deactivated"
+    case unknown
+
+    public init(serverValue: String?) {
+        self = serverValue.flatMap(Self.init(rawValue:)) ?? .unknown
+    }
+}
+
+public protocol LicenseAPIClientProtocol: Sendable {
+    func startTrial(deviceID: String, product: String, deviceName: String?, deviceProfile: DeviceProfile?) async throws
+    func trialStatus(deviceID: String, product: String) async throws -> Result<TrialStatus, TrialInvalidReason>
+    func activate(
+        licenseKey: String,
+        deviceID: String,
+        deviceName: String?,
+        deviceProfile: DeviceProfile?
+    ) async throws -> String?
+    func validate(licenseKey: String, deviceID: String) async throws -> Result<String?, LicenseInvalidReason>
+    func deactivate(licenseKey: String, deviceID: String) async throws
+}
+
 public actor LicenseAPIClient: LicenseAPIClientProtocol {
     private struct DeviceRegistrationRequest: Encodable {
         enum Identifier {
@@ -52,12 +115,16 @@ public actor LicenseAPIClient: LicenseAPIClientProtocol {
         let error: APIError?
     }
 
+    /// The shared license server used by every app that doesn't pass its own
+    /// `baseURL`.
+    public static let defaultBaseURL = URL(string: "https://api.ombrelle.app/api/v1/license")!
+
     private let baseURL: URL
     private let trialBaseURL: URL
     private let session: URLSession
-    
+
     public init(
-        baseURL: URL = URL(string: "http://localhost:8787/api/v1/license")!,
+        baseURL: URL = LicenseAPIClient.defaultBaseURL,
         session: URLSession = .shared
     ) {
         self.baseURL = baseURL

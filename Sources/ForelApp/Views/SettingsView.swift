@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import SwiftUI
+import Lab421Licensing
 
 /// Shared across the app delegate and `SettingsView` so code outside SwiftUI
 /// (e.g. the status item's "Activate" action, or `AppDelegate` reacting to a

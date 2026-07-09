@@ -1,0 +1,29 @@
+"license_key_required" = "Saisissez une clé de licence.";
+"license_storage_error" = "%1$@ n’a pas pu enregistrer votre licence de manière sécurisée (erreur %2$d). Quittez puis rouvrez %1$@ pour réessayer ; si le problème persiste, redémarrez votre Mac ou contactez le support en indiquant ce code d’erreur.";
+"license_server_unavailable" = "Le serveur de licences est indisponible. Réessayez.";
+"license_validation_unavailable" = "La licence n’a pas pu être vérifiée. L’activation existante reste valable.";
+
+"license_reason_license_not_found" = "Cette clé de licence est introuvable.";
+"license_reason_license_disabled" = "Cette licence a été désactivée.";
+"license_reason_license_expired" = "Cette licence a expiré.";
+"license_reason_device_not_activated" = "Ce Mac n’est pas activé pour cette licence.";
+"license_reason_device_deactivated" = "Ce Mac a été désactivé.";
+"license_reason_unknown" = "Cette licence n’est plus valide.";
+
+"license_import_device_mismatch" = "Ce fichier de licence a été émis pour un autre Mac.";
+"license_import_expired" = "Ce fichier de licence a expiré.";
+"license_import_invalid" = "Ce fichier de licence n’a pas pu être vérifié.";
+
+"license_active" = "Licence active";
+"license_active_subtitle" = "Ce Mac possède une licence %@ active.";
+"license_invalid" = "Licence invalide";
+"license_not_required" = "Aucune licence requise";
+
+"trial_mode" = "Mode d’essai";
+"trial_active_subtitle" = "Votre essai est actif sur ce Mac.";
+"trial_day_remaining" = "%d jour restant";
+"trial_days_remaining" = "%d jours restants";
+"trial_expired" = "Essai terminé";
+"trial_expired_subtitle" = "Votre essai est terminé. Achetez maintenant ou saisissez une clé de licence.";
+"trial_unverified" = "Essai non vérifié";
+"trial_unverified_subtitle" = "%@ a besoin d’une connexion internet pour vérifier votre essai.";

@@ -3,13 +3,14 @@ import PackageDescription
 
 let package = Package(
     name: "Forel",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     products: [
         .library(name: "ForelCore", targets: ["ForelCore"]),
         .executable(name: "ForelApp", targets: ["ForelApp"]),
     ],
     dependencies: [
         .package(url: "https://github.com/weichsel/ZIPFoundation.git", from: "0.9.18"),
+        .package(path: "Packages/lab421-licensing"),
     ],
     targets: [
         .target(
@@ -20,7 +21,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "ForelApp",
-            dependencies: ["ForelCore"],
+            dependencies: [
+                "ForelCore",
+                .product(name: "Lab421Licensing", package: "lab421-licensing"),
+            ],
             resources: [.copy("Resources")]
         ),
         .testTarget(
