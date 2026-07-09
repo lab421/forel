@@ -198,7 +198,7 @@ jobs:
             echo "- \`Forel-${RELEASE_TAG}-darwin-arm64.dmg\` Apple Silicon (M1 / M2 / M3 / M4)"
             echo "- \`Forel-${RELEASE_TAG}-darwin-x86_64.dmg\` for Intel"
             echo ""
-            echo "Requires **macOS 14 Sonoma or later**."
+            echo "Requires **macOS 13 Ventura or later**."
             echo ""
             echo "1. Download the correct .dmg for your Mac."
             echo "2. Open it and drag **Forel** into **Applications**."
@@ -257,7 +257,7 @@ jobs:
               regex(/^v?(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)\$/i)
             end
 
-            depends_on macos: :sonoma
+            depends_on macos: :ventura
 
             app "Forel.app"
 

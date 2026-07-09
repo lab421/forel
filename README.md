@@ -6,7 +6,7 @@
 
 **The Hazel alternative for macOS. Open source and privacy-focused.**
 
-[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&logo=apple)](https://www.apple.com/macos/)
+[![macOS 13+](https://img.shields.io/badge/macOS-13%2B-black?style=flat-square&logo=apple)](https://www.apple.com/macos/)
 [![Swift 6](https://img.shields.io/badge/Swift-6-orange?style=flat-square&logo=swift)](https://www.swift.org)
 [![Downloads](https://img.shields.io/github/downloads/lab421/forel/total?style=flat-square)](https://github.com/lab421/forel/releases)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue?style=flat-square)](LICENSE)
@@ -97,7 +97,7 @@ Download the latest release `.dmg` from the [Releases](https://github.com/lab421
 
 ### Build from source
 
-**Prerequisites:** [Swift 6](https://www.swift.org) · macOS 14 or later
+**Prerequisites:** [Swift 6](https://www.swift.org) · macOS 13 or later
 
 ```bash
 git clone https://github.com/lab421/forel.git
@@ -109,7 +109,7 @@ swift run
 
 To build and package the app, use the Swift package tooling and the existing release workflow.
 
-> Requires macOS 14 Sonoma or later.
+> Requires macOS 13 Ventura or later.
 
 ---
 

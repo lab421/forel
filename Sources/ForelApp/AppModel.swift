@@ -147,7 +147,7 @@ final class AppModel: ObservableObject {
                 window.orderFrontRegardless()
             }
             keyWindow?.makeKeyAndOrderFront(nil)
-            NSApp.activate()
+            NSApp.activate(ignoringOtherApps: true)
         }
 
         restoreWindows()
@@ -157,7 +157,7 @@ final class AppModel: ObservableObject {
                 window.orderFrontRegardless()
             }
             keyWindow?.makeKeyAndOrderFront(nil)
-            NSApp.activate()
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 

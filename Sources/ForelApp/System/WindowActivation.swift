@@ -23,7 +23,7 @@ enum WindowActivation {
         NSApp.setActivationPolicy(showsDockIcon ? .regular : .accessory)
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
         NSRunningApplication.current.activate(options: activationOptions)
     }
 

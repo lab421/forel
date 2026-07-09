@@ -10,6 +10,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Changed
 - Settings now opens in its own window, with a "Settings…" item under the Forel menu and the standard ⌘, shortcut, instead of being a pane inside the main window.
+- Forel now requires macOS 13 Ventura or later, down from macOS 14 Sonoma.
 
 ### Fixed
 - Opening Forel's main window from the menu-bar quick panel now reliably switches the top menu bar to Forel's own menu (Forel, File, Edit, View…) instead of sometimes leaving the previous app's menu showing.
