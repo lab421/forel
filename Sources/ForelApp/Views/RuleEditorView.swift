@@ -1250,16 +1250,26 @@ private struct DestinationFolderField: View {
                 }
             }
 
-            Text(preview)
-                .font(.system(size: 11))
-                .foregroundStyle(ForelTheme.secondaryText)
+            if !preview.isEmpty {
+                Text(preview)
+                    .font(.system(size: 11))
+                    .foregroundStyle(ForelTheme.secondaryText)
+            }
         }
     }
 
     private var preview: String {
         let candidate = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !candidate.isEmpty else { return "Preview: " }
+        guard !candidate.isEmpty else { return "" }
         return "Preview: \(TokenExpander.previewExpand(candidate))"
+    }
+
+    /// A token chip appended to an empty destination would leave a bare
+    /// `{year}` with no base folder to sit under, which isn't a usable
+    /// path — chips only make sense once a destination has been chosen or
+    /// typed.
+    private var hasDestination: Bool {
+        !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func choose() {
@@ -1282,6 +1292,9 @@ private struct DestinationFolderField: View {
                 .foregroundStyle(isActive ? ForelTheme.accent : ForelTheme.secondaryText)
         }
         .buttonStyle(.plain)
+        .disabled(!hasDestination)
+        .opacity(hasDestination ? 1 : 0.45)
+        .help(hasDestination ? "" : "Choose a destination folder first")
     }
 
     /// Chips join with `/` (a new path component) rather than `-`, matching
@@ -1327,15 +1340,17 @@ private struct RenamePatternEditor: View {
                 }
             }
 
-            Text(preview)
-                .font(.system(size: 11))
-                .foregroundStyle(ForelTheme.secondaryText)
+            if !preview.isEmpty {
+                Text(preview)
+                    .font(.system(size: 11))
+                    .foregroundStyle(ForelTheme.secondaryText)
+            }
         }
     }
 
     private var preview: String {
         let candidate = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !candidate.isEmpty else { return "Preview: " }
+        guard !candidate.isEmpty else { return "" }
         if candidate.contains("/") {
             return "⚠️ Pattern contains '/' which is not allowed in filenames"
         }
