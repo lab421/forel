@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var model: AppModel?
     private var updater: UpdaterManager?
     let license = LicenseManager()
+    let settingsNavigation = SettingsNavigation()
     private var subscriptions = Set<AnyCancellable>()
 
     /// `@NSApplicationDelegateAdaptor` requires a zero-argument initializer;
@@ -41,7 +42,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         showMainWindowOnFirstLaunch()
 
+        model.setLicenseAccessGranted(license.hasAccess)
+        // `dropFirst()` skips the state already accounted for above, so a
+        // fresh subscriber doesn't double-apply the state it was created
+        // with — matching the `hasAccess` snapshot immediately before this.
+        license.$state
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] state in
+                guard let self else { return }
+                self.model?.setLicenseAccessGranted(state.grantsAccess)
+                if state.isDefinitivelyDenied {
+                    self.openLicenseSettings()
+                }
+            }
+            .store(in: &subscriptions)
         license.start()
+        if license.state.isDefinitivelyDenied {
+            openLicenseSettings()
+        }
     }
 
     /// A brand-new install otherwise only shows up as a menu bar icon
@@ -132,11 +151,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             updater: updater,
             license: license,
             window: NSApp.windows.first,
-            onOpenLicense: { [weak self] in self?.openMainWindow() }
+            onOpenLicense: { [weak self] in self?.openLicenseSettings() }
         )
     }
 
-
+    /// Opens the `Settings` scene directly on the License tab — used both by
+    /// the quick panel's "Activate" button and whenever the license/trial
+    /// becomes definitively denied. `showSettingsWindow:` is the same
+    /// selector SwiftUI's own "Settings…" menu item sends; there's no public
+    /// API to open a SwiftUI `Settings` scene from AppKit code on macOS 13.
+    private func openLicenseSettings() {
+        settingsNavigation.selectedCategory = .license
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
 
     private func openMainWindow() {
         let targetWindow = NSApp.windows.first { !($0 is NSPanel) }

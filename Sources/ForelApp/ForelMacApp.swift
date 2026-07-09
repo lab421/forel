@@ -66,6 +66,7 @@ struct ForelMacApp: App {
                 .environmentObject(model)
                 .environmentObject(updater)
                 .environmentObject(appDelegate.license)
+                .environmentObject(appDelegate.settingsNavigation)
         }
         .windowResizability(.contentSize)
     }

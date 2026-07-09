@@ -60,6 +60,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var isPreviewing = false
     @Published var previewResult: PreviewResult?
     @Published private var ruleExpansionPreferences = RuleExpansionPreferences()
+    /// Whether `LicenseManager` currently grants access. Kept separate from
+    /// `paused` (the user's own Watching toggle, persisted to the database)
+    /// so a denied trial/license stops the watcher without touching or
+    /// overwriting the user's preference — access resumes exactly where they
+    /// left it once the license becomes valid again.
+    @Published private(set) var licenseAccessGranted = true
 
     let db: Database
     private let coordinator: WatcherCoordinator
@@ -338,11 +344,34 @@ final class AppModel: ObservableObject {
         return folders.first(where: { $0.id == historyFolderFilterId })?.path
     }
 
+    /// Whether folders should actually be registered with the watcher right
+    /// now: the user hasn't paused Watching, and the license/trial grants
+    /// access. Every call site that adds/removes folders from `coordinator`
+    /// must go through this instead of checking `paused` alone.
+    private var isWatchingAllowed: Bool { !paused && licenseAccessGranted }
+
     private func startWatchingEnabledFolders() {
-        guard !paused else { return }
+        guard isWatchingAllowed else { return }
         let allFolders = db.withLock { db in (try? db.listFolders()) ?? [] }
         for folder in allFolders where folder.enabled {
             coordinator.add(folder.path)
+        }
+    }
+
+    /// Called by `AppDelegate` whenever `LicenseManager.state` changes.
+    /// Stops or resumes the watcher exactly like pausing does, without
+    /// touching (or persisting) the user's own Watching toggle.
+    func setLicenseAccessGranted(_ granted: Bool) {
+        guard granted != licenseAccessGranted else { return }
+        licenseAccessGranted = granted
+        guard !paused else { return }
+        let allFolders = db.withLock { db in (try? db.listFolders()) ?? [] }
+        for folder in allFolders where folder.enabled {
+            if granted {
+                coordinator.add(folder.path)
+            } else {
+                coordinator.remove(folder.path)
+            }
         }
     }
 
@@ -362,7 +391,7 @@ final class AppModel: ObservableObject {
         let folder = WatchedFolder(path: normalizedPath)
         do {
             try db.withLock { db in try db.insertFolder(folder) }
-            if !paused { coordinator.add(normalizedPath) }
+            if isWatchingAllowed { coordinator.add(normalizedPath) }
             reloadFolders()
         } catch {
             showError(error)
@@ -414,7 +443,7 @@ final class AppModel: ObservableObject {
 
         do {
             try db.withLock { db in try db.updateFolderPath(folder.id, path: normalizedPath) }
-            if folder.enabled, !paused {
+            if folder.enabled, isWatchingAllowed {
                 coordinator.remove(folder.path)
                 coordinator.add(normalizedPath)
             }
@@ -430,7 +459,7 @@ final class AppModel: ObservableObject {
 
     func toggleFolder(_ folder: WatchedFolder, enabled: Bool) {
         db.withLock { db in try? db.toggleFolder(folder.id, enabled: enabled) }
-        if enabled, !paused {
+        if enabled, isWatchingAllowed {
             coordinator.add(folder.path)
         } else {
             coordinator.remove(folder.path)
@@ -570,11 +599,12 @@ final class AppModel: ObservableObject {
     }
 
     /// The enabled rules and watched root currently covering `path`, if
-    /// watching is actually active there — empty/`nil` when paused or the
-    /// folder is disabled, since the watcher wouldn't reprocess anything in
-    /// that case regardless of what the rules say.
+    /// watching is actually active there — empty/`nil` when paused, license
+    /// access is denied, or the folder is disabled, since the watcher
+    /// wouldn't reprocess anything in that case regardless of what the rules
+    /// say.
     private func activeRules(coveringRestorePath path: String) -> (rules: [Rule], watchedRoot: String?) {
-        guard !paused else { return ([], nil) }
+        guard isWatchingAllowed else { return ([], nil) }
         return db.withLock { db -> (rules: [Rule], watchedRoot: String?) in
             guard let folder = try? db.folderForPath(path), folder.enabled else { return ([], nil) }
             let rules = (try? db.listRules(folderId: folder.id))?.filter(\.enabled) ?? []
@@ -649,7 +679,7 @@ final class AppModel: ObservableObject {
         for folder in allFolders {
             if paused {
                 coordinator.remove(folder.path)
-            } else if folder.enabled {
+            } else if folder.enabled, licenseAccessGranted {
                 coordinator.add(folder.path)
             }
         }

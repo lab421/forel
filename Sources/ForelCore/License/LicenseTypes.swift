@@ -12,8 +12,28 @@ public struct LicenseRecord: Codable, Equatable {
     public var lastValidatedAt: Date? = nil
     public var licenseToken: String? = nil
 
-    public init(lastObservedAt: Date) {
+    public init(
+        lastObservedAt: Date,
+        trialIsValid: Bool? = nil,
+        trialLastCheckedAt: Date? = nil,
+        trialDaysRemaining: Int? = nil,
+        trialToken: String? = nil,
+        licenseKey: String? = nil,
+        licenseIsValid: Bool? = nil,
+        invalidReason: LicenseInvalidReason? = nil,
+        lastValidatedAt: Date? = nil,
+        licenseToken: String? = nil
+    ) {
         self.lastObservedAt = lastObservedAt
+        self.trialIsValid = trialIsValid
+        self.trialLastCheckedAt = trialLastCheckedAt
+        self.trialDaysRemaining = trialDaysRemaining
+        self.trialToken = trialToken
+        self.licenseKey = licenseKey
+        self.licenseIsValid = licenseIsValid
+        self.invalidReason = invalidReason
+        self.lastValidatedAt = lastValidatedAt
+        self.licenseToken = licenseToken
     }
 }
 
@@ -67,6 +87,12 @@ public struct TrialStatus: Equatable, Sendable {
     public let daysRemaining: Int
     public let expiresAt: Date
     public let trialToken: String?
+
+    public init(daysRemaining: Int, expiresAt: Date, trialToken: String?) {
+        self.daysRemaining = daysRemaining
+        self.expiresAt = expiresAt
+        self.trialToken = trialToken
+    }
 }
 
 public struct LicenseAPIError: Error, Equatable {

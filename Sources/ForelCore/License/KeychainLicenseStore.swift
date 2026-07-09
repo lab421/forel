@@ -53,5 +53,9 @@ public final class KeychainLicenseStore: LicenseSecureStoring {
 
     public struct KeychainError: Error {
         public let status: OSStatus
+
+        public init(status: OSStatus) {
+            self.status = status
+        }
     }
 }

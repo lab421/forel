@@ -16,6 +16,15 @@
 
 import SwiftUI
 
+/// Shared across the app delegate and `SettingsView` so code outside SwiftUI
+/// (e.g. the status item's "Activate" action, or `AppDelegate` reacting to a
+/// denied license) can select a specific settings tab before opening the
+/// `Settings` scene.
+@MainActor
+final class SettingsNavigation: ObservableObject {
+    @Published var selectedCategory: SettingsCategory = .general
+}
+
 /// Modern macOS Settings layout: a category sidebar on the left (matching
 /// System Settings' own convention), detail content on the right — instead
 /// of one long scrolling list of sections.
@@ -23,8 +32,8 @@ struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var updater: UpdaterManager
     @EnvironmentObject var license: LicenseManager
+    @EnvironmentObject var navigation: SettingsNavigation
     @State private var launchAtLogin = LoginItem.isEnabled
-    @State private var selectedCategory: SettingsCategory = .general
 
     var body: some View {
         HStack(spacing: 0) {
@@ -46,8 +55,8 @@ struct SettingsView: View {
             ForEach(SettingsCategory.allCases) { category in
                 SettingsSidebarRow(
                     category: category,
-                    isSelected: selectedCategory == category,
-                    action: { selectedCategory = category }
+                    isSelected: navigation.selectedCategory == category,
+                    action: { navigation.selectedCategory = category }
                 )
             }
             Spacer(minLength: 0)
@@ -60,7 +69,7 @@ struct SettingsView: View {
     private var detail: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                switch selectedCategory {
+                switch navigation.selectedCategory {
                 case .general:
                     generalPane
                 case .permissions:
@@ -215,7 +224,7 @@ struct SettingsView: View {
     }
 }
 
-private enum SettingsCategory: CaseIterable, Identifiable {
+enum SettingsCategory: CaseIterable, Identifiable {
     case general, permissions, license, updates, about
 
     var id: Self { self }

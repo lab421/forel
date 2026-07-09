@@ -62,6 +62,7 @@ struct QuickPanelView: View {
                         isOn: watchingBinding
                     )
                 }
+                .disabled(!license.hasAccess)
 
                 if !model.folders.isEmpty {
                     SectionLabel(title: "Watched Folders")
@@ -176,6 +177,7 @@ struct QuickPanelView: View {
 
     private var watchingBinding: Binding<Bool> {
         Binding(get: { !model.paused }, set: { enabled in
+            guard license.hasAccess else { return }
             if enabled == model.paused {
                 model.togglePaused()
             }
