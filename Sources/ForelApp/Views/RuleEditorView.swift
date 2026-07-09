@@ -779,7 +779,7 @@ private struct ActionRow: View {
     @ViewBuilder private var actionParams: some View {
         switch action.kind {
         case .moveToFolder, .copyToFolder:
-            FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
+            DestinationFolderField(path: paramBinding(ActionParam.destination))
         case .rename:
             RenamePatternEditor(pattern: paramBinding(ActionParam.pattern), cleanFileName: action.params[ActionParam.cleanFileName]?.boolValue == true)
         case .addTag, .removeTag:
@@ -1219,6 +1219,85 @@ private struct TagTokensEditor: View {
     }
 }
 
+/// An editable destination path for Move/Copy actions, with a "Choose…"
+/// button for picking a literal base folder and token chips for embedding
+/// dynamic subfolders — e.g. `{year}-{month}` under a chosen base resolves
+/// to `.../2026-07`, auto-created on the way in (`ActionExecutor` already
+/// creates any missing destination folder).
+private struct DestinationFolderField: View {
+    @Binding var path: String
+
+    private let tokens: [(placeholder: String, label: String)] = [
+        ("{year}", "year"),
+        ("{month}", "month"),
+        ("{day}", "day"),
+        ("{current_date}", "current date"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                GlassField(placeholder: "Destination folder, e.g. ~/Downloads/Backup/{year}-{month}", text: $path)
+                Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(tokens, id: \.placeholder) { token in
+                        tokenButton(token)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+
+            Text(preview)
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+        }
+    }
+
+    private var preview: String {
+        let candidate = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidate.isEmpty else { return "Preview: " }
+        return "Preview: \(TokenExpander.previewExpand(candidate))"
+    }
+
+    private func choose() {
+        if let chosen = FolderPicker.choose(startingAt: path) {
+            path = chosen
+        }
+    }
+
+    private func tokenButton(_ token: (placeholder: String, label: String)) -> some View {
+        let isActive = path.contains(token.placeholder)
+        return Button {
+            insert(token.placeholder)
+        } label: {
+            Text(token.label)
+                .font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(isActive ? ForelTheme.accent.opacity(0.22) : ForelTheme.surface))
+                .overlay(Capsule().strokeBorder(isActive ? ForelTheme.accent : ForelTheme.surfaceBorder))
+                .foregroundStyle(isActive ? ForelTheme.accent : ForelTheme.secondaryText)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Chips join with `/` (a new path component) rather than `-`, matching
+    /// what makes sense for a *folder path* — unlike `RenamePatternEditor`'s
+    /// chips, which join with `-` for a single filename segment.
+    private func insert(_ token: String) {
+        guard !path.contains(token) else { return }
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            path = token
+        } else {
+            path = "\(trimmed)\(trimmed.hasSuffix("/") ? "" : "/")\(token)"
+        }
+    }
+}
+
 private struct RenamePatternEditor: View {
     @Binding var pattern: String
     let cleanFileName: Bool
@@ -1229,6 +1308,9 @@ private struct RenamePatternEditor: View {
         ("{date_modified}", "date modified"),
         ("{date_created}", "date created"),
         ("{current_date}", "current date"),
+        ("{year}", "year"),
+        ("{month}", "month"),
+        ("{day}", "day"),
         ("{size}", "size"),
     ]
 
@@ -1257,10 +1339,7 @@ private struct RenamePatternEditor: View {
         if candidate.contains("/") {
             return "⚠️ Pattern contains '/' which is not allowed in filenames"
         }
-        let previewName = candidate
-            .replacingOccurrences(of: "{name}", with: "file")
-            .replacingOccurrences(of: "{extension}", with: "txt")
-            .replacingOccurrences(of: "{current_date}", with: dateString())
+        let previewName = TokenExpander.previewExpand(candidate)
         let displayName = cleanFileName ? ActionExecutor.cleanFileName(previewName) : previewName
         if displayName == "." || displayName == ".." {
             return "⚠️ Pattern resolves to '\(displayName)' which is not a valid filename"
@@ -1272,12 +1351,6 @@ private struct RenamePatternEditor: View {
             return "⚠️ Pattern resolves to '\(displayName)' — trailing '.' or space is not supported"
         }
         return "Preview: \(displayName)"
-    }
-
-    private func dateString() -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: Date())
     }
 
     private func tokenButton(_ token: (placeholder: String, label: String)) -> some View {
