@@ -710,6 +710,47 @@ private struct AppPickerField: View {
     }
 }
 
+private struct ApplicationPathPickerField: View {
+    @Binding var path: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                iconView
+                TextField("Application", text: $path)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundStyle(ForelTheme.primaryText)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
+
+            Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+        }
+    }
+
+    @ViewBuilder private var iconView: some View {
+        if FileManager.default.fileExists(atPath: path) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: path))
+                .resizable()
+                .frame(width: 16, height: 16)
+        } else {
+            Image(systemName: "app.dashed")
+                .font(.system(size: 12))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .frame(width: 16, height: 16)
+        }
+    }
+
+    private func choose() {
+        if let app = InstalledApps.pickFromFinder() {
+            path = app.path
+        }
+    }
+}
+
 private struct KindValuePicker: View {
     @Binding var value: String
 
@@ -790,6 +831,8 @@ private struct ActionRow: View {
             GlassField(placeholder: "Bash script (file path in $FOREL_FILE)", text: paramBinding(ActionParam.script))
         case .runShortcut:
             ShortcutPicker(selection: paramBinding(ActionParam.shortcutName))
+        case .openApplication:
+            ApplicationPathPickerField(path: paramBinding(ActionParam.applicationPath))
         case .importToLibrary:
             let libTypeBinding = paramBinding(ActionParam.libraryType, defaultValue: LibraryType.music.rawValue)
             let libType = LibraryType(rawValue: libTypeBinding.wrappedValue)
@@ -841,6 +884,8 @@ private struct ActionRow: View {
                 var params: [String: JSONValue] = [:]
                 if newKind == .importToLibrary {
                     params[ActionParam.libraryType] = .string(LibraryType.music.rawValue)
+                } else if newKind == .openApplication {
+                    params[ActionParam.passFileToApplication] = .bool(true)
                 }
                 action = Action(id: action.id, ruleId: action.ruleId, kind: newKind, params: .object(params), position: action.position)
             }
@@ -897,6 +942,8 @@ private struct ActionOptionsView: View {
             switch action.kind {
             case .runShortcut:
                 shortcutOptions
+            case .openApplication:
+                openApplicationOptions
             case .moveToFolder, .copyToFolder, .importToLibrary, .uncompress:
                 conflictResolutionOptions
             case .rename:
@@ -906,6 +953,18 @@ private struct ActionOptionsView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(ForelTheme.secondaryText)
             }
+        }
+    }
+
+    private var openApplicationOptions: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: passFileToApplicationBinding) {
+                Text("Pass matched file to app")
+                    .font(.system(size: 12))
+                    .foregroundStyle(ForelTheme.primaryText)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
         }
     }
 
@@ -962,6 +1021,18 @@ private struct ActionOptionsView: View {
                 var dict: [String: JSONValue] = [:]
                 if case .object(let existing) = action.params { dict = existing }
                 dict[ActionParam.cleanFileName] = .bool(newValue)
+                action.params = .object(dict)
+            }
+        )
+    }
+
+    private var passFileToApplicationBinding: Binding<Bool> {
+        Binding(
+            get: { ActionExecutor.passesFileToApplication(action) },
+            set: { newValue in
+                var dict: [String: JSONValue] = [:]
+                if case .object(let existing) = action.params { dict = existing }
+                dict[ActionParam.passFileToApplication] = .bool(newValue)
                 action.params = .object(dict)
             }
         )
@@ -1412,5 +1483,3 @@ private enum DateValueFormatter {
         formatter.string(from: date)
     }
 }
-
-

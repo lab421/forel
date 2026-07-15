@@ -446,6 +446,11 @@ private struct RuleDetails: View {
         case .runShortcut:
             let name = action.params[ActionParam.shortcutName]?.stringValue ?? ""
             return (name.isEmpty ? "run shortcut" : name, ActionExecutor.shortcutInputMode(action).label)
+        case .openApplication:
+            let path = action.params[ActionParam.applicationPath]?.stringValue ?? ""
+            let appName = path.isEmpty ? "open application" : ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+            let detail = ActionExecutor.passesFileToApplication(action) ? "with matched file" : nil
+            return (appName, detail)
         case .importToLibrary:
             let library = LibraryType(rawValue: action.params[ActionParam.libraryType]?.stringValue ?? "")?.label ?? "Library"
             let playlist = action.params[ActionParam.targetPlaylist]?.stringValue ?? ""
