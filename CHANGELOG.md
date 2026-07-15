@@ -3,9 +3,10 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.0.6] - 2026-07-15
 
 ### Added
+- Added an Open Application action that launches a chosen app, with an option to pass the matched file to it.
 - Watcher notifications: a new toggle in Settings lets you enable or disable system notifications when automatic rules process files.
 
 ### Changed

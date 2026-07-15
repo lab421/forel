@@ -48,6 +48,10 @@ public enum RuleValidator {
                 if action.params[ActionParam.pattern]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
                     return Issue(message: "Rename pattern cannot be empty")
                 }
+            case .openApplication:
+                if action.params[ActionParam.applicationPath]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
+                    return Issue(message: "Application cannot be empty")
+                }
             default:
                 break
             }

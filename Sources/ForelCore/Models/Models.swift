@@ -129,6 +129,7 @@ public enum ActionKind: String, Codable, Equatable, Sendable {
     case setColorLabel = "set_color_label"
     case runScript = "run_script"
     case runShortcut = "run_shortcut"
+    case openApplication = "open_application"
     case importToLibrary = "import_to_library"
     case uncompress
 

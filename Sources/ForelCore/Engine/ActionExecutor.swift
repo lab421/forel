@@ -17,6 +17,9 @@
 import Foundation
 import UniformTypeIdentifiers
 import ZIPFoundation
+#if canImport(AppKit)
+import AppKit
+#endif
 #if canImport(Photos)
 import Photos
 #endif
@@ -203,6 +206,8 @@ public enum ActionExecutor {
             return try runScript(action, path: path)
         case .runShortcut:
             return try runShortcut(action, path: path)
+        case .openApplication:
+            return try openApplication(action, path: path)
         case .importToLibrary:
             return try importToLibrary(action, path: path)
         case .uncompress:
@@ -389,6 +394,30 @@ public enum ActionExecutor {
         let inputMode = shortcutInputMode(action)
         try ShortcutRunner.run(name: name, input: shortcutInput(mode: inputMode, path: path))
         return Applied(newPath: path, undo: .none)
+    }
+
+    private static func openApplication(_ action: Action, path: String) throws -> Applied {
+        #if canImport(AppKit)
+        let appPath = try stringParam(action, ActionParam.applicationPath, "OpenApplication")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !appPath.isEmpty else {
+            throw ActionError("Open Application requires '\(ActionParam.applicationPath)' param")
+        }
+        guard FileManager.default.fileExists(atPath: appPath) else {
+            throw ActionError("Application not found at \(appPath)")
+        }
+
+        let appURL = URL(fileURLWithPath: appPath)
+        let configuration = NSWorkspace.OpenConfiguration()
+        if passesFileToApplication(action) {
+            NSWorkspace.shared.open([URL(fileURLWithPath: path)], withApplicationAt: appURL, configuration: configuration)
+        } else {
+            NSWorkspace.shared.openApplication(at: appURL, configuration: configuration)
+        }
+        return Applied(newPath: path, undo: .none)
+        #else
+        throw ActionError("Open Application is not available on this platform")
+        #endif
     }
 
     // MARK: - Import to Library
@@ -1035,6 +1064,22 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .openApplication:
+            let appPath = action.params[ActionParam.applicationPath]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let appName = appPath.isEmpty ? "" : ((appPath as NSString).lastPathComponent as NSString).deletingPathExtension
+            let passesFile = passesFileToApplication(action)
+            return ActionPlan(
+                kind: action.kind,
+                description: appName.isEmpty
+                    ? "Open application"
+                    : passesFile ? "Open \(appName) with file" : "Open \(appName)",
+                sourcePath: path,
+                targetPath: nil,
+                status: appPath.isEmpty ? .wouldSkip : .wouldRun,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: false
+            )
         case .importToLibrary:
             let libraryTypeRaw = action.params[ActionParam.libraryType]?.stringValue ?? LibraryType.music.rawValue
             guard let libraryType = LibraryType(rawValue: libraryTypeRaw) else {
@@ -1132,7 +1177,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress:
             return true
         }
     }
@@ -1146,6 +1191,10 @@ public enum ActionExecutor {
             return [tag]
         }
         return []
+    }
+
+    public static func passesFileToApplication(_ action: Action) -> Bool {
+        action.params[ActionParam.passFileToApplication]?.boolValue ?? true
     }
 
     public static func shortcutInputMode(_ action: Action) -> ShortcutInputMode {

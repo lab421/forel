@@ -81,6 +81,16 @@ import Foundation
         #expect(RuleValidator.validate(actions) == [.init(message: "Rename pattern cannot be empty")])
     }
 
+    @Test func openApplicationWithValidApplicationProducesNoIssues() {
+        let actions = [makeAction(.openApplication, .object([ActionParam.applicationPath: .string("/Applications/TextEdit.app")]))]
+        #expect(RuleValidator.validate(actions).isEmpty)
+    }
+
+    @Test func openApplicationWithMissingApplicationReportsIssue() {
+        let actions = [makeAction(.openApplication, .object([:]))]
+        #expect(RuleValidator.validate(actions) == [.init(message: "Application cannot be empty")])
+    }
+
     @Test func unrelatedActionProducesNoIssues() {
         let actions = [makeAction(.moveToTrash, .object([:]))]
         #expect(RuleValidator.validate(actions).isEmpty)
@@ -90,9 +100,10 @@ import Foundation
         let actions = [
             makeAction(.moveToFolder, .object(["destination": .string("")])),
             makeAction(.rename, .object(["pattern": .string("")])),
+            makeAction(.openApplication, .object([ActionParam.applicationPath: .string("  ")])),
         ]
         let issues = RuleValidator.validate(actions)
-        #expect(issues.count == 2)
+        #expect(issues.count == 3)
     }
 
     @Test func mixedValidAndInvalidActionReportsOnlyInvalid() {

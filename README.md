@@ -191,14 +191,15 @@ History / Undo (SQLite)
 - [x] Automatic cleaning database
 - [x] Uncompress actions
 - [x] Shortcuts actions
-- [ ] Validate actions / conditions before save
+- [x] Open App actions
+- [x] Validate actions / conditions before save
 - [ ] Export / Import rules
 - [ ] Toggle extension hidden / visible
 - [ ] Compress actions
 - [ ] Compress actions
 - [ ] Sync actions
 - [ ] Upload actions
-- [ ] Native notifications on rule actions
+- [x] Native notifications on rule actions
 - [ ] AI features
 
 ## Content matching
