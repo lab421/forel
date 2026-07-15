@@ -136,6 +136,51 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: applied.newPath))
     }
 
+    @Test func openApplicationPlanPassesFileByDefault() throws {
+        let dir = TempDir()
+        let file = dir.file("note.txt", contents: "hello")
+        let action = makeAction(.openApplication, .object([
+            ActionParam.applicationPath: .string("/Applications/TextEdit.app"),
+        ]))
+
+        let plan = try ActionExecutor.plan(action, path: file)
+
+        #expect(plan.description == "Open TextEdit with file")
+        #expect(plan.status == .wouldRun)
+        #expect(plan.finalPath == file)
+        #expect(!plan.isTerminal)
+        #expect(ActionExecutor.passesFileToApplication(action))
+    }
+
+    @Test func openApplicationPlanCanDisablePassingMatchedFile() throws {
+        let dir = TempDir()
+        let file = dir.file("note.txt", contents: "hello")
+        let action = makeAction(.openApplication, .object([
+            ActionParam.applicationPath: .string("/Applications/TextEdit.app"),
+            ActionParam.passFileToApplication: .bool(false),
+        ]))
+
+        let plan = try ActionExecutor.plan(action, path: file)
+
+        #expect(plan.description == "Open TextEdit")
+        #expect(plan.status == .wouldRun)
+        #expect(plan.finalPath == file)
+        #expect(!plan.isTerminal)
+        #expect(!ActionExecutor.passesFileToApplication(action))
+    }
+
+    @Test func openApplicationPlanSkipsEmptyApp() throws {
+        let dir = TempDir()
+        let file = dir.file("note.txt", contents: "hello")
+        let action = makeAction(.openApplication, .object([:]))
+
+        let plan = try ActionExecutor.plan(action, path: file)
+
+        #expect(plan.description == "Open application")
+        #expect(plan.status == .wouldSkip)
+        #expect(plan.finalPath == file)
+    }
+
     // MARK: - Clean file name
 
     @Test func cleanFileNameStripsDiacriticsAndSpecialChars() {

@@ -117,6 +117,27 @@ import SQLite3
         #expect(loaded.recursionDepth == nil)
     }
 
+    @Test func openApplicationActionSurvivesDatabaseRoundTrip() throws {
+        let db = try makeDB()
+        let folder = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "open in app")
+        rule.actions = [
+            makeAction(.openApplication, .object([
+                ActionParam.applicationPath: .string("/Applications/TextEdit.app"),
+                ActionParam.passFileToApplication: .bool(true),
+            ]), position: 0, ruleId: rule.id),
+        ]
+
+        try db.insertRule(rule)
+
+        let loaded = try #require(db.listRules(folderId: folder.id).first)
+        let action = try #require(loaded.actions.first)
+        #expect(action.kind == .openApplication)
+        #expect(action.params[ActionParam.applicationPath]?.stringValue == "/Applications/TextEdit.app")
+        #expect(action.params[ActionParam.passFileToApplication]?.boolValue == true)
+    }
+
     @Test func insertFolderAppendsToOrder() throws {
         let db = try makeDB()
         try db.insertFolder(WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)-first"))

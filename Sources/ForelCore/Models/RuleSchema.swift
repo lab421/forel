@@ -200,6 +200,8 @@ public enum ActionParam {
     public static let script = "script"
     public static let shortcutName = "shortcut_name"
     public static let shortcutInputMode = "shortcut_input_mode"
+    public static let applicationPath = "application_path"
+    public static let passFileToApplication = "pass_file_to_application"
     public static let cleanFileName = "clean_file_name"
     public static let libraryType = "library_type"
     public static let targetPlaylist = "target_playlist"
@@ -213,6 +215,7 @@ public enum ActionParamKind: Sendable, Equatable {
     case colorLabel
     case script
     case shortcut
+    case applicationPath
     case libraryType
     case playlist
 }
@@ -242,6 +245,7 @@ public extension ActionKind {
         case .setColorLabel: return "Set color label"
         case .runScript: return "Run script"
         case .runShortcut: return "Run shortcut"
+        case .openApplication: return "Open application"
         case .importToLibrary: return "Import to library"
         case .uncompress: return "Uncompress"
         }
@@ -258,6 +262,7 @@ public extension ActionKind {
         case .setColorLabel: return "paintpalette"
         case .runScript: return "terminal"
         case .runShortcut: return "square.stack.3d.up"
+        case .openApplication: return "app"
         case .importToLibrary: return "tray.full"
         case .uncompress: return "doc.zipper"
         }
@@ -269,7 +274,7 @@ public extension ActionKind {
     /// have none, instead of showing an empty "No options" popover.
     var hasOptions: Bool {
         switch self {
-        case .moveToFolder, .copyToFolder, .runShortcut, .rename, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress:
             return true
         case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
             return false
@@ -292,6 +297,8 @@ public extension ActionKind {
             return [ActionParamSpec(key: ActionParam.script, kind: .script)]
         case .runShortcut:
             return [ActionParamSpec(key: ActionParam.shortcutName, kind: .shortcut)]
+        case .openApplication:
+            return [ActionParamSpec(key: ActionParam.applicationPath, kind: .applicationPath)]
         case .importToLibrary:
             return [ActionParamSpec(key: ActionParam.libraryType, kind: .libraryType),
                     ActionParamSpec(key: ActionParam.targetPlaylist, kind: .playlist)]
@@ -344,7 +351,7 @@ public enum RuleSchema {
     public static let actionKindGroups: [ActionKindGroup] = [
         ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .rename, .uncompress]),
         ActionKindGroup(title: "Tags", kinds: [.addTag, .removeTag, .setColorLabel]),
-        ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut]),
+        ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut, .openApplication]),
         ActionKindGroup(title: "Disposal", kinds: [.moveToTrash, .delete]),
         ActionKindGroup(title: "Library", kinds: [.importToLibrary]),
     ]
