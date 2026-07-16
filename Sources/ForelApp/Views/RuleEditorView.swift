@@ -1312,12 +1312,14 @@ private struct DestinationFolderField: View {
                 Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(tokens, id: \.placeholder) { token in
-                        tokenButton(token)
+            if hasDestination {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(tokens, id: \.placeholder) { token in
+                            tokenButton(token)
+                        }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
                 }
             }
 
@@ -1363,9 +1365,6 @@ private struct DestinationFolderField: View {
                 .foregroundStyle(isActive ? ForelTheme.accent : ForelTheme.secondaryText)
         }
         .buttonStyle(.plain)
-        .disabled(!hasDestination)
-        .opacity(hasDestination ? 1 : 0.45)
-        .help(hasDestination ? "" : "Choose a destination folder first")
     }
 
     /// Chips join with `/` (a new path component) rather than `-`, matching
