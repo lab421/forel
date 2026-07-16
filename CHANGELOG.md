@@ -3,6 +3,11 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+- Releases now provide one universal DMG for Apple Silicon and Intel Macs, while automatic updates remain compatible with older architecture-specific downloads.
+
 ## [1.0.6] - 2026-07-15
 
 ### Added
