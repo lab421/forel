@@ -8,6 +8,9 @@ All notable changes to Forel are documented here. Format loosely follows
 ### Changed
 - Releases now provide one universal DMG for Apple Silicon and Intel Macs, while automatic updates remain compatible with older architecture-specific downloads.
 
+### Fixed
+- Add Tag and Remove Tag actions now require at least one tag before a rule can be saved.
+
 ## [1.0.6] - 2026-07-15
 
 ### Added
