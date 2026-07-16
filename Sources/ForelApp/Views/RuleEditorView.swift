@@ -26,11 +26,13 @@ struct RuleEditorView: View {
     @State private var showValidationErrors = false
     @State private var errorDismissTask: Task<Void, Never>?
     @EnvironmentObject private var model: AppModel
+    private let preferredHeight: CGFloat
     let onSave: (Rule) -> Void
     let onCancel: () -> Void
 
-    init(rule: Rule, onSave: @escaping (Rule) -> Void, onCancel: @escaping () -> Void) {
+    init(rule: Rule, preferredHeight: CGFloat = 680, onSave: @escaping (Rule) -> Void, onCancel: @escaping () -> Void) {
         _rule = State(initialValue: rule)
+        self.preferredHeight = max(680, preferredHeight)
         self.onSave = onSave
         self.onCancel = onCancel
     }
@@ -146,7 +148,7 @@ struct RuleEditorView: View {
             }
         }
         .padding(22)
-        .frame(width: 880, height: 680)
+        .frame(width: 880, height: preferredHeight)
         .background(ForelTheme.background)
         .background(WindowActivationBridge(showsDockIcon: model.showDockIcon))
     }
