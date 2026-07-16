@@ -10,6 +10,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Fixed
 - Add Tag and Remove Tag actions now require at least one tag before a rule can be saved.
+- Rule editor validation errors now appear together at the top of the editor instead of inside separate sections.
 
 ## [1.0.6] - 2026-07-15
 
