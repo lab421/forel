@@ -1352,7 +1352,7 @@ private struct DestinationFolderField: View {
     private func tokenButton(_ token: (placeholder: String, label: String)) -> some View {
         let isActive = path.contains(token.placeholder)
         return Button {
-            insert(token.placeholder)
+            toggle(token.placeholder)
         } label: {
             Text(token.label)
                 .font(.system(size: 12, weight: .medium))
@@ -1371,6 +1371,14 @@ private struct DestinationFolderField: View {
     /// Chips join with `/` (a new path component) rather than `-`, matching
     /// what makes sense for a *folder path* — unlike `RenamePatternEditor`'s
     /// chips, which join with `-` for a single filename segment.
+    private func toggle(_ token: String) {
+        if path.contains(token) {
+            path = removePathToken(token, from: path)
+        } else {
+            insert(token)
+        }
+    }
+
     private func insert(_ token: String) {
         guard !path.contains(token) else { return }
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1379,6 +1387,23 @@ private struct DestinationFolderField: View {
         } else {
             path = "\(trimmed)\(trimmed.hasSuffix("/") ? "" : "/")\(token)"
         }
+    }
+
+    private func removePathToken(_ token: String, from value: String) -> String {
+        var updated = value.replacingOccurrences(of: token, with: "")
+        while updated.contains("//") {
+            updated = updated.replacingOccurrences(of: "//", with: "/")
+        }
+        while updated.contains("--") {
+            updated = updated.replacingOccurrences(of: "--", with: "-")
+        }
+        updated = updated
+            .replacingOccurrences(of: "/-", with: "/")
+            .replacingOccurrences(of: "-/", with: "/")
+        if updated.count > 1, updated.hasSuffix("/") {
+            updated.removeLast()
+        }
+        return updated.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -1442,7 +1467,7 @@ private struct RenamePatternEditor: View {
     private func tokenButton(_ token: (placeholder: String, label: String)) -> some View {
         let isActive = pattern.contains(token.placeholder)
         return Button {
-            insert(token.placeholder)
+            toggle(token.placeholder)
         } label: {
             Text(token.label)
                 .font(.system(size: 12, weight: .medium))
@@ -1455,6 +1480,14 @@ private struct RenamePatternEditor: View {
         .buttonStyle(.plain)
     }
 
+    private func toggle(_ token: String) {
+        if pattern.contains(token) {
+            pattern = removePatternToken(token, from: pattern)
+        } else {
+            insert(token)
+        }
+    }
+
     private func insert(_ token: String) {
         guard !pattern.contains(token) else { return }
         let trimmed = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1463,6 +1496,23 @@ private struct RenamePatternEditor: View {
         } else {
             pattern = "\(trimmed)\(trimmed.hasSuffix("-") || trimmed.hasSuffix(".") ? "" : "-")\(token)"
         }
+    }
+
+    private func removePatternToken(_ token: String, from value: String) -> String {
+        var updated = value.replacingOccurrences(of: token, with: "")
+        while updated.contains("--") {
+            updated = updated.replacingOccurrences(of: "--", with: "-")
+        }
+        updated = updated
+            .replacingOccurrences(of: "-.", with: ".")
+            .replacingOccurrences(of: ".-", with: ".")
+        if updated.hasPrefix("-") || updated.hasPrefix(".") {
+            updated.removeFirst()
+        }
+        if updated.hasSuffix("-") || updated.hasSuffix(".") {
+            updated.removeLast()
+        }
+        return updated.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
