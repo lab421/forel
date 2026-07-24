@@ -3,6 +3,11 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- The Forel logo now appears correctly in the menu-bar quick panel and app header in universal builds.
+
 ## [1.0.7] - 2026-07-24
 
 ### Changed
