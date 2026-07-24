@@ -23,15 +23,16 @@ import Photos
 
 struct RuleEditorView: View {
     @State private var rule: Rule
-    @State private var showConditionError = false
-    @State private var showActionError = false
+    @State private var showValidationErrors = false
     @State private var errorDismissTask: Task<Void, Never>?
     @EnvironmentObject private var model: AppModel
+    private let preferredHeight: CGFloat
     let onSave: (Rule) -> Void
     let onCancel: () -> Void
 
-    init(rule: Rule, onSave: @escaping (Rule) -> Void, onCancel: @escaping () -> Void) {
+    init(rule: Rule, preferredHeight: CGFloat = 680, onSave: @escaping (Rule) -> Void, onCancel: @escaping () -> Void) {
         _rule = State(initialValue: rule)
+        self.preferredHeight = max(680, preferredHeight)
         self.onSave = onSave
         self.onCancel = onCancel
     }
@@ -43,6 +44,9 @@ struct RuleEditorView: View {
                 subtitle: "Conditions decide which files match; actions decide what happens",
                 systemImage: "slider.horizontal.3"
             )
+            if showValidationErrors, !validationMessages.isEmpty {
+                RuleValidationBanner(messages: validationMessages)
+            }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
@@ -82,11 +86,6 @@ struct RuleEditorView: View {
                                     rule.conditions.removeAll { $0.id == condition.id }
                                 }
                             }
-                            if showConditionError, let issue = conditionIssues.first {
-                                Text(issue.message)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.red)
-                            }
                         }
                         .padding(18)
                     }
@@ -111,11 +110,6 @@ struct RuleEditorView: View {
                                     rule.actions.removeAll { $0.id == action.id }
                                 }
                             }
-                            if showActionError, let issue = actionIssues.first {
-                                Text(issue.message)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.red)
-                            }
                         }
                         .padding(18)
                     }
@@ -134,19 +128,16 @@ struct RuleEditorView: View {
                 Spacer()
                 Button("Cancel", action: onCancel).buttonStyle(SecondaryButtonStyle())
                 Button("Save") {
-                    if hasInvalidCondition || hasInvalidAction {
-                        showConditionError = hasInvalidCondition
-                        showActionError = hasInvalidAction
+                    if hasValidationErrors {
+                        showValidationErrors = true
                         errorDismissTask?.cancel()
                         errorDismissTask = Task {
                             try? await Task.sleep(for: .seconds(5))
                             guard !Task.isCancelled else { return }
-                            showConditionError = false
-                            showActionError = false
+                            showValidationErrors = false
                         }
                     } else {
-                        showConditionError = false
-                        showActionError = false
+                        showValidationErrors = false
                         errorDismissTask?.cancel()
                         onSave(rule)
                     }
@@ -157,7 +148,7 @@ struct RuleEditorView: View {
             }
         }
         .padding(22)
-        .frame(width: 880, height: 680)
+        .frame(width: 880, height: preferredHeight)
         .background(ForelTheme.background)
         .background(WindowActivationBridge(showsDockIcon: model.showDockIcon))
     }
@@ -166,16 +157,16 @@ struct RuleEditorView: View {
         RuleValidator.validate(rule.conditions)
     }
 
-    private var hasInvalidCondition: Bool {
-        !conditionIssues.isEmpty
-    }
-
     private var actionIssues: [RuleValidator.Issue] {
         RuleValidator.validate(rule.actions)
     }
 
-    private var hasInvalidAction: Bool {
-        !actionIssues.isEmpty
+    private var validationMessages: [String] {
+        (conditionIssues + actionIssues).map(\.message)
+    }
+
+    private var hasValidationErrors: Bool {
+        !validationMessages.isEmpty
     }
 
     private func placeholder(_ text: String) -> some View {
@@ -185,6 +176,35 @@ struct RuleEditorView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+}
+
+private struct RuleValidationBanner: View {
+    let messages: [String]
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(ForelTheme.danger)
+                .frame(width: 16, height: 16)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(Array(messages.enumerated()), id: \.offset) { _, message in
+                    Text(message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(ForelTheme.danger)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.danger.opacity(0.10)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.danger.opacity(0.24)))
+    }
 }
 
 private struct ScopeEditor: View {

@@ -81,6 +81,31 @@ import Foundation
         #expect(RuleValidator.validate(actions) == [.init(message: "Rename pattern cannot be empty")])
     }
 
+    @Test func addTagWithValidTagProducesNoIssues() {
+        let actions = [makeAction(.addTag, .object([ActionParam.tags: .stringArray(["Project"])]))]
+        #expect(RuleValidator.validate(actions).isEmpty)
+    }
+
+    @Test func addTagWithEmptyTagsReportsIssue() {
+        let actions = [makeAction(.addTag, .object([ActionParam.tags: .stringArray([])]))]
+        #expect(RuleValidator.validate(actions) == [.init(message: "At least one tag is required")])
+    }
+
+    @Test func addTagWithMissingTagsReportsIssue() {
+        let actions = [makeAction(.addTag, .object([:]))]
+        #expect(RuleValidator.validate(actions) == [.init(message: "At least one tag is required")])
+    }
+
+    @Test func addTagWithOnlyBlankTagsReportsIssue() {
+        let actions = [makeAction(.addTag, .object([ActionParam.tags: .stringArray(["  "])]))]
+        #expect(RuleValidator.validate(actions) == [.init(message: "At least one tag is required")])
+    }
+
+    @Test func removeTagWithMissingTagsReportsIssue() {
+        let actions = [makeAction(.removeTag, .object([:]))]
+        #expect(RuleValidator.validate(actions) == [.init(message: "At least one tag is required")])
+    }
+
     @Test func openApplicationWithValidApplicationProducesNoIssues() {
         let actions = [makeAction(.openApplication, .object([ActionParam.applicationPath: .string("/Applications/TextEdit.app")]))]
         #expect(RuleValidator.validate(actions).isEmpty)
@@ -100,10 +125,11 @@ import Foundation
         let actions = [
             makeAction(.moveToFolder, .object(["destination": .string("")])),
             makeAction(.rename, .object(["pattern": .string("")])),
+            makeAction(.addTag, .object([ActionParam.tags: .stringArray([])])),
             makeAction(.openApplication, .object([ActionParam.applicationPath: .string("  ")])),
         ]
         let issues = RuleValidator.validate(actions)
-        #expect(issues.count == 3)
+        #expect(issues.count == 4)
     }
 
     @Test func mixedValidAndInvalidActionReportsOnlyInvalid() {

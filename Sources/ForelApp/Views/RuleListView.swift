@@ -27,6 +27,23 @@ struct RuleListView: View {
     }
 
     var body: some View {
+        GeometryReader { proxy in
+            content
+                .sheet(item: $editingRule) { rule in
+                    RuleEditorView(rule: rule, preferredHeight: editorHeight(for: proxy.size.height)) { saved in
+                        model.saveRule(saved)
+                        editingRule = nil
+                    } onCancel: {
+                        editingRule = nil
+                    }
+                }
+                .sheet(item: $model.previewResult) { result in
+                    PreviewSheet(result: result) { model.previewResult = nil }
+                }
+        }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
             if !model.rules.isEmpty {
@@ -77,17 +94,10 @@ struct RuleListView: View {
         .padding(16)
         .frame(minWidth: 460)
         .background(ForelTheme.background)
-        .sheet(item: $editingRule) { rule in
-            RuleEditorView(rule: rule) { saved in
-                model.saveRule(saved)
-                editingRule = nil
-            } onCancel: {
-                editingRule = nil
-            }
-        }
-        .sheet(item: $model.previewResult) { result in
-            PreviewSheet(result: result) { model.previewResult = nil }
-        }
+    }
+
+    private func editorHeight(for availableHeight: CGFloat) -> CGFloat {
+        max(680, availableHeight - 64)
     }
 
     private func moveRules(from source: IndexSet, to destination: Int) {

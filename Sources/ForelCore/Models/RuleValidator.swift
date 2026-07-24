@@ -48,6 +48,10 @@ public enum RuleValidator {
                 if action.params[ActionParam.pattern]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
                     return Issue(message: "Rename pattern cannot be empty")
                 }
+            case .addTag, .removeTag:
+                if tags(in: action).isEmpty {
+                    return Issue(message: "At least one tag is required")
+                }
             case .openApplication:
                 if action.params[ActionParam.applicationPath]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
                     return Issue(message: "Application cannot be empty")
@@ -57,5 +61,18 @@ public enum RuleValidator {
             }
             return nil
         }
+    }
+
+    private static func tags(in action: Action) -> [String] {
+        if let tags = action.params[ActionParam.tags]?.arrayValue {
+            return tags.compactMap(\.stringValue)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+        if let tag = action.params["tag"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !tag.isEmpty {
+            return [tag]
+        }
+        return []
     }
 }

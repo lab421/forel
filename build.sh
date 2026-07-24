@@ -17,7 +17,7 @@ Arguments:
   flavor    development, ad-hoc, or app-store
             (dev defaults to development; build/package default to ad-hoc)
             The test command is flavor-independent and accepts no flavor.
-  arch      arm64 or x86_64 (defaults to host architecture)
+  arch      universal, arm64, or x86_64 (defaults to host architecture)
   version   Release version like v1.2.3
   --sign    Sign the app and DMG with a Developer ID Application certificate
   --notarize
@@ -31,6 +31,7 @@ Examples:
   ./build.sh package arm64 v1.2.3
   ./build.sh package ad-hoc arm64 v1.2.3 --sign
   ./build.sh package ad-hoc arm64 v1.2.3 --sign --notarize
+  ./build.sh package ad-hoc universal v1.2.3 --sign --notarize
   ./build.sh release x86_64 v1.2.3
 EOF
 }
@@ -159,6 +160,16 @@ notarize_and_staple() {
     --wait
   xcrun stapler staple "$target"
   xcrun stapler validate "$target"
+}
+
+swift_release_build() {
+  local build_arch="$1"
+
+  if [[ "$build_arch" == "universal" ]]; then
+    swift build -c release --arch arm64 --arch x86_64 "${swift_flags[@]}"
+  else
+    swift build -c release --arch "$build_arch" "${swift_flags[@]}"
+  fi
 }
 
 command="${1:-release}"
@@ -314,7 +325,7 @@ case "$command" in
 
   build)
     cd "$repo_root"
-    swift build -c release --arch "$arch" "${swift_flags[@]}"
+    swift_release_build "$arch"
     ;;
 
   test)
@@ -341,6 +352,9 @@ case "$command" in
     fi
 
     case "$arch" in
+      universal)
+        dmg_suffix=""
+        ;;
       arm64)
         dmg_suffix="darwin-arm64"
         ;;
@@ -354,15 +368,23 @@ case "$command" in
     esac
 
     cd "$repo_root"
-    swift build -c release --arch "$arch" "${swift_flags[@]}"
+    swift_release_build "$arch"
 
     if [[ -f "$icon_source" ]]; then
       mkdir -p "$repo_root/dist"
       generate_icns
     fi
 
-    assemble_app_bundle "release" "$bundle_root"
+    build_config_dir="release"
+    if [[ "$arch" == "universal" ]]; then
+      build_config_dir="Release"
+    fi
+    assemble_app_bundle "$build_config_dir" "$bundle_root"
     contents_dir="$bundle_root/Contents"
+
+    if [[ "$arch" == "universal" ]]; then
+      lipo "$bundle_root/Contents/MacOS/ForelApp" -verify_arch arm64 x86_64
+    fi
 
     write_info_plist "$contents_dir" "$version_number" '  <key>CFBundleIconFile</key>
   <string>Forel</string>
@@ -409,7 +431,11 @@ case "$command" in
     fi
     ln -s /Applications "$staging_root/Applications"
 
-    dmg_path="$dist_dir/Forel-${version}-${dmg_suffix}.dmg"
+    if [[ "$arch" == "universal" ]]; then
+      dmg_path="$dist_dir/Forel-${version}.dmg"
+    else
+      dmg_path="$dist_dir/Forel-${version}-${dmg_suffix}.dmg"
+    fi
     hdiutil create \
       -volname "Forel" \
       -srcfolder "$staging_root" \

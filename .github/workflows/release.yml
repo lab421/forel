@@ -39,17 +39,7 @@ jobs:
 
   build:
     needs: test
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runs_on: macos-26
-            arch: arm64
-            suffix: darwin-arm64
-          - runs_on: macos-26
-            arch: x86_64
-            suffix: darwin-x86_64
-    runs-on: ${{ matrix.runs_on }}
+    runs-on: macos-26
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -110,16 +100,14 @@ jobs:
       - name: Build and package
         id: package
         env:
-          RELEASE_ARCH: ${{ matrix.arch }}
-          RELEASE_SUFFIX: ${{ matrix.suffix }}
           RELEASE_TAG: ${{ github.ref_name }}
           NOTARY_API_KEY_P8: ${{ secrets.NOTARY_API_KEY_P8 }}
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
           set -euo pipefail
-          ./build.sh package "$RELEASE_ARCH" "$RELEASE_TAG" --sign --notarize
-          echo "dmg_path=dist/release/Forel-${RELEASE_TAG}-${RELEASE_SUFFIX}.dmg" >> "$GITHUB_OUTPUT"
+          ./build.sh package universal "$RELEASE_TAG" --sign --notarize
+          echo "dmg_path=dist/release/Forel-${RELEASE_TAG}.dmg" >> "$GITHUB_OUTPUT"
 
       - name: Verify notarized release
         env:
@@ -146,17 +134,26 @@ jobs:
           printf '%s\n' "$assessment"
           grep -Fq "source=Notarized Developer ID" <<< "$assessment"
 
+      - name: Create transition aliases
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          DMG_PATH: ${{ steps.package.outputs.dmg_path }}
+        run: |
+          set -euo pipefail
+          cp "$DMG_PATH" "dist/release/Forel-${RELEASE_TAG}-darwin-arm64.dmg"
+          cp "$DMG_PATH" "dist/release/Forel-${RELEASE_TAG}-darwin-x86_64.dmg"
+
       - name: Remove signing keychain
         if: always()
         run: |
           security delete-keychain "$RUNNER_TEMP/forel-signing.keychain-db" || true
           rm -f "$RUNNER_TEMP/apple-signing-certificate.p12"
 
-      - name: Upload release artifact (${{ matrix.suffix }})
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.suffix }}
-          path: ${{ steps.package.outputs.dmg_path }}
+          name: release-dmg
+          path: dist/release/*.dmg
           if-no-files-found: error
 
   publish:
@@ -194,13 +191,11 @@ jobs:
             echo ""
             printf '%s\n' "$NOTES"
             echo ""
-            echo "Two builds available. Download the one that matches your Mac:"
-            echo "- \`Forel-${RELEASE_TAG}-darwin-arm64.dmg\` Apple Silicon (M1 / M2 / M3 / M4)"
-            echo "- \`Forel-${RELEASE_TAG}-darwin-x86_64.dmg\` for Intel"
+            echo "Download \`Forel-${RELEASE_TAG}.dmg\` — one universal build for Apple Silicon and Intel Macs."
             echo ""
             echo "Requires **macOS 13 Ventura or later**."
             echo ""
-            echo "1. Download the correct .dmg for your Mac."
+            echo "1. Download \`Forel-${RELEASE_TAG}.dmg\`."
             echo "2. Open it and drag **Forel** into **Applications**."
             echo "3. Forel is signed with an Apple Developer ID certificate and notarized by Apple."
             echo "__FOREL_EOF__"
@@ -235,18 +230,14 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          arm_sha="$(shasum -a 256 "dist/release/Forel-${GITHUB_REF_NAME}-darwin-arm64.dmg" | cut -d ' ' -f1)"
-          intel_sha="$(shasum -a 256 "dist/release/Forel-${GITHUB_REF_NAME}-darwin-x86_64.dmg" | cut -d ' ' -f1)"
+          sha="$(shasum -a 256 "dist/release/Forel-${GITHUB_REF_NAME}.dmg" | cut -d ' ' -f1)"
 
           cat > homebrew-tap/Casks/forel.rb <<EOF
           cask "forel" do
-            arch arm: "arm64", intel: "x86_64"
-
             version "${version}"
-            sha256 arm:   "${arm_sha}",
-                   intel: "${intel_sha}"
+            sha256 "${sha}"
 
-            url "https://github.com/lab421/forel/releases/download/v#{version}/Forel-v#{version}-darwin-#{arch}.dmg"
+            url "https://github.com/lab421/forel/releases/download/v#{version}/Forel-v#{version}.dmg"
             name "Forel"
             desc "File-automation app that watches folders and runs rules"
             homepage "https://github.com/lab421/forel"

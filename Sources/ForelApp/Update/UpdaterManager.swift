@@ -59,7 +59,7 @@ final class UpdaterManager: ObservableObject {
     private static let checkInterval: TimeInterval = 12 * 60 * 60
     private static let settingKey = "auto_update_checks"
 
-    /// Matches the `dmg_suffix` naming in build.sh.
+    /// Fallback for releases that still use the old per-architecture DMG names.
     private static var archSuffix: String {
         #if arch(arm64)
         return "darwin-arm64"
@@ -134,9 +134,7 @@ final class UpdaterManager: ObservableObject {
             // isn't attached yet. Don't announce an update the user can't
             // actually download; the next check (or "Check Now") will pick it
             // up once the asset shows up.
-            guard let asset = release.assets.first(where: {
-                $0.name.hasSuffix(".dmg") && $0.name.contains(Self.archSuffix)
-            }) else { return }
+            guard let asset = Self.preferredDownloadAsset(for: release) else { return }
 
             updateAvailable = true
             latestVersion = latest
@@ -203,6 +201,14 @@ final class UpdaterManager: ObservableObject {
 
     private static func version(of release: GitHubRelease) -> String {
         release.tagName.hasPrefix("v") ? String(release.tagName.dropFirst()) : release.tagName
+    }
+
+    private static func preferredDownloadAsset(for release: GitHubRelease) -> GitHubRelease.Asset? {
+        let dmgAssets = release.assets.filter { $0.name.hasSuffix(".dmg") }
+        let canonicalName = "Forel-\(release.tagName).dmg"
+        return dmgAssets.first { $0.name == canonicalName }
+            ?? dmgAssets.first { $0.name.contains("darwin-universal") }
+            ?? dmgAssets.first { $0.name.contains(archSuffix) }
     }
 
     static func isNewer(_ candidate: String, than current: String) -> Bool {

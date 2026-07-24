@@ -3,6 +3,21 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.8] - 2026-07-24
+
+### Fixed
+- The Forel logo now appears correctly in the menu-bar quick panel and app header in universal builds.
+
+## [1.0.7] - 2026-07-24
+
+### Changed
+- Releases now provide one universal DMG for Apple Silicon and Intel Macs, while automatic updates remain compatible with older architecture-specific downloads.
+
+### Fixed
+- Add Tag and Remove Tag actions now require at least one tag before a rule can be saved.
+- Rule editor sheets now grow taller with the main window instead of staying fixed at their default height.
+- Rule editor validation errors now appear together at the top of the editor instead of inside separate sections.
+
 ## [1.0.6] - 2026-07-15
 
 ### Added
