@@ -18,6 +18,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ### Added
 - Added an Open Application action that launches a chosen app, with an option to pass the matched file to it.
 - Watcher notifications: a new toggle in Settings lets you enable or disable system notifications when automatic rules process files.
+- Move to Folder, Copy to Folder, and Rename actions now support {year}, {month}, and {day} tokens — e.g. a destination of Backup/{year}-{month} automatically sorts files into monthly folders, creating them as needed.
 
 ### Changed
 - Settings now opens in its own window, with a "Settings…" item under the Forel menu and the standard ⌘, shortcut, instead of being a pane inside the main window.
