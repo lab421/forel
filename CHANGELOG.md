@@ -5,6 +5,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+- Settings now links to Forel's GitHub repository from the About screen.
 - Added a Settings option to hide Forel's menu bar icon.
 - Opening Forel from Finder or Spotlight now always brings its main window forward.
 - Added visible drag-and-drop action order controls so actions run in the sequence you set.
