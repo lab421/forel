@@ -16,13 +16,14 @@
 
 import AppKit
 
-/// Closing the window hides it instead of quitting; Forel keeps running in
-/// the menu bar. Quit is only available from the status item menu.
+/// Closing the main window hides it instead of quitting; Forel keeps running
+/// in the background.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var statusBarController: StatusBarController?
     private var model: AppModel?
     private var updater: UpdaterManager?
+    private weak var mainWindow: NSWindow?
 
     /// `@NSApplicationDelegateAdaptor` requires a zero-argument initializer;
     /// the app's model/updater are handed in afterward once SwiftUI has
@@ -83,11 +84,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func configureMainWindow() {
-        guard let window = NSApp.windows.first(where: { !($0 is NSPanel) }) else { return }
+        guard let window = mainWindow ?? NSApp.windows.first(where: { !($0 is NSPanel) }) else { return }
         configureMainWindow(window)
     }
 
     private func configureMainWindow(_ window: NSWindow) {
+        mainWindow = window
         window.delegate = self
         window.title = "Forel"
         window.titleVisibility = .hidden
@@ -113,9 +115,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return true
     }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        guard !flag else { return true }
-        openMainWindow()
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows _: Bool) -> Bool {
+        // Finder and Spotlight send a reopen event when Forel is already
+        // running. Always surface the actual main window, even if Settings is
+        // the only currently-visible window.
+        if openMainWindow() {
+            return false
+        }
         return true
     }
 
@@ -124,13 +130,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusBarController = StatusBarController(
             model: model,
             updater: updater,
-            window: NSApp.windows.first
+            window: mainWindow ?? NSApp.windows.first
         )
     }
 
-    private func openMainWindow() {
-        let targetWindow = NSApp.windows.first { !($0 is NSPanel) }
+    @discardableResult
+    private func openMainWindow() -> Bool {
+        guard let targetWindow = mainWindow ?? NSApp.windows.first(where: { !($0 is NSPanel) }) else {
+            return false
+        }
         WindowActivation.activateSoon(targetWindow, showsDockIcon: model?.showDockIcon != false)
+        return true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

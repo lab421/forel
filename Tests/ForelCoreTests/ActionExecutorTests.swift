@@ -19,6 +19,35 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct ActionExecutorTests {
+    @Test func expandedActionCatalogProducesPlans() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "report")
+        let destination = dir.dir("Destination")
+        let actions: [Action] = [
+            makeAction(.sortIntoSubfolder, .object([ActionParam.subfolder: .string("Sorted")])),
+            makeAction(.syncToFolder, .object([ActionParam.destination: .string(destination)])),
+            makeAction(.upload, .object([ActionParam.uploadURL: .string("sftp://example.com/report.txt")])),
+            makeAction(.addComment, .object([ActionParam.comment: .string("Reviewed")])),
+            makeAction(.toggleExtension, .object([:])),
+            makeAction(.toggleLock, .object([:])),
+            makeAction(.archive, .object([:])),
+            makeAction(.runAppleScript, .object([ActionParam.script: .string("return \"ok\"")])),
+            makeAction(.runJavaScript, .object([ActionParam.script: .string("\"ok\";")])),
+            makeAction(.runAutomatorWorkflow, .object([ActionParam.workflowPath: .string("/tmp/example.workflow")])),
+            makeAction(.open, .object([:])),
+            makeAction(.showInFinder, .object([:])),
+            makeAction(.makeAlias, .object([ActionParam.aliasDestination: .string(destination)])),
+            makeAction(.runRulesOnFolderContents, .object([:])),
+            makeAction(.continueMatchingRules, .object([:])),
+            makeAction(.displayNotification, .object([ActionParam.notificationTitle: .string("Done")])),
+            makeAction(.ignore, .object([:])),
+        ]
+
+        for action in actions {
+            let plan = try ActionExecutor.plan(action, path: action.kind == .runRulesOnFolderContents ? dir.path : file)
+            #expect(plan.kind == action.kind)
+        }
+    }
     @Test func addAndRemoveTagUpdatesFinderTagXattrWithoutDuplicates() throws {
         let dir = TempDir()
         let file = dir.file("document.txt", contents: "hello")

@@ -104,6 +104,12 @@ struct SettingsView: View {
                 )
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
                 ToggleRow(
+                    title: "Show menu bar icon",
+                    subtitle: "Open Forel from Finder or Spotlight when it is hidden",
+                    isOn: menuBarIconBinding
+                )
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                ToggleRow(
                     title: "Watcher notifications",
                     subtitle: "Notify when automatic rules process files",
                     isOn: watcherNotificationsBinding
@@ -156,12 +162,19 @@ struct SettingsView: View {
         Group {
             SectionLabel(title: "About")
             GlassCard {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Forel").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
-                        Text("Open-source file automation for macOS").font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Forel").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
+                            Text("Open-source file automation for macOS").font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
+                        }
+                        Spacer()
                     }
-                    Spacer()
+                    Link(destination: URL(string: "https://github.com/lab421/forel")!) {
+                        Label("View on GitHub", systemImage: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(ForelTheme.accent)
                 }
                 .padding(.vertical, 10)
                 .padding(.horizontal, 14)
@@ -186,6 +199,10 @@ struct SettingsView: View {
 
     private var dockIconBinding: Binding<Bool> {
         Binding(get: { model.showDockIcon }, set: { model.setShowDockIcon($0) })
+    }
+
+    private var menuBarIconBinding: Binding<Bool> {
+        Binding(get: { model.showMenuBarIcon }, set: { model.setShowMenuBarIcon($0) })
     }
 
     private var watcherNotificationsBinding: Binding<Bool> {

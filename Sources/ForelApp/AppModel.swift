@@ -48,6 +48,7 @@ final class AppModel: ObservableObject {
     @Published var detailRoute: DetailRoute = .rules
     @Published var accentPreset: AccentPreset = .default
     @Published var showDockIcon: Bool = true
+    @Published var showMenuBarIcon: Bool = true
     @Published var watcherNotificationsEnabled: Bool = true
     @Published var historyMaxDays: Int = 30
     /// Bumped whenever the accent colour changes, so views can force a full
@@ -59,6 +60,7 @@ final class AppModel: ObservableObject {
     private var runNowMessageId: UUID?
     @Published private(set) var isPreviewing = false
     @Published var previewResult: PreviewResult?
+    @Published var showHazelImportAssistant = false
     @Published private var ruleExpansionPreferences = RuleExpansionPreferences()
 
     let db: Database
@@ -69,6 +71,7 @@ final class AppModel: ObservableObject {
     private var historyCleanupTimer: AnyCancellable?
     private var pendingWatcherNotification = PendingWatcherNotification()
     private var watcherNotificationTask: Task<Void, Never>?
+    private let hazelAppURL: URL?
 
     init() throws {
         let appSupportRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -79,6 +82,7 @@ final class AppModel: ObservableObject {
 
         let db = try Database(path: dbPath)
         self.db = db
+        self.hazelAppURL = Self.locateHazel()
         self.coordinator = WatcherCoordinator(db: db)
         self.coordinator.onActivity = { [weak self] summary in
             Task { @MainActor in
@@ -101,6 +105,9 @@ final class AppModel: ObservableObject {
         let storedShowDockIcon = db.withLock { db in try? db.getSetting("show_dock_icon") }
         self.showDockIcon = storedShowDockIcon.map { $0 == "1" } ?? true
 
+        let storedShowMenuBarIcon = db.withLock { db in try? db.getSetting("show_menu_bar_icon") }
+        self.showMenuBarIcon = storedShowMenuBarIcon.map { $0 == "1" } ?? true
+
         let storedWatcherNotificationsEnabled = db.withLock { db in try? db.getSetting("watcher_notifications_enabled") }
         self.watcherNotificationsEnabled = storedWatcherNotificationsEnabled.map { $0 == "1" } ?? true
 
@@ -110,8 +117,17 @@ final class AppModel: ObservableObject {
         self.ruleExpansionPreferences = db.withLock { db in RuleExpansionPreferences.load(from: db) }
 
         reloadFolders()
+        let hazelPromptSeen = db.withLock { db in (try? db.getSetting("hazel_import_prompt_seen")) == "1" }
+        showHazelImportAssistant = !hazelPromptSeen && folders.isEmpty && hazelAppURL != nil
         startWatchingEnabledFolders()
         startHistoryCleanupTimer()
+    }
+
+    private static func locateHazel() -> URL? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.noodlesoft.Hazel")
+            ?? ["/Applications/Hazel.app", "/Applications/Setapp/Hazel.app"]
+                .map(URL.init(fileURLWithPath:))
+                .first(where: { FileManager.default.fileExists(atPath: $0.path) })
     }
 
     /// Forel's bundle identifier moved from `com.forel.app` (`.app` isn't a
@@ -165,6 +181,11 @@ final class AppModel: ObservableObject {
         showDockIcon = enabled
         db.withLock { db in try? db.setSetting("show_dock_icon", enabled ? "1" : "0") }
         applyDockIconPreference(keepingWindowsVisible: true)
+    }
+
+    func setShowMenuBarIcon(_ enabled: Bool) {
+        showMenuBarIcon = enabled
+        db.withLock { db in try? db.setSetting("show_menu_bar_icon", enabled ? "1" : "0") }
     }
 
     func setWatcherNotificationsEnabled(_ enabled: Bool) {
@@ -474,6 +495,50 @@ final class AppModel: ObservableObject {
         guard let folderId = selectedFolderId else { return }
         db.withLock { db in try? db.reorderRules(folderId: folderId, ruleIds: ruleIds) }
         reloadRules()
+    }
+
+    func exportRules(to url: URL) {
+        do {
+            let data = try RuleTransfer.exportForel(rules)
+            try data.write(to: url, options: .atomic)
+            showRunNowMessage("Exported \(rules.count) rule\(rules.count == 1 ? "" : "s")")
+        } catch {
+            showError(error)
+        }
+    }
+
+    @discardableResult
+    func importRules(from url: URL) -> Bool {
+        guard let folderId = selectedFolderId else { return false }
+        do {
+            let result = try RuleTransfer.importRules(from: Data(contentsOf: url), folderId: folderId)
+            try db.withLock { db in
+                for rule in result.rules { try db.insertRule(rule) }
+            }
+            reloadRules()
+            if result.issues.isEmpty {
+                showRunNowMessage("Imported \(result.rules.count) rule\(result.rules.count == 1 ? "" : "s")")
+            } else {
+                alertTitle = "Imported with review needed"
+                errorMessage = "Imported \(result.rules.count) rule\(result.rules.count == 1 ? "" : "s"). Rules with unsupported Hazel parts were disabled.\n\n" + result.issues.map { "\($0.ruleName): \($0.message)" }.joined(separator: "\n")
+            }
+            return true
+        } catch {
+            showError(error)
+            return false
+        }
+    }
+
+    func openHazel() {
+        guard let hazelAppURL else { return }
+        NSWorkspace.shared.openApplication(at: hazelAppURL, configuration: .init()) { _, error in
+            if let error { Task { @MainActor in self.showError(error) } }
+        }
+    }
+
+    func finishHazelImportAssistant() {
+        db.withLock { db in try? db.setSetting("hazel_import_prompt_seen", "1") }
+        showHazelImportAssistant = false
     }
 
     /// Runs all enabled rules in the selected folder against every file

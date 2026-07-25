@@ -104,6 +104,106 @@ import Foundation
         #expect(matched == ["any contents-gated"])
     }
 
+    @Test func noneConditionMatchRequiresEveryConditionToFailInPreviewAndRun() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.txt", contents: "paid")
+        let matchesNone = makeRule(
+            name: "matches none",
+            conditionMatch: .none,
+            conditions: [
+                makeCondition(.name, .contains, "receipt"),
+                makeCondition(.contents, .contains, "refunded"),
+            ]
+        )
+        let matchesOne = makeRule(
+            name: "matches one",
+            conditionMatch: .none,
+            conditions: [
+                makeCondition(.name, .contains, "invoice"),
+                makeCondition(.contents, .contains, "refunded"),
+            ]
+        )
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [matchesNone, matchesOne])
+        let run = RuleEngine.run(path: file, depth: 0, rules: [matchesNone, matchesOne], batchId: "batch")
+
+        #expect(preview?.rules.map(\.ruleName) == ["matches none"])
+        #expect(run.matched == ["matches none"])
+    }
+
+    @Test func finderCommentConditionMatchesInPreviewAndManualRun() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.txt")
+        try FinderTags.writeComment(file, "Ready to file")
+        let rule = makeRule(
+            name: "file ready invoices",
+            conditions: [makeCondition(.finderComment, .contains, "Ready")]
+        )
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+        let run = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(preview?.rules.map(\.ruleName) == ["file ready invoices"])
+        #expect(run.matched == ["file ready invoices"])
+    }
+
+    @Test func pauseIsShownInPreviewAndDelaysManualExecution() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.txt")
+        let pause = makeAction(.pause, .object([ActionParam.pauseSeconds: .number(0.02)]))
+        let rule = makeRule(name: "pause", actions: [pause])
+
+        let previewStarted = Date()
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+        let previewElapsed = Date().timeIntervalSince(previewStarted)
+
+        let runStarted = Date()
+        let run = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+        let runElapsed = Date().timeIntervalSince(runStarted)
+
+        #expect(preview?.rules[0].actions.map(\.description) == ["Pause for 0.02 seconds"])
+        #expect(previewElapsed < 0.01)
+        #expect(run.matched == ["pause"])
+        #expect(run.history.map(\.actionKind) == [.pause])
+        #expect(runElapsed >= 0.015)
+    }
+
+    @Test func runRulesOnFolderContentsAppliesTheFullRuleListToChildren() throws {
+        let dir = TempDir()
+        let folder = dir.dir("Incoming")
+        let child = (folder as NSString).appendingPathComponent("document.txt")
+        FileManager.default.createFile(atPath: child, contents: Data())
+        let descend = makeRule(
+            name: "descend",
+            conditions: [makeCondition(.kind, .is, "folder")],
+            actions: [makeAction(.runRulesOnFolderContents, .object([:]))]
+        )
+        let tag = makeRule(
+            name: "tag text",
+            conditions: [makeCondition(.extension_, .is, "txt")],
+            actions: [makeAction(.addTag, .object([ActionParam.tags: .stringArray(["Processed"])]))]
+        )
+
+        let result = RuleEngine.run(path: folder, depth: 0, rules: [descend, tag], batchId: "batch", root: dir.path)
+
+        #expect(result.matched == ["descend", "tag text"])
+        #expect(result.history.map(\.actionKind) == [.runRulesOnFolderContents, .addTag])
+        #expect(FinderTags.read(child).contains("Processed"))
+    }
+
+    @Test func ignoreStopsThisItemFromReachingLaterRules() throws {
+        let dir = TempDir()
+        let file = dir.file("document.txt")
+        let ignore = makeRule(name: "ignore", actions: [makeAction(.ignore, .object([:]))])
+        let tag = makeRule(name: "tag", actions: [makeAction(.addTag, .object([ActionParam.tags: .stringArray(["Wrong"])]))])
+
+        let result = RuleEngine.run(path: file, depth: 0, rules: [ignore, tag], batchId: "batch")
+
+        #expect(result.matched == ["ignore"])
+        #expect(result.history.map(\.actionKind) == [.ignore])
+        #expect(!FinderTags.read(file).contains("Wrong"))
+    }
+
     @Test func allConditionsCombineRegexWithCompleteFilenameExclusionsInPreviewAndRun() throws {
         let dir = TempDir()
         let destination = dir.dir("Processed")

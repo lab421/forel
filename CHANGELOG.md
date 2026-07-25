@@ -3,6 +3,20 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+- Settings now links to Forel's GitHub repository from the About screen.
+- Added a Settings option to hide Forel's menu bar icon.
+- Opening Forel from Finder or Spotlight now always brings its main window forward.
+- Added visible drag-and-drop action order controls so actions run in the sequence you set.
+- Added a one-time Hazel migration assistant that detects Hazel, opens it, and guides rule export and import.
+- Added rule import and export, including compatible import of Hazel rule exports with clear review warnings for unsupported parts.
+
+### Added
+- Rules can now match only when none of their conditions match, and can pause between actions for a chosen number of seconds.
+- Added sorting, one-way folder sync, FTP/SFTP/WebDAV upload, Finder metadata and file-state actions, archiving, script and Automator runners, Finder reveal/open/alias actions, rule-flow controls, and per-rule notifications.
+- Added conditions for Finder comments, paths, folder item counts, last-opened dates, image dimensions, photo capture dates, PDF page counts, and advanced Spotlight metadata.
+
 ## [1.0.8] - 2026-07-24
 
 ### Fixed

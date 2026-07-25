@@ -70,6 +70,8 @@ public enum ConditionValueKind: Sendable, Equatable {
     case relativeDate
     case fileKind
     case colorLabel
+    case number
+    case spotlightMetadata
     /// Free text combined with a suggestion list (e.g. installed apps) —
     /// still a plain string value underneath, just with autocomplete.
     case appPicker
@@ -90,6 +92,15 @@ public extension ConditionKind {
         case .createdAt: return "Date created"
         case .dateModified: return "Date modified"
         case .dateAdded: return "Date added"
+        case .finderComment: return "Finder comment"
+        case .filePath: return "File path"
+        case .itemCount: return "Number of items"
+        case .lastOpened: return "Last opened"
+        case .imageWidth: return "Image width"
+        case .imageHeight: return "Image height"
+        case .photoDateTaken: return "Photo date taken"
+        case .pdfPageCount: return "PDF page count"
+        case .spotlightMetadata: return "Spotlight metadata"
         case .downloadedFromWebsite: return "Downloaded from website"
         case .downloadedWithApp: return "Downloaded with app"
         case .rawWhereFromMetadata: return "Raw where-from metadata"
@@ -101,13 +112,13 @@ public extension ConditionKind {
     /// `RuleSchemaTests`.
     var validOperators: [Operator] {
         switch self {
-        case .createdAt, .dateModified, .dateAdded:
+        case .createdAt, .dateModified, .dateAdded, .lastOpened, .photoDateTaken:
             return [.before, .after, .olderThan, .withinLast]
-        case .sizeBytes:
+        case .sizeBytes, .itemCount, .imageWidth, .imageHeight, .pdfPageCount:
             return [.is, .isNot, .greaterThan, .lessThan]
         case .kind, .colorLabel:
             return [.is, .isNot]
-        case .name, .extension_, .tags, .contents,
+        case .name, .extension_, .tags, .contents, .finderComment, .filePath, .spotlightMetadata,
              .downloadedFromWebsite, .rawWhereFromMetadata:
             return [.is, .isNot, .contains, .doesNotContain, .startsWith, .endsWith, .matchesRegex]
         case .downloadedWithApp:
@@ -125,9 +136,11 @@ public extension ConditionKind {
         switch self {
         case .kind: return .fileKind
         case .sizeBytes: return .size
+        case .itemCount, .imageWidth, .imageHeight, .pdfPageCount: return .number
         case .colorLabel: return .colorLabel
-        case .createdAt, .dateModified, .dateAdded: return .absoluteDate
-        case .name, .extension_, .tags, .contents,
+        case .createdAt, .dateModified, .dateAdded, .lastOpened, .photoDateTaken: return .absoluteDate
+        case .spotlightMetadata: return .spotlightMetadata
+        case .name, .extension_, .tags, .contents, .finderComment, .filePath,
              .downloadedFromWebsite, .rawWhereFromMetadata: return .text
         case .downloadedWithApp: return .appPicker
         }
@@ -146,6 +159,14 @@ public extension ConditionKind {
         case .createdAt: return "calendar.badge.plus"
         case .dateModified: return "calendar.badge.clock"
         case .dateAdded: return "calendar.day.timeline.left"
+        case .finderComment: return "text.bubble"
+        case .filePath: return "point.topleft.down.curvedto.point.bottomright.up"
+        case .itemCount: return "folder.badge.plus"
+        case .lastOpened: return "clock.arrow.circlepath"
+        case .imageWidth, .imageHeight: return "aspectratio"
+        case .photoDateTaken: return "camera"
+        case .pdfPageCount: return "doc.richtext"
+        case .spotlightMetadata: return "magnifyingglass"
         case .downloadedFromWebsite: return "globe"
         case .downloadedWithApp: return "macwindow"
         case .rawWhereFromMetadata: return "curlybraces"
@@ -161,6 +182,8 @@ public extension ConditionKind {
             return "Uses macOS download metadata. Availability depends on the app that created the file."
         case .contents:
             return "Matches text from plain files, PDFs, Word documents, and images via OCR when available."
+        case .spotlightMetadata:
+            return "Enter a Spotlight key (for example kMDItemAuthors) and the value to match. Availability depends on macOS indexing."
         default:
             return nil
         }
@@ -205,6 +228,14 @@ public enum ActionParam {
     public static let cleanFileName = "clean_file_name"
     public static let libraryType = "library_type"
     public static let targetPlaylist = "target_playlist"
+    public static let pauseSeconds = "pause_seconds"
+    public static let subfolder = "subfolder"
+    public static let uploadURL = "upload_url"
+    public static let comment = "comment"
+    public static let aliasDestination = "alias_destination"
+    public static let workflowPath = "workflow_path"
+    public static let notificationTitle = "notification_title"
+    public static let notificationBody = "notification_body"
 }
 
 /// The abstract shape of an action parameter; the UI maps it to a concrete editor.
@@ -218,6 +249,9 @@ public enum ActionParamKind: Sendable, Equatable {
     case applicationPath
     case libraryType
     case playlist
+    case duration
+    case text
+    case filePath
 }
 
 public struct ActionParamSpec: Sendable, Equatable {
@@ -238,16 +272,34 @@ public extension ActionKind {
         case .moveToFolder: return "Move to folder"
         case .copyToFolder: return "Copy to folder"
         case .rename: return "Rename"
+        case .sortIntoSubfolder: return "Sort into subfolder"
+        case .syncToFolder: return "Sync to folder"
+        case .upload: return "Upload"
         case .moveToTrash: return "Move to Trash"
         case .delete: return "Delete"
         case .addTag: return "Add tag"
         case .removeTag: return "Remove tag"
         case .setColorLabel: return "Set color label"
-        case .runScript: return "Run script"
+        case .addComment: return "Add comment"
+        case .toggleExtension: return "Toggle extension"
+        case .toggleLock: return "Toggle lock"
+        case .archive: return "Archive"
+        case .runScript: return "Run shell script"
         case .runShortcut: return "Run shortcut"
+        case .runAppleScript: return "Run AppleScript"
+        case .runJavaScript: return "Run JavaScript"
+        case .runAutomatorWorkflow: return "Run Automator workflow"
         case .openApplication: return "Open application"
+        case .open: return "Open"
+        case .showInFinder: return "Show in Finder"
+        case .makeAlias: return "Make alias"
         case .importToLibrary: return "Import to library"
         case .uncompress: return "Uncompress"
+        case .pause: return "Pause"
+        case .runRulesOnFolderContents: return "Run rules on folder contents"
+        case .continueMatchingRules: return "Continue matching rules"
+        case .displayNotification: return "Display notification"
+        case .ignore: return "Ignore"
         }
     }
 
@@ -257,14 +309,32 @@ public extension ActionKind {
         case .moveToFolder: return "arrow.right.doc.on.clipboard"
         case .copyToFolder: return "doc.on.doc"
         case .rename: return "pencil"
+        case .sortIntoSubfolder: return "folder.badge.gearshape"
+        case .syncToFolder: return "arrow.triangle.2.circlepath"
+        case .upload: return "arrow.up.circle"
         case .moveToTrash, .delete: return "trash"
         case .addTag, .removeTag: return "tag"
         case .setColorLabel: return "paintpalette"
+        case .addComment: return "text.bubble"
+        case .toggleExtension: return "textformat.abc"
+        case .toggleLock: return "lock"
+        case .archive: return "archivebox"
         case .runScript: return "terminal"
         case .runShortcut: return "square.stack.3d.up"
+        case .runAppleScript: return "applescript"
+        case .runJavaScript: return "curlybraces"
+        case .runAutomatorWorkflow: return "gearshape.2"
         case .openApplication: return "app"
+        case .open: return "arrow.up.forward.app"
+        case .showInFinder: return "folder"
+        case .makeAlias: return "arrowshape.turn.up.right"
         case .importToLibrary: return "tray.full"
         case .uncompress: return "doc.zipper"
+        case .pause: return "pause.circle"
+        case .runRulesOnFolderContents: return "folder.badge.play"
+        case .continueMatchingRules: return "arrow.right.circle"
+        case .displayNotification: return "bell"
+        case .ignore: return "eye.slash"
         }
     }
 
@@ -274,9 +344,9 @@ public extension ActionKind {
     /// have none, instead of showing an empty "No options" popover.
     var hasOptions: Bool {
         switch self {
-        case .moveToFolder, .copyToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .sortIntoSubfolder, .syncToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress:
             return true
-        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
+        case .upload, .addTag, .removeTag, .setColorLabel, .addComment, .toggleExtension, .toggleLock, .archive, .runScript, .runAppleScript, .runJavaScript, .runAutomatorWorkflow, .open, .showInFinder, .makeAlias, .moveToTrash, .delete, .pause, .runRulesOnFolderContents, .continueMatchingRules, .displayNotification, .ignore:
             return false
         }
     }
@@ -287,22 +357,39 @@ public extension ActionKind {
         switch self {
         case .moveToFolder, .copyToFolder:
             return [ActionParamSpec(key: ActionParam.destination, kind: .folderPath)]
+        case .syncToFolder:
+            return [ActionParamSpec(key: ActionParam.destination, kind: .folderPath)]
+        case .sortIntoSubfolder:
+            return [ActionParamSpec(key: ActionParam.subfolder, kind: .text)]
+        case .upload:
+            return [ActionParamSpec(key: ActionParam.uploadURL, kind: .text)]
         case .rename:
             return [ActionParamSpec(key: ActionParam.pattern, kind: .renamePattern)]
         case .addTag, .removeTag:
             return [ActionParamSpec(key: ActionParam.tags, kind: .tags)]
         case .setColorLabel:
             return [ActionParamSpec(key: ActionParam.color, kind: .colorLabel)]
-        case .runScript:
+        case .addComment:
+            return [ActionParamSpec(key: ActionParam.comment, kind: .text)]
+        case .runScript, .runAppleScript, .runJavaScript:
             return [ActionParamSpec(key: ActionParam.script, kind: .script)]
+        case .runAutomatorWorkflow:
+            return [ActionParamSpec(key: ActionParam.workflowPath, kind: .filePath)]
         case .runShortcut:
             return [ActionParamSpec(key: ActionParam.shortcutName, kind: .shortcut)]
         case .openApplication:
             return [ActionParamSpec(key: ActionParam.applicationPath, kind: .applicationPath)]
+        case .makeAlias:
+            return [ActionParamSpec(key: ActionParam.aliasDestination, kind: .folderPath)]
         case .importToLibrary:
             return [ActionParamSpec(key: ActionParam.libraryType, kind: .libraryType),
                     ActionParamSpec(key: ActionParam.targetPlaylist, kind: .playlist)]
-        case .moveToTrash, .delete, .uncompress:
+        case .pause:
+            return [ActionParamSpec(key: ActionParam.pauseSeconds, kind: .duration)]
+        case .displayNotification:
+            return [ActionParamSpec(key: ActionParam.notificationTitle, kind: .text),
+                    ActionParamSpec(key: ActionParam.notificationBody, kind: .text)]
+        case .moveToTrash, .delete, .toggleExtension, .toggleLock, .archive, .open, .showInFinder, .uncompress, .runRulesOnFolderContents, .continueMatchingRules, .ignore:
             return []
         }
     }
@@ -339,19 +426,22 @@ public enum RuleSchema {
     public static let conditionKindGroups: [ConditionKindGroup] = [
         ConditionKindGroup(title: nil, kinds: [
             .name, .extension_, .kind, .sizeBytes, .tags, .colorLabel, .contents,
-            .createdAt, .dateModified, .dateAdded,
+            .createdAt, .dateModified, .dateAdded, .finderComment, .filePath, .itemCount,
+            .lastOpened, .imageWidth, .imageHeight, .photoDateTaken, .pdfPageCount,
         ]),
         ConditionKindGroup(title: "Metadata", kinds: [
-            .downloadedFromWebsite, .downloadedWithApp,
+            .downloadedFromWebsite, .downloadedWithApp, .spotlightMetadata,
         ]),
     ]
 
     public static let conditionKinds: [ConditionKind] = conditionKindGroups.flatMap(\.kinds)
 
     public static let actionKindGroups: [ActionKindGroup] = [
-        ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .rename, .uncompress]),
+        ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .rename, .sortIntoSubfolder, .syncToFolder, .upload, .archive, .uncompress]),
         ActionKindGroup(title: "Tags", kinds: [.addTag, .removeTag, .setColorLabel]),
-        ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut, .openApplication]),
+        ActionKindGroup(title: "Finder", kinds: [.addComment, .toggleExtension, .toggleLock, .open, .showInFinder, .makeAlias]),
+        ActionKindGroup(title: "Automation", kinds: [.runShortcut, .runAppleScript, .runJavaScript, .runAutomatorWorkflow, .runScript, .openApplication, .pause]),
+        ActionKindGroup(title: "Rule flow", kinds: [.runRulesOnFolderContents, .continueMatchingRules, .displayNotification, .ignore]),
         ActionKindGroup(title: "Disposal", kinds: [.moveToTrash, .delete]),
         ActionKindGroup(title: "Library", kinds: [.importToLibrary]),
     ]
@@ -364,5 +454,22 @@ public enum RuleSchema {
         if op == .matchesRegex { return .regex }
         if kind.baseValueKind == .absoluteDate && op.usesRelativeDateValue { return .relativeDate }
         return kind.baseValueKind
+    }
+}
+
+/// Encodes the key and comparison value for the advanced Spotlight metadata
+/// condition in the existing single string column used by `Condition`.
+public enum SpotlightMetadataCondition {
+    private static let separator = "\u{1F}"
+
+    public static func parse(_ storedValue: String) -> (key: String, value: String)? {
+        let parts = storedValue.components(separatedBy: separator)
+        guard parts.count == 2,
+              !parts[0].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return (parts[0], parts[1])
+    }
+
+    public static func make(key: String, value: String) -> String {
+        "\(key)\(separator)\(value)"
     }
 }

@@ -111,6 +111,24 @@ import Foundation
         #expect(RuleValidator.validate(actions).isEmpty)
     }
 
+    @Test func pauseRequiresANonNegativeDuration() {
+        let valid = [makeAction(.pause, .object([ActionParam.pauseSeconds: .number(0.5)]))]
+        let missing = [makeAction(.pause, .object([:]))]
+        let negative = [makeAction(.pause, .object([ActionParam.pauseSeconds: .number(-1)]))]
+
+        #expect(RuleValidator.validate(valid).isEmpty)
+        #expect(RuleValidator.validate(missing) == [.init(message: "Pause duration must be a non-negative number of seconds")])
+        #expect(RuleValidator.validate(negative) == [.init(message: "Pause duration must be a non-negative number of seconds")])
+    }
+
+    @Test func spotlightMetadataConditionRequiresAKeyAndValue() {
+        let valid = [makeCondition(.spotlightMetadata, .contains, SpotlightMetadataCondition.make(key: "kMDItemAuthors", value: "Ada"))]
+        let missingValue = [makeCondition(.spotlightMetadata, .contains, SpotlightMetadataCondition.make(key: "kMDItemAuthors", value: ""))]
+
+        #expect(RuleValidator.validate(valid).isEmpty)
+        #expect(RuleValidator.validate(missingValue) == [.init(message: "Spotlight metadata needs both a key and a value")])
+    }
+
     @Test func openApplicationWithMissingApplicationReportsIssue() {
         let actions = [makeAction(.openApplication, .object([:]))]
         #expect(RuleValidator.validate(actions) == [.init(message: "Application cannot be empty")])

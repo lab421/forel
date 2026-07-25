@@ -33,6 +33,7 @@ final class StatusBarController: NSObject {
     private var globalDismissMonitor: Any?
     private var pausedSubscription: AnyCancellable?
     private var updateSubscription: AnyCancellable?
+    private var visibilitySubscription: AnyCancellable?
 
     init(model: AppModel, updater: UpdaterManager, window: NSWindow?) {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -40,6 +41,8 @@ final class StatusBarController: NSObject {
         self.updater = updater
         self.window = window
         super.init()
+
+        statusItem.isVisible = model.showMenuBarIcon
 
         if let button = statusItem.button {
             button.image = Self.glyph(paused: model.paused, updateAvailable: updater.updateAvailable)
@@ -55,10 +58,22 @@ final class StatusBarController: NSObject {
             guard let self else { return }
             self.refreshGlyph(paused: self.model.paused)
         }
+        visibilitySubscription = model.$showMenuBarIcon
+            .removeDuplicates()
+            .sink { [weak self] isVisible in
+                self?.setVisible(isVisible)
+            }
     }
 
     private func refreshGlyph(paused: Bool) {
         statusItem.button?.image = Self.glyph(paused: paused, updateAvailable: updater.updateAvailable)
+    }
+
+    private func setVisible(_ isVisible: Bool) {
+        if !isVisible {
+            closePopover()
+        }
+        statusItem.isVisible = isVisible
     }
 
     @objc private func togglePopover() {

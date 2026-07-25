@@ -158,6 +158,23 @@ public enum RuleEngine {
                     )
                 }
 
+                if let contentsFolder = result.folderContents {
+                    for entry in walkEntries(root: contentsFolder, maxDepth: 0) {
+                        pending.append(
+                            PendingFile(
+                                path: entry.path,
+                                // This action explicitly opts its children
+                                // into the full rule list. Treat them as
+                                // direct entries so rules using Forel's
+                                // default “Current folder” scope participate.
+                                depth: 0,
+                                startRuleIndex: 0,
+                                blockedRuleIds: blockedRuleIds
+                            )
+                        )
+                    }
+                }
+
                 // A terminal action (move/trash/delete) takes the file out of
                 // this location — even if it didn't actually run (e.g. a
                 // skipped/blocked conflict), later actions in this rule and
@@ -279,6 +296,7 @@ public enum RuleEngine {
         switch match {
         case .all: return results.allSatisfy { $0 }
         case .any: return results.contains(true)
+        case .none: return results.allSatisfy { !$0 }
         }
     }
 
@@ -300,6 +318,8 @@ public enum RuleEngine {
             return ordered.allSatisfy { ConditionEvaluator.evaluate($0, path: path) }
         case .any:
             return ordered.contains { ConditionEvaluator.evaluate($0, path: path) }
+        case .none:
+            return ordered.allSatisfy { !ConditionEvaluator.evaluate($0, path: path) }
         }
     }
 
@@ -375,11 +395,12 @@ public enum RuleEngine {
     /// the exact same way `previewActions` would (via `ActionExecutor.plan`)
     /// before acting on it — the single place preview and execution can
     /// never disagree.
-    private static func runActions(_ rule: Rule, path: String, batchId: String) -> (history: [HistoryEntry], copiedPaths: [String], finalPath: String, isTerminal: Bool) {
+    private static func runActions(_ rule: Rule, path: String, batchId: String) -> (history: [HistoryEntry], copiedPaths: [String], folderContents: String?, finalPath: String, isTerminal: Bool) {
         let sorted = rule.actions.sorted { $0.position < $1.position }
 
         var history: [HistoryEntry] = []
         var copiedPaths: [String] = []
+        var folderContents: String?
         var current = path
         var stoppedOnTerminal = false
 
@@ -462,6 +483,9 @@ public enum RuleEngine {
                             resultFileId: resultIdentity?.fileId
                         )
                     )
+                    if action.kind == .runRulesOnFolderContents {
+                        folderContents = current
+                    }
                     current = applied.newPath
                 }
 
@@ -486,7 +510,7 @@ public enum RuleEngine {
                 )
             }
         }
-        return (history, copiedPaths, current, stoppedOnTerminal)
+        return (history, copiedPaths, folderContents, current, stoppedOnTerminal)
     }
 
     private static func previewActions(_ rule: Rule, path: String) -> (actions: [ActionPreview], copiedPaths: [String], finalPath: String, isTerminal: Bool) {

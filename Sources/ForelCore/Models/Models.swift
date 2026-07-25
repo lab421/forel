@@ -60,6 +60,7 @@ public struct WatchedPathState: Codable, Equatable, Sendable {
 public enum ConditionMatch: String, Codable, Equatable, Sendable {
     case all
     case any
+    case none
 }
 
 public enum ConditionKind: String, Codable, Equatable, Sendable {
@@ -73,6 +74,15 @@ public enum ConditionKind: String, Codable, Equatable, Sendable {
     case createdAt = "created_at"
     case dateModified = "date_modified"
     case dateAdded = "date_added"
+    case finderComment = "finder_comment"
+    case filePath = "file_path"
+    case itemCount = "item_count"
+    case lastOpened = "last_opened"
+    case imageWidth = "image_width"
+    case imageHeight = "image_height"
+    case photoDateTaken = "photo_date_taken"
+    case pdfPageCount = "pdf_page_count"
+    case spotlightMetadata = "spotlight_metadata"
     case downloadedFromWebsite = "downloaded_from_website"
     case downloadedWithApp = "downloaded_with_app"
     case rawWhereFromMetadata = "raw_where_from_metadata"
@@ -122,16 +132,34 @@ public enum ActionKind: String, Codable, Equatable, Sendable {
     case moveToFolder = "move_to_folder"
     case copyToFolder = "copy_to_folder"
     case rename
+    case sortIntoSubfolder = "sort_into_subfolder"
+    case syncToFolder = "sync_to_folder"
+    case upload
     case moveToTrash = "move_to_trash"
     case delete
     case addTag = "add_tag"
     case removeTag = "remove_tag"
     case setColorLabel = "set_color_label"
+    case addComment = "add_comment"
+    case toggleExtension = "toggle_extension"
+    case toggleLock = "toggle_lock"
+    case archive
     case runScript = "run_script"
     case runShortcut = "run_shortcut"
+    case runAppleScript = "run_applescript"
+    case runJavaScript = "run_javascript"
+    case runAutomatorWorkflow = "run_automator_workflow"
     case openApplication = "open_application"
+    case open
+    case showInFinder = "show_in_finder"
+    case makeAlias = "make_alias"
     case importToLibrary = "import_to_library"
     case uncompress
+    case pause
+    case runRulesOnFolderContents = "run_rules_on_folder_contents"
+    case continueMatchingRules = "continue_matching_rules"
+    case displayNotification = "display_notification"
+    case ignore
 
     public init(dbValue: String) {
         self = ActionKind(rawValue: dbValue) ?? .moveToFolder
