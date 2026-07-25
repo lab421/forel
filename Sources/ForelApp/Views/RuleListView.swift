@@ -16,6 +16,7 @@
 
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import ForelCore
 
 struct RuleListView: View {
@@ -46,7 +47,7 @@ struct RuleListView: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            if !model.rules.isEmpty {
+            if model.selectedFolderId != nil {
                 actionBar
             }
 
@@ -166,8 +167,41 @@ struct RuleListView: View {
             .buttonStyle(SecondaryButtonStyle())
             .disabled(model.selectedFolderId == nil || model.isPreviewing)
 
+            Menu {
+                Button("Import Rules…", action: importRules)
+                Button("Export Rules…", action: exportRules)
+                    .disabled(model.rules.isEmpty)
+            } label: {
+                Label("Import / Export", systemImage: "arrow.left.arrow.right")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(model.selectedFolderId == nil)
+
             Spacer()
         }
+    }
+
+    private func importRules() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "forelrules") ?? .json,
+            UTType(filenameExtension: "hazelrules") ?? .data,
+        ]
+        panel.prompt = "Import"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.importRules(from: url)
+    }
+
+    private func exportRules() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "forelrules") ?? .json]
+        panel.nameFieldStringValue = "Forel Rules.forelrules"
+        panel.prompt = "Export"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.exportRules(to: url)
     }
 
     private var emptyState: some View {
@@ -247,11 +281,14 @@ private struct RuleCard: View {
                 .buttonStyle(.plain)
                 .pointingHandCursor()
 
-                Toggle("", isOn: enabledBinding)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .tint(ForelTheme.accent)
-                    .controlSize(.small)
+                Toggle(isOn: enabledBinding) {
+                    Text(rule.enabled ? "Enabled" : "Disabled")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(rule.enabled ? ForelTheme.accent : ForelTheme.secondaryText)
+                }
+                .toggleStyle(.switch)
+                .tint(ForelTheme.accent)
+                .controlSize(.small)
 
                 Button(action: onToggleExpanded) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -438,6 +475,12 @@ private struct RuleDetails: View {
             return ("to folder", action.params[ActionParam.destination]?.stringValue)
         case .rename:
             return ("to \(action.params[ActionParam.pattern]?.stringValue ?? "")", action.params[ActionParam.cleanFileName]?.boolValue == true ? "clean file name" : nil)
+        case .sortIntoSubfolder:
+            return ("into \(action.params[ActionParam.subfolder]?.stringValue ?? "subfolder")", nil)
+        case .syncToFolder:
+            return ("sync to folder", action.params[ActionParam.destination]?.stringValue)
+        case .upload:
+            return ("upload", action.params[ActionParam.uploadURL]?.stringValue)
         case .moveToTrash:
             return ("move to Trash", nil)
         case .delete:
@@ -449,6 +492,14 @@ private struct RuleDetails: View {
         case .setColorLabel:
             let color = action.params[ActionParam.color]?.stringValue ?? ""
             return (color.isEmpty ? "clear color label" : "set to \(color)", nil)
+        case .addComment:
+            return ("add Finder comment", action.params[ActionParam.comment]?.stringValue)
+        case .toggleExtension:
+            return ("toggle extension visibility", nil)
+        case .toggleLock:
+            return ("toggle lock", nil)
+        case .archive:
+            return ("create ZIP archive", nil)
         case .runScript:
             let script = action.params[ActionParam.script]?.stringValue ?? ""
             let firstLine = script.split(separator: "\n").first.map(String.init) ?? ""
@@ -456,17 +507,48 @@ private struct RuleDetails: View {
         case .runShortcut:
             let name = action.params[ActionParam.shortcutName]?.stringValue ?? ""
             return (name.isEmpty ? "run shortcut" : name, ActionExecutor.shortcutInputMode(action).label)
+        case .runAppleScript, .runJavaScript:
+            let script = action.params[ActionParam.script]?.stringValue ?? ""
+            let firstLine = script.split(separator: "\n").first.map(String.init) ?? ""
+            return (firstLine.isEmpty ? action.kind.label : firstLine, nil)
+        case .runAutomatorWorkflow:
+            return ("run Automator workflow", action.params[ActionParam.workflowPath]?.stringValue)
         case .openApplication:
             let path = action.params[ActionParam.applicationPath]?.stringValue ?? ""
             let appName = path.isEmpty ? "open application" : ((path as NSString).lastPathComponent as NSString).deletingPathExtension
             let detail = ActionExecutor.passesFileToApplication(action) ? "with matched file" : nil
             return (appName, detail)
+        case .open:
+            return ("open", nil)
+        case .showInFinder:
+            return ("show in Finder", nil)
+        case .makeAlias:
+            return ("make alias", action.params[ActionParam.aliasDestination]?.stringValue)
         case .importToLibrary:
             let library = LibraryType(rawValue: action.params[ActionParam.libraryType]?.stringValue ?? "")?.label ?? "Library"
             let playlist = action.params[ActionParam.targetPlaylist]?.stringValue ?? ""
             return ("import to \(library)", playlist.isEmpty ? nil : playlist)
         case .uncompress:
             return ("uncompress ZIP", MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
+        case .pause:
+            let seconds: String
+            let isSingular: Bool
+            if case .number(let value) = action.params[ActionParam.pauseSeconds] {
+                seconds = value.formatted()
+                isSingular = value == 1
+            } else {
+                seconds = "invalid duration"
+                isSingular = false
+            }
+            return ("pause for \(seconds) second\(isSingular ? "" : "s")", nil)
+        case .runRulesOnFolderContents:
+            return ("run rules on folder contents", nil)
+        case .continueMatchingRules:
+            return ("continue matching rules", nil)
+        case .displayNotification:
+            return ("display notification", action.params[ActionParam.notificationTitle]?.stringValue)
+        case .ignore:
+            return ("ignore", nil)
         }
     }
 

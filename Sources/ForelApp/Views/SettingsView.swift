@@ -104,6 +104,12 @@ struct SettingsView: View {
                 )
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
                 ToggleRow(
+                    title: "Show menu bar icon",
+                    subtitle: "Open Forel from Finder or Spotlight when it is hidden",
+                    isOn: menuBarIconBinding
+                )
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                ToggleRow(
                     title: "Watcher notifications",
                     subtitle: "Notify when automatic rules process files",
                     isOn: watcherNotificationsBinding
@@ -186,6 +192,10 @@ struct SettingsView: View {
 
     private var dockIconBinding: Binding<Bool> {
         Binding(get: { model.showDockIcon }, set: { model.setShowDockIcon($0) })
+    }
+
+    private var menuBarIconBinding: Binding<Bool> {
+        Binding(get: { model.showMenuBarIcon }, set: { model.setShowMenuBarIcon($0) })
     }
 
     private var watcherNotificationsBinding: Binding<Bool> {

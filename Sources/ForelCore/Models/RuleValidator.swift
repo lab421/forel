@@ -26,6 +26,14 @@ public enum RuleValidator {
 
     public static func validate(_ conditions: [Condition]) -> [Issue] {
         conditions.compactMap { condition in
+            if condition.kind == .spotlightMetadata {
+                guard let metadata = SpotlightMetadataCondition.parse(condition.value),
+                      !metadata.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      !metadata.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    return Issue(message: "Spotlight metadata needs both a key and a value")
+                }
+                return nil
+            }
             if condition.value.trimmingCharacters(in: .whitespaces).isEmpty {
                 return Issue(message: "Condition value cannot be empty")
             }
@@ -40,9 +48,19 @@ public enum RuleValidator {
     public static func validate(_ actions: [Action]) -> [Issue] {
         actions.compactMap { action in
             switch action.kind {
-            case .moveToFolder, .copyToFolder:
+            case .moveToFolder, .copyToFolder, .syncToFolder:
                 if action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
                     return Issue(message: "Destination path cannot be empty")
+                }
+            case .sortIntoSubfolder:
+                let subfolder = action.params[ActionParam.subfolder]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if subfolder.isEmpty || (subfolder as NSString).isAbsolutePath || subfolder.split(separator: "/").contains("..") {
+                    return Issue(message: "Subfolder must be a relative path")
+                }
+            case .upload:
+                let url = action.params[ActionParam.uploadURL]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if URL(string: url)?.scheme == nil {
+                    return Issue(message: "Upload URL must include a protocol")
                 }
             case .rename:
                 if action.params[ActionParam.pattern]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
@@ -55,6 +73,27 @@ public enum RuleValidator {
             case .openApplication:
                 if action.params[ActionParam.applicationPath]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
                     return Issue(message: "Application cannot be empty")
+                }
+            case .pause:
+                guard case .number(let seconds) = action.params[ActionParam.pauseSeconds],
+                      seconds.isFinite, seconds >= 0 else {
+                    return Issue(message: "Pause duration must be a non-negative number of seconds")
+                }
+            case .addComment:
+                if action.params[ActionParam.comment]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                    return Issue(message: "Comment cannot be empty")
+                }
+            case .runAppleScript, .runJavaScript, .runScript:
+                if action.params[ActionParam.script]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                    return Issue(message: "Script cannot be empty")
+                }
+            case .runAutomatorWorkflow:
+                if action.params[ActionParam.workflowPath]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                    return Issue(message: "Automator workflow cannot be empty")
+                }
+            case .makeAlias:
+                if action.params[ActionParam.aliasDestination]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                    return Issue(message: "Alias destination cannot be empty")
                 }
             default:
                 break

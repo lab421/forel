@@ -16,6 +16,7 @@
 
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import ForelCore
 #if canImport(Photos)
 import Photos
@@ -25,6 +26,8 @@ struct RuleEditorView: View {
     @State private var rule: Rule
     @State private var showValidationErrors = false
     @State private var errorDismissTask: Task<Void, Never>?
+    @State private var draggedActionId: String?
+    @State private var actionInsertionIndex: Int?
     @EnvironmentObject private var model: AppModel
     private let preferredHeight: CGFloat
     let onSave: (Rule) -> Void
@@ -59,6 +62,7 @@ struct RuleEditorView: View {
                             Picker("", selection: $rule.conditionMatch) {
                                 Text("Match all conditions").tag(ConditionMatch.all)
                                 Text("Match any condition").tag(ConditionMatch.any)
+                                Text("Match no conditions").tag(ConditionMatch.none)
                             }
                             .labelsHidden()
                             .pickerStyle(.segmented)
@@ -91,7 +95,12 @@ struct RuleEditorView: View {
                     }
 
                     HStack {
-                        SectionLabel(title: "Actions")
+                        VStack(alignment: .leading, spacing: 2) {
+                            SectionLabel(title: "Actions")
+                            Text("Run from top to bottom")
+                                .font(.system(size: 11))
+                                .foregroundStyle(ForelTheme.secondaryText)
+                        }
                         Spacer()
                         Button {
                             rule.actions.append(Action(ruleId: rule.id, kind: .moveToFolder, params: .object(["destination": .string("")]), position: Int64(rule.actions.count)))
@@ -105,13 +114,41 @@ struct RuleEditorView: View {
                             if rule.actions.isEmpty {
                                 placeholder("No actions yet — add at least one to make this rule do something.")
                             }
-                            ForEach($rule.actions, id: \.id) { $action in
-                                ActionRow(action: $action) {
+                            ForEach(Array(rule.actions.enumerated()), id: \.element.id) { index, action in
+                                actionDropTarget(index)
+                                ActionRow(
+                                    action: Binding(
+                                        get: { rule.actions[index] },
+                                        set: { rule.actions[index] = $0 }
+                                    ),
+                                    order: index + 1,
+                                    canMoveUp: index > 0,
+                                    canMoveDown: index < rule.actions.count - 1,
+                                    onMoveUp: { moveAction(at: index, by: -1) },
+                                    onMoveDown: { moveAction(at: index, by: 1) },
+                                    dragProvider: {
+                                        draggedActionId = action.id
+                                        return NSItemProvider(object: action.id as NSString)
+                                    }
+                                ) {
                                     rule.actions.removeAll { $0.id == action.id }
+                                    normalizeActionPositions()
                                 }
+                                .opacity(draggedActionId == action.id ? 0.55 : 1)
+                                .onDrop(
+                                    of: [.plainText],
+                                    delegate: ActionInsertionDropDelegate(
+                                        insertionIndex: index,
+                                        draggedActionId: $draggedActionId,
+                                        activeInsertionIndex: $actionInsertionIndex,
+                                        move: moveAction(id:toInsertionIndex:)
+                                    )
+                                )
                             }
+                            if !rule.actions.isEmpty { actionDropTarget(rule.actions.count) }
                         }
                         .padding(18)
+                        .animation(.easeInOut(duration: 0.12), value: actionInsertionIndex)
                     }
                 }
             }
@@ -120,7 +157,9 @@ struct RuleEditorView: View {
             Divider().overlay(ForelTheme.divider)
 
             HStack {
-                Toggle("Enabled", isOn: $rule.enabled)
+                Toggle(isOn: $rule.enabled) {
+                    Text(rule.enabled ? "Enabled" : "Disabled")
+                }
                     .toggleStyle(.switch)
                     .tint(ForelTheme.accent)
                     .font(.system(size: 12))
@@ -167,6 +206,51 @@ struct RuleEditorView: View {
 
     private var hasValidationErrors: Bool {
         !validationMessages.isEmpty
+    }
+
+    private func moveAction(at index: Int, by offset: Int) {
+        let destination = index + offset
+        guard rule.actions.indices.contains(index), rule.actions.indices.contains(destination) else { return }
+        rule.actions.swapAt(index, destination)
+        normalizeActionPositions()
+    }
+
+    private func moveAction(id: String, toInsertionIndex insertionIndex: Int) {
+        guard let sourceIndex = rule.actions.firstIndex(where: { $0.id == id }) else { return }
+        let action = rule.actions.remove(at: sourceIndex)
+        let targetIndex = sourceIndex < insertionIndex ? insertionIndex - 1 : insertionIndex
+        rule.actions.insert(action, at: max(0, min(targetIndex, rule.actions.count)))
+        normalizeActionPositions()
+    }
+
+    private func normalizeActionPositions() {
+        for index in rule.actions.indices {
+            rule.actions[index].position = Int64(index)
+        }
+    }
+
+    private func actionDropTarget(_ index: Int) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.clear)
+                .frame(height: 10)
+            if actionInsertionIndex == index, draggedActionId != nil {
+                Capsule()
+                    .fill(ForelTheme.accent)
+                    .frame(height: 2)
+                    .shadow(color: ForelTheme.accent.opacity(0.35), radius: 2, y: 1)
+            }
+        }
+        .contentShape(Rectangle())
+        .onDrop(
+            of: [.plainText],
+            delegate: ActionInsertionDropDelegate(
+                insertionIndex: index,
+                draggedActionId: $draggedActionId,
+                activeInsertionIndex: $actionInsertionIndex,
+                move: moveAction(id:toInsertionIndex:)
+            )
+        )
     }
 
     private func placeholder(_ text: String) -> some View {
@@ -362,6 +446,8 @@ private struct ConditionRow: View {
             AppPickerField(value: $condition.value)
         case .size:
             SizeValueEditor(value: $condition.value)
+        case .number:
+            NumberValueEditor(value: $condition.value)
         case .relativeDate:
             RelativeDateValueEditor(value: $condition.value)
         case .absoluteDate:
@@ -370,6 +456,8 @@ private struct ConditionRow: View {
             RegexValueEditor(value: $condition.value)
         case .text:
             GlassField(placeholder: "Value", text: $condition.value)
+        case .spotlightMetadata:
+            SpotlightMetadataValueEditor(value: $condition.value)
         }
     }
 
@@ -416,6 +504,8 @@ private struct ConditionRow: View {
         switch kind.baseValueKind {
         case .fileKind: return "image"
         case .size: return "0 MB"
+        case .number: return "0"
+        case .spotlightMetadata: return SpotlightMetadataCondition.make(key: "kMDItemAuthors", value: "")
         case .absoluteDate:
             return operator_.usesRelativeDateValue ? "7 days" : DateValueFormatter.string(from: Date())
         default: return ""
@@ -685,6 +775,48 @@ private struct SizeValueEditor: View {
     }
 }
 
+private struct NumberValueEditor: View {
+    @Binding var value: String
+
+    var body: some View {
+        GlassField(placeholder: "0", text: Binding(
+            get: { value },
+            set: { value = $0.filter { $0.isNumber || $0 == "." } }
+        ))
+        .frame(width: 100, alignment: .leading)
+    }
+}
+
+private struct SpotlightMetadataValueEditor: View {
+    @Binding var value: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            GlassField(placeholder: "kMDItemAuthors", text: keyBinding)
+                .frame(width: 180)
+            GlassField(placeholder: "Value", text: matchValueBinding)
+        }
+    }
+
+    private var parsed: (key: String, value: String) {
+        SpotlightMetadataCondition.parse(value) ?? ("kMDItemAuthors", "")
+    }
+
+    private var keyBinding: Binding<String> {
+        Binding(
+            get: { parsed.key },
+            set: { value = SpotlightMetadataCondition.make(key: $0, value: parsed.value) }
+        )
+    }
+
+    private var matchValueBinding: Binding<String> {
+        Binding(
+            get: { parsed.value },
+            set: { value = SpotlightMetadataCondition.make(key: parsed.key, value: $0) }
+        )
+    }
+}
+
 /// Text field showing the matched app's real icon (same idea as `FolderField`),
 /// with a "Choose…" button that opens a Finder-style picker scoped to
 /// `/Applications`. Stays a plain text field underneath so a missing or
@@ -795,11 +927,50 @@ private struct KindValuePicker: View {
 
 private struct ActionRow: View {
     @Binding var action: Action
+    let order: Int
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
+    let dragProvider: () -> NSItemProvider
     let onDelete: () -> Void
     @State private var showingOptions = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
+            VStack(spacing: 2) {
+                Text("\(order)")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(ForelTheme.accent)
+                    .frame(width: 18, height: 18)
+                    .background(Circle().fill(ForelTheme.accent.opacity(0.14)))
+                HStack(spacing: 0) {
+                    Button(action: onMoveUp) {
+                        Image(systemName: "chevron.up")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canMoveUp)
+                    .help("Move action earlier")
+                    Button(action: onMoveDown) {
+                        Image(systemName: "chevron.down")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canMoveDown)
+                    .help("Move action later")
+                }
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(ForelTheme.secondaryText)
+            }
+            .frame(width: 24)
+
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(ForelTheme.secondaryText.opacity(0.75))
+                .frame(width: 16)
+                .contentShape(Rectangle())
+                .onDrag(dragProvider)
+                .help("Drag to reorder")
+
             ActionKindMenu(selection: kindBinding)
             .frame(minWidth: 160, alignment: .leading)
 
@@ -841,18 +1012,44 @@ private struct ActionRow: View {
         switch action.kind {
         case .moveToFolder, .copyToFolder:
             FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
+        case .syncToFolder:
+            FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
         case .rename:
             RenamePatternEditor(pattern: paramBinding(ActionParam.pattern), cleanFileName: action.params[ActionParam.cleanFileName]?.boolValue == true)
+        case .sortIntoSubfolder:
+            GlassField(placeholder: "Subfolder path", text: paramBinding(ActionParam.subfolder))
+        case .upload:
+            GlassField(placeholder: "FTP, SFTP, or WebDAV URL", text: paramBinding(ActionParam.uploadURL))
         case .addTag, .removeTag:
             TagTokensEditor(tags: tagsBinding, placeholder: action.kind == .addTag ? "Add tag" : "Tag")
         case .setColorLabel:
             ColorLabelPicker(selection: paramBinding(ActionParam.color), allowNone: true)
+        case .addComment:
+            GlassField(placeholder: "Finder comment", text: paramBinding(ActionParam.comment))
+        case .toggleExtension:
+            actionDescription("Shows or hides the filename extension")
+        case .toggleLock:
+            actionDescription("Locks or unlocks the item")
+        case .archive:
+            actionDescription("Creates a ZIP archive beside the item")
         case .runScript:
             GlassField(placeholder: "Bash script (file path in $FOREL_FILE)", text: paramBinding(ActionParam.script))
         case .runShortcut:
             ShortcutPicker(selection: paramBinding(ActionParam.shortcutName))
+        case .runAppleScript:
+            GlassField(placeholder: "AppleScript (forelFile is the matched file)", text: paramBinding(ActionParam.script))
+        case .runJavaScript:
+            GlassField(placeholder: "JavaScript (forelFile is the matched file)", text: paramBinding(ActionParam.script))
+        case .runAutomatorWorkflow:
+            GlassField(placeholder: "Automator workflow path", text: paramBinding(ActionParam.workflowPath))
         case .openApplication:
             ApplicationPathPickerField(path: paramBinding(ActionParam.applicationPath))
+        case .open:
+            actionDescription("Opens the matched item with its default app")
+        case .showInFinder:
+            actionDescription("Reveals the matched item in Finder")
+        case .makeAlias:
+            FolderField(placeholder: "Alias destination folder", path: paramBinding(ActionParam.aliasDestination))
         case .importToLibrary:
             let libTypeBinding = paramBinding(ActionParam.libraryType, defaultValue: LibraryType.music.rawValue)
             let libType = LibraryType(rawValue: libTypeBinding.wrappedValue)
@@ -889,12 +1086,38 @@ private struct ActionRow: View {
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
+        case .pause:
+            HStack(spacing: 8) {
+                GlassField(placeholder: "1", text: pauseSecondsBinding)
+                    .frame(width: 72)
+                Text("seconds")
+                    .font(.system(size: 12))
+                    .foregroundStyle(ForelTheme.secondaryText)
+            }
+        case .runRulesOnFolderContents:
+            actionDescription("Runs the full rule list on items inside this folder")
+        case .continueMatchingRules:
+            actionDescription("Forel already continues matching later rules")
+        case .displayNotification:
+            VStack(alignment: .leading, spacing: 6) {
+                GlassField(placeholder: "Notification title (optional)", text: paramBinding(ActionParam.notificationTitle))
+                GlassField(placeholder: "Notification message (optional)", text: paramBinding(ActionParam.notificationBody))
+            }
+        case .ignore:
+            actionDescription("Stops this item from matching later rules")
         case .moveToTrash, .delete:
             Text("No parameters")
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
         }
+    }
+
+    private func actionDescription(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11))
+            .foregroundStyle(ForelTheme.secondaryText)
+            .frame(minHeight: 32, alignment: .center)
     }
 
     private var kindBinding: Binding<ActionKind> {
@@ -906,6 +1129,8 @@ private struct ActionRow: View {
                     params[ActionParam.libraryType] = .string(LibraryType.music.rawValue)
                 } else if newKind == .openApplication {
                     params[ActionParam.passFileToApplication] = .bool(true)
+                } else if newKind == .pause {
+                    params[ActionParam.pauseSeconds] = .number(1)
                 }
                 action = Action(id: action.id, ruleId: action.ruleId, kind: newKind, params: .object(params), position: action.position)
             }
@@ -948,6 +1173,25 @@ private struct ActionRow: View {
             }
         )
     }
+
+    private var pauseSecondsBinding: Binding<String> {
+        Binding(
+            get: {
+                guard case .number(let seconds) = action.params[ActionParam.pauseSeconds] else { return "" }
+                return seconds.formatted()
+            },
+            set: { newValue in
+                var dict: [String: JSONValue] = [:]
+                if case .object(let existing) = action.params { dict = existing }
+                if let seconds = Double(newValue), seconds.isFinite, seconds >= 0 {
+                    dict[ActionParam.pauseSeconds] = .number(seconds)
+                } else {
+                    dict.removeValue(forKey: ActionParam.pauseSeconds)
+                }
+                action.params = .object(dict)
+            }
+        )
+    }
 }
 
 private struct ActionOptionsView: View {
@@ -964,7 +1208,7 @@ private struct ActionOptionsView: View {
                 shortcutOptions
             case .openApplication:
                 openApplicationOptions
-            case .moveToFolder, .copyToFolder, .importToLibrary, .uncompress:
+            case .moveToFolder, .copyToFolder, .sortIntoSubfolder, .syncToFolder, .importToLibrary, .uncompress:
                 conflictResolutionOptions
             case .rename:
                 renameOptions

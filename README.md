@@ -197,12 +197,11 @@ History / Undo (SQLite)
 - [x] Shortcuts actions
 - [x] Open App actions
 - [x] Validate actions / conditions before save
-- [ ] Export / Import rules
-- [ ] Toggle extension hidden / visible
-- [ ] Compress actions
-- [ ] Compress actions
-- [ ] Sync actions
-- [ ] Upload actions
+- [x] Import / export rules (including Hazel imports with compatibility warnings)
+- [x] Toggle extension hidden / visible
+- [x] Archive / compress actions
+- [x] Sync actions
+- [x] Upload actions
 - [x] Native notifications on rule actions
 - [ ] AI features
 

@@ -17,6 +17,9 @@
 import Foundation
 import UniformTypeIdentifiers
 import ZIPFoundation
+#if canImport(UserNotifications)
+import UserNotifications
+#endif
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -191,6 +194,14 @@ public enum ActionExecutor {
             return try copyToFolder(action, path: path)
         case .rename:
             return try renameFile(action, path: path)
+        case .sortIntoSubfolder:
+            let subfolder = try stringParam(action, ActionParam.subfolder, "SortIntoSubfolder")
+            let destination = ((path as NSString).deletingLastPathComponent as NSString).appendingPathComponent(subfolder)
+            return try moveIntoDir(path: path, destDir: destination, resolution: conflictResolution(action))
+        case .syncToFolder:
+            return try syncToFolder(action, path: path)
+        case .upload:
+            return try upload(action, path: path)
         case .moveToTrash:
             return try moveIntoDir(path: path, destDir: try trashDir())
         case .delete:
@@ -202,17 +213,56 @@ public enum ActionExecutor {
             return try applyTags(action, path: path, add: false)
         case .setColorLabel:
             return try setColor(action, path: path)
+        case .addComment:
+            return try addComment(action, path: path)
+        case .toggleExtension:
+            return try toggleExtension(path: path)
+        case .toggleLock:
+            return try toggleLock(path: path)
+        case .archive:
+            return try archive(path: path)
         case .runScript:
             return try runScript(action, path: path)
         case .runShortcut:
             return try runShortcut(action, path: path)
+        case .runAppleScript:
+            return try runAppleScriptAction(action, path: path)
+        case .runJavaScript:
+            return try runJavaScript(action, path: path)
+        case .runAutomatorWorkflow:
+            return try runAutomatorWorkflow(action, path: path)
         case .openApplication:
             return try openApplication(action, path: path)
+        case .open:
+            return try open(path: path)
+        case .showInFinder:
+            return try showInFinder(path: path)
+        case .makeAlias:
+            return try makeAlias(action, path: path)
         case .importToLibrary:
             return try importToLibrary(action, path: path)
         case .uncompress:
             return try uncompress(action, path: path)
+        case .pause:
+            let seconds = try pauseDuration(action)
+            if seconds > 0 {
+                Thread.sleep(forTimeInterval: seconds)
+            }
+            return Applied(newPath: path, undo: .none)
+        case .runRulesOnFolderContents, .continueMatchingRules, .ignore:
+            return Applied(newPath: path, undo: .none)
+        case .displayNotification:
+            displayNotification(action, path: path)
+            return Applied(newPath: path, undo: .none)
         }
+    }
+
+    private static func pauseDuration(_ action: Action) throws -> TimeInterval {
+        guard case .number(let seconds) = action.params[ActionParam.pauseSeconds],
+              seconds.isFinite, seconds >= 0 else {
+            throw ActionError("Pause requires a non-negative number of seconds")
+        }
+        return seconds
     }
 
     private static func stringParam(_ action: Action, _ key: String, _ kind: String) throws -> String {
@@ -243,6 +293,45 @@ public enum ActionExecutor {
         let dest = try resolveDestination(naiveDest: naiveDest, dir: destDir, fileName: fileName, resolution: conflictResolution(action))
         try FileManager.default.copyItem(atPath: path, toPath: dest)
         return Applied(newPath: path, undo: .none, copiedPath: dest)
+    }
+
+    private static func syncToFolder(_ action: Action, path: String) throws -> Applied {
+        let destDir = try stringParam(action, ActionParam.destination, "SyncToFolder")
+        try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
+        let fileName = (path as NSString).lastPathComponent
+        var destination = (destDir as NSString).appendingPathComponent(fileName)
+        if FileManager.default.fileExists(atPath: destination) {
+            if FileManager.default.contentsEqual(atPath: path, andPath: destination) {
+                return Applied(newPath: path, undo: .none)
+            }
+            switch conflictResolution(action) {
+            case .skip:
+                return Applied(newPath: path, undo: .none)
+            case .rename:
+                destination = uniqueDest(dir: destDir, fileName: fileName)
+            case .replace:
+                try FileManager.default.removeItem(atPath: destination)
+            }
+        }
+        try FileManager.default.copyItem(atPath: path, toPath: destination)
+        return Applied(newPath: path, undo: .none, copiedPath: destination)
+    }
+
+    private static func upload(_ action: Action, path: String) throws -> Applied {
+        let url = try stringParam(action, ActionParam.uploadURL, "Upload")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        process.arguments = ["--fail", "--silent", "--show-error", "--upload-file", path, url]
+        let errors = Pipe()
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = errors
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let message = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Upload failed"
+            throw ActionError(message)
+        }
+        return Applied(newPath: path, undo: .none)
     }
 
     private struct ZipExtractionPlan {
@@ -357,6 +446,38 @@ public enum ActionExecutor {
         return Applied(newPath: path, undo: .color(path: path, previous: previous))
     }
 
+    private static func addComment(_ action: Action, path: String) throws -> Applied {
+        let comment = try stringParam(action, ActionParam.comment, "AddComment")
+        try FinderTags.writeComment(path, comment)
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func toggleExtension(path: String) throws -> Applied {
+        var url = URL(fileURLWithPath: path)
+        let values = try url.resourceValues(forKeys: [.hasHiddenExtensionKey])
+        var updated = URLResourceValues()
+        updated.hasHiddenExtension = !(values.hasHiddenExtension ?? false)
+        try url.setResourceValues(updated)
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func toggleLock(path: String) throws -> Applied {
+        var url = URL(fileURLWithPath: path)
+        let values = try url.resourceValues(forKeys: [.isUserImmutableKey])
+        var updated = URLResourceValues()
+        updated.isUserImmutable = !(values.isUserImmutable ?? false)
+        try url.setResourceValues(updated)
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func archive(path: String) throws -> Applied {
+        let parent = (path as NSString).deletingLastPathComponent
+        let name = (path as NSString).lastPathComponent
+        let target = uniqueDest(dir: parent, fileName: "\(name).zip")
+        try FileManager.default.zipItem(at: URL(fileURLWithPath: path), to: URL(fileURLWithPath: target))
+        return Applied(newPath: path, undo: .none, copiedPath: target)
+    }
+
     private static let scriptDefaultTimeout: TimeInterval = 60
 
     private static func runScript(_ action: Action, path: String) throws -> Applied {
@@ -396,6 +517,38 @@ public enum ActionExecutor {
         return Applied(newPath: path, undo: .none)
     }
 
+    private static func runAppleScriptAction(_ action: Action, path: String) throws -> Applied {
+        let script = try stringParam(action, ActionParam.script, "RunAppleScript")
+        let file = appleScriptEscapePath(path)
+        try runAppleScript("set forelFile to POSIX file \"\(file)\"\n\(script)")
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func runJavaScript(_ action: Action, path: String) throws -> Applied {
+        let script = try stringParam(action, ActionParam.script, "RunJavaScript")
+        let data = try JSONEncoder().encode(path)
+        let literal = String(data: data, encoding: .utf8) ?? "\"\""
+        try runOSA(script: "const forelFile = Path(\(literal));\n\(script)", language: "JavaScript")
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func runAutomatorWorkflow(_ action: Action, path: String) throws -> Applied {
+        let workflow = try stringParam(action, ActionParam.workflowPath, "RunAutomatorWorkflow")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/automator")
+        process.arguments = ["-i", path, workflow]
+        let errors = Pipe()
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = errors
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let message = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Automator workflow failed"
+            throw ActionError(message)
+        }
+        return Applied(newPath: path, undo: .none)
+    }
+
     private static func openApplication(_ action: Action, path: String) throws -> Applied {
         #if canImport(AppKit)
         let appPath = try stringParam(action, ActionParam.applicationPath, "OpenApplication")
@@ -417,6 +570,51 @@ public enum ActionExecutor {
         return Applied(newPath: path, undo: .none)
         #else
         throw ActionError("Open Application is not available on this platform")
+        #endif
+    }
+
+    private static func open(path: String) throws -> Applied {
+        #if canImport(AppKit)
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        return Applied(newPath: path, undo: .none)
+        #else
+        throw ActionError("Open is not available on this platform")
+        #endif
+    }
+
+    private static func showInFinder(path: String) throws -> Applied {
+        #if canImport(AppKit)
+        NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+        return Applied(newPath: path, undo: .none)
+        #else
+        throw ActionError("Show in Finder is not available on this platform")
+        #endif
+    }
+
+    private static func makeAlias(_ action: Action, path: String) throws -> Applied {
+        let destination = try stringParam(action, ActionParam.aliasDestination, "MakeAlias")
+        let source = appleScriptEscapePath(path)
+        let target = appleScriptEscapePath(destination)
+        try runAppleScript("""
+        tell application "Finder"
+            set sourceItem to POSIX file "\(source)" as alias
+            set destinationFolder to POSIX file "\(target)" as alias
+            make new alias file to sourceItem at destinationFolder
+        end tell
+        """)
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func displayNotification(_ action: Action, path: String) {
+        #if canImport(UserNotifications)
+        let title = action.params[ActionParam.notificationTitle]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = action.params[ActionParam.notificationBody]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let content = UNMutableNotificationContent()
+        content.title = title?.isEmpty == false ? title! : "Forel"
+        content.body = body?.isEmpty == false ? body! : (path as NSString).lastPathComponent
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: "forel-action-\(UUID().uuidString)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
         #endif
     }
 
@@ -534,9 +732,17 @@ public enum ActionExecutor {
 
     @discardableResult
     static func runAppleScript(_ script: String) throws -> String {
+        try runOSA(script: script)
+    }
+
+    @discardableResult
+    private static func runOSA(script: String, language: String? = nil) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
+        var arguments: [String] = []
+        if let language { arguments += ["-l", language] }
+        arguments += ["-e", script]
+        process.arguments = arguments
         let outputPipe = Pipe()
         let errorPipe = Pipe()
         process.standardOutput = outputPipe
@@ -1159,6 +1365,74 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .sortIntoSubfolder:
+            let subfolder = action.params[ActionParam.subfolder]?.stringValue ?? ""
+            let destination = ((path as NSString).deletingLastPathComponent as NSString).appendingPathComponent(subfolder)
+            let target = (destination as NSString).appendingPathComponent(fileName)
+            return ActionPlan(kind: action.kind, description: "Sort into \(subfolder)", sourcePath: path, targetPath: target, status: subfolder.isEmpty ? .wouldSkip : .wouldRun, finalPath: target, copiedPath: nil, isTerminal: true)
+        case .syncToFolder:
+            let destination = action.params[ActionParam.destination]?.stringValue ?? ""
+            let naiveTarget = (destination as NSString).appendingPathComponent(fileName)
+            let exists = !destination.isEmpty && FileManager.default.fileExists(atPath: naiveTarget)
+            let unchanged = exists && FileManager.default.contentsEqual(atPath: path, andPath: naiveTarget)
+            let resolution = conflictResolution(action)
+            if exists && !unchanged && resolution == .skip {
+                return ActionPlan(kind: action.kind, description: "Skip — a file already exists at \(naiveTarget)", sourcePath: path, targetPath: naiveTarget, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
+            }
+            let target = exists && !unchanged && resolution == .rename
+                ? uniqueDest(dir: destination, fileName: fileName)
+                : naiveTarget
+            let description = unchanged ? "Already synced" : exists && resolution == .replace ? "Sync to \(target) (replacing existing file)" : "Sync to \(target)"
+            return ActionPlan(kind: action.kind, description: description, sourcePath: path, targetPath: target, status: destination.isEmpty || unchanged ? .wouldSkip : .wouldRun, finalPath: path, copiedPath: unchanged ? nil : target, isTerminal: false)
+        case .upload:
+            let url = action.params[ActionParam.uploadURL]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: url.isEmpty ? "Upload" : "Upload to \(url)", sourcePath: path, targetPath: nil, status: url.isEmpty ? .wouldSkip : .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .addComment:
+            let comment = action.params[ActionParam.comment]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: comment.isEmpty ? "Add comment" : "Add Finder comment", sourcePath: path, targetPath: nil, status: comment.isEmpty ? .wouldSkip : .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .toggleExtension:
+            return ActionPlan(kind: action.kind, description: "Toggle extension visibility", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .toggleLock:
+            return ActionPlan(kind: action.kind, description: "Toggle file lock", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .archive:
+            let target = ((path as NSString).deletingLastPathComponent as NSString).appendingPathComponent("\(fileName).zip")
+            return ActionPlan(kind: action.kind, description: "Archive to \(target)", sourcePath: path, targetPath: target, status: .wouldRun, finalPath: path, copiedPath: target, isTerminal: false)
+        case .runAppleScript, .runJavaScript:
+            let script = action.params[ActionParam.script]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: script.isEmpty ? action.kind.label : action.kind.label, sourcePath: path, targetPath: nil, status: script.isEmpty ? .wouldSkip : .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .runAutomatorWorkflow:
+            let workflow = action.params[ActionParam.workflowPath]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: workflow.isEmpty ? "Run Automator workflow" : "Run \((workflow as NSString).lastPathComponent)", sourcePath: path, targetPath: nil, status: workflow.isEmpty ? .wouldSkip : .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .open:
+            return ActionPlan(kind: action.kind, description: "Open", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .showInFinder:
+            return ActionPlan(kind: action.kind, description: "Show in Finder", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .makeAlias:
+            let destination = action.params[ActionParam.aliasDestination]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: destination.isEmpty ? "Make alias" : "Make alias in \(destination)", sourcePath: path, targetPath: destination.isEmpty ? nil : destination, status: destination.isEmpty ? .wouldSkip : .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .runRulesOnFolderContents:
+            var isDirectory = ObjCBool(false)
+            let isFolder = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+            return ActionPlan(kind: action.kind, description: isFolder ? "Run rules on folder contents" : "Requires a folder", sourcePath: path, targetPath: nil, status: isFolder ? .wouldRun : .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .continueMatchingRules:
+            return ActionPlan(kind: action.kind, description: "Continue matching rules", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .displayNotification:
+            let title = action.params[ActionParam.notificationTitle]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: title.isEmpty ? "Display notification" : "Display notification: \(title)", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .ignore:
+            return ActionPlan(kind: action.kind, description: "Ignore", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: true)
+        case .pause:
+            let seconds = try pauseDuration(action)
+            return ActionPlan(
+                kind: action.kind,
+                description: "Pause for \(seconds.formatted()) second\(seconds == 1 ? "" : "s")",
+                sourcePath: path,
+                targetPath: nil,
+                status: .wouldRun,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: false
+            )
         }
     }
 
@@ -1177,7 +1451,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .sortIntoSubfolder, .syncToFolder, .upload, .moveToTrash, .delete, .addComment, .toggleExtension, .toggleLock, .archive, .runScript, .runShortcut, .runAppleScript, .runJavaScript, .runAutomatorWorkflow, .openApplication, .open, .showInFinder, .makeAlias, .importToLibrary, .uncompress, .pause, .runRulesOnFolderContents, .continueMatchingRules, .displayNotification, .ignore:
             return true
         }
     }

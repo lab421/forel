@@ -46,7 +46,7 @@ import Foundation
     }
 
     @Test func hasOptionsMatchesActionsThatExposeAnOptionsPopover() {
-        let expectedWithOptions: Set<ActionKind> = [.moveToFolder, .copyToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress]
+        let expectedWithOptions: Set<ActionKind> = [.moveToFolder, .copyToFolder, .sortIntoSubfolder, .syncToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress]
         for kind in RuleSchema.actionKinds {
             #expect(kind.hasOptions == expectedWithOptions.contains(kind), "\(kind) hasOptions mismatch")
         }
@@ -66,6 +66,15 @@ import Foundation
         #expect(RuleSchema.valueKind(for: .downloadedWithApp, operator: .is) == .appPicker)
         // The remaining user-facing metadata kind stays plain text.
         #expect(RuleSchema.valueKind(for: .downloadedFromWebsite, operator: .is) == .text)
+        #expect(RuleSchema.valueKind(for: .imageWidth, operator: .greaterThan) == .number)
+        #expect(RuleSchema.valueKind(for: .spotlightMetadata, operator: .contains) == .spotlightMetadata)
+    }
+
+    @Test func spotlightMetadataConditionStoresKeyAndValueTogether() {
+        let value = SpotlightMetadataCondition.make(key: "kMDItemAuthors", value: "Ada")
+        #expect(SpotlightMetadataCondition.parse(value)?.key == "kMDItemAuthors")
+        #expect(SpotlightMetadataCondition.parse(value)?.value == "Ada")
+        #expect(SpotlightMetadataCondition.parse("kMDItemAuthors") == nil)
     }
 
     // MARK: - Engine handles every declared operator
