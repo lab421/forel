@@ -65,6 +65,83 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: (dir.path as NSString).appendingPathComponent("report-archived.txt.txt")))
     }
 
+    @Test func renamePatternSupportsYearMonthDayTokens() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "hello")
+        let rename = makeAction(.rename, .object(["pattern": .string("archive-{year}-{month}-{day}.{extension}")]))
+
+        _ = try ActionExecutor.execute(rename, path: file)
+
+        let expected = expandedNow("archive-{year}-{month}-{day}.txt")
+        #expect(FileManager.default.fileExists(atPath: (dir.path as NSString).appendingPathComponent(expected)))
+    }
+
+    @Test func moveToFolderExpandsDateTokensInDestinationAndCreatesMissingSubfolders() throws {
+        let dir = TempDir()
+        let file = dir.file("receipt.pdf", contents: "hello")
+        let destinationTemplate = (dir.path as NSString).appendingPathComponent("Backup/{year}-{month}")
+        let move = makeAction(.moveToFolder, .object(["destination": .string(destinationTemplate)]))
+
+        let applied = try ActionExecutor.execute(move, path: file)
+
+        let expectedDir = (dir.path as NSString).appendingPathComponent("Backup/\(expandedNow("{year}-{month}"))")
+        #expect(applied.newPath == (expectedDir as NSString).appendingPathComponent("receipt.pdf"))
+        #expect(FileManager.default.fileExists(atPath: applied.newPath))
+        var isDirectory: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: expectedDir, isDirectory: &isDirectory))
+        #expect(isDirectory.boolValue)
+    }
+
+    @Test func copyToFolderExpandsDateTokensInDestination() throws {
+        let dir = TempDir()
+        let file = dir.file("receipt.pdf", contents: "hello")
+        let destinationTemplate = (dir.path as NSString).appendingPathComponent("Backup/{year}-{month}-{day}")
+        let copy = makeAction(.copyToFolder, .object(["destination": .string(destinationTemplate)]))
+
+        let applied = try ActionExecutor.execute(copy, path: file)
+
+        let expectedDir = (dir.path as NSString).appendingPathComponent("Backup/\(expandedNow("{year}-{month}-{day}"))")
+        let expectedCopy = (expectedDir as NSString).appendingPathComponent("receipt.pdf")
+        #expect(applied.copiedPath == expectedCopy)
+        #expect(FileManager.default.fileExists(atPath: expectedCopy))
+        // The original stays put — unlike Move, Copy never takes the source
+        // file out of its watched folder.
+        #expect(FileManager.default.fileExists(atPath: file))
+    }
+
+    @Test func dryRunPlanShowsTheExpandedDestinationNotTheRawTemplate() throws {
+        let dir = TempDir()
+        let file = dir.file("receipt.pdf", contents: "hello")
+        let destinationTemplate = (dir.path as NSString).appendingPathComponent("Backup/{year}-{month}")
+        let move = makeAction(.moveToFolder, .object(["destination": .string(destinationTemplate)]))
+
+        let plan = try ActionExecutor.plan(move, path: file)
+
+        let expectedDir = (dir.path as NSString).appendingPathComponent("Backup/\(expandedNow("{year}-{month}"))")
+        let expectedTarget = (expectedDir as NSString).appendingPathComponent("receipt.pdf")
+        #expect(plan.targetPath == expectedTarget)
+        #expect(!plan.description.contains("{year}"))
+        #expect(!plan.description.contains("{month}"))
+    }
+
+    /// Expands `{year}`/`{month}`/`{day}` against the current date the same
+    /// way `TokenExpander` does in production (no injectable clock in
+    /// `ActionExecutor`), so these assertions match what the code under test
+    /// actually computed rather than a value frozen at write time.
+    private func expandedNow(_ template: String) -> String {
+        let formatter = DateFormatter()
+        formatter.timeZone = .current
+        let now = Date()
+        var result = template
+        formatter.dateFormat = "yyyy"
+        result = result.replacingOccurrences(of: "{year}", with: formatter.string(from: now))
+        formatter.dateFormat = "MM"
+        result = result.replacingOccurrences(of: "{month}", with: formatter.string(from: now))
+        formatter.dateFormat = "dd"
+        result = result.replacingOccurrences(of: "{day}", with: formatter.string(from: now))
+        return result
+    }
+
     @Test func uncompressZipExtractsSingleRootItemAndMovesArchiveAway() throws {
         let dir = TempDir()
         let staging = dir.dir("staging")
