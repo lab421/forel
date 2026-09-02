@@ -61,6 +61,42 @@ import Foundation
         #expect(try db.listHistory().count == 1)
     }
 
+    @Test func successiveArrivalsAllRunAfterAnEarlierFileWasMoved() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let destination = dir.dir("Network Share")
+        let files = ["first.mp3", "second.mp3", "third.mp3"].map { dir.file($0) }
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+
+        var rule = makeRule(folderId: folder.id, name: "move mp3 files")
+        rule.conditions = [makeCondition(.extension_, .is, "mp3", ruleId: rule.id)]
+        rule.actions = [
+            makeAction(
+                .moveToFolder,
+                .object(["destination": .string(destination)]),
+                position: 0,
+                ruleId: rule.id
+            ),
+        ]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        for file in files {
+            coordinator.enqueue(event: .pathArrived(file))
+        }
+        coordinator.waitForPendingEvents()
+
+        for file in files {
+            let destinationPath = (destination as NSString).appendingPathComponent(
+                (file as NSString).lastPathComponent
+            )
+            #expect(FileManager.default.fileExists(atPath: destinationPath))
+            #expect(!FileManager.default.fileExists(atPath: file))
+        }
+        #expect(try db.listHistory().count == files.count)
+    }
+
     @Test func watcherActivityReportsAppliedActionsOnly() throws {
         let db = try makeDB()
         let dir = TempDir()
