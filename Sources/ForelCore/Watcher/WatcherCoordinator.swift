@@ -29,6 +29,11 @@ public struct WatcherActivitySummary: Equatable, Sendable {
 public final class WatcherCoordinator: @unchecked Sendable {
     private let db: Database
     private let watcher: FileWatcher
+    /// FSEvents callbacks must return promptly. File operations can take an
+    /// arbitrary amount of time, especially when moving across volumes or to
+    /// a network share, so process their immutable event snapshots here
+    /// instead of blocking the native stream's delivery queue.
+    private let processingQueue = DispatchQueue(label: "app.forel.watcher-processing")
     private let activeProcessingLock = NSLock()
     private var activeProcessingRoots: [String: Int] = [:]
     public var onRuleMatched: (@Sendable (String, String) -> Void)?
@@ -40,12 +45,23 @@ public final class WatcherCoordinator: @unchecked Sendable {
         watcherRef = FileWatcher(onEvent: { _ in })
         self.watcher = watcherRef
         self.watcher.replaceHandler { [weak self] event in
-            self?.handle(event: event)
+            self?.enqueue(event: event)
         }
     }
 
     public func add(_ path: String) { watcher.add(path) }
     public func remove(_ path: String) { watcher.remove(path) }
+
+    func enqueue(event: FileWatcherEvent) {
+        processingQueue.async { [weak self] in
+            self?.handle(event: event)
+        }
+    }
+
+    /// Test synchronization point for events already accepted by `enqueue`.
+    func waitForPendingEvents() {
+        processingQueue.sync {}
+    }
 
     func handle(event: FileWatcherEvent) {
         switch event {

@@ -7,6 +7,8 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Fixed
 - About Forel now displays the app name, version, build number, copyright, and repository link.
+- Automatic rules now keep processing simultaneous file arrivals when an earlier file takes time to move to another disk or network folder.
+- Activity timestamps now follow the Mac's current locale, time zone, and clock format instead of displaying UTC.
 
 ## [1.0.8] - 2026-07-24
 
