@@ -78,19 +78,10 @@ struct ForelMacApp: App {
     }
 
     private static var aboutCredits: NSAttributedString {
-        let credits = NSMutableAttributedString(string: "Copyright © 2026 Lab421\n")
-        let repository = NSAttributedString(
-            string: "GitHub Repository",
+        let credits = NSMutableAttributedString(
+            string: "\nGitHub Repository",
             attributes: [.link: URL(string: "https://github.com/lab421/forel")!]
         )
-        let separator = NSAttributedString(string: "  •  ")
-        let license = NSAttributedString(
-            string: "GPL-3.0-or-later License",
-            attributes: [.link: URL(string: "https://github.com/lab421/forel/blob/main/LICENSE")!]
-        )
-        credits.append(repository)
-        credits.append(separator)
-        credits.append(license)
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center

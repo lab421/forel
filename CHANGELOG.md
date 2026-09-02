@@ -6,7 +6,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Fixed
-- About Forel now displays the app name, version, build number, copyright, repository, and license link.
+- About Forel now displays the app name, version, build number, copyright, and repository link.
 
 ## [1.0.8] - 2026-07-24
 
