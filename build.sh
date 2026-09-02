@@ -123,6 +123,8 @@ write_info_plist() {
   <string>${version_number}</string>
   <key>CFBundleVersion</key>
   <string>${version_number}</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © 2026 Lab421</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
   <key>LSUIElement</key>
