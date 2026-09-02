@@ -3,6 +3,11 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- About Forel now displays the app name, version, build number, copyright, repository, and license link.
+
 ## [1.0.8] - 2026-07-24
 
 ### Fixed

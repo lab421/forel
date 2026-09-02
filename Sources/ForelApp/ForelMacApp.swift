@@ -45,13 +45,22 @@ struct ForelMacApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Forel") {
-                    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "alpha"
-                    let icon = Bundle.module.url(forResource: "AppIcon", withExtension: "png").flatMap { NSImage(contentsOf: $0) }
-                    NSApplication.shared.orderFrontStandardAboutPanel(options: [
+                    let info = Bundle.main.infoDictionary
+                    let version = info?["CFBundleShortVersionString"] as? String ?? "Development"
+                    let build = info?["CFBundleVersion"] as? String ?? "Development"
+                    var options: [NSApplication.AboutPanelOptionKey: Any] = [
                         .applicationName: "Forel",
                         .applicationVersion: version,
-                        .applicationIcon: icon as Any,
-                    ])
+                        .version: "Build \(build)",
+                        .credits: Self.aboutCredits,
+                    ]
+
+                    if let icon = Bundle.module.url(forResource: "AppIcon", withExtension: "png")
+                        .flatMap({ NSImage(contentsOf: $0) }) {
+                        options[.applicationIcon] = icon
+                    }
+
+                    NSApplication.shared.orderFrontStandardAboutPanel(options: options)
                 }
             }
         }
@@ -66,5 +75,30 @@ struct ForelMacApp: App {
                 .environmentObject(updater)
         }
         .windowResizability(.contentSize)
+    }
+
+    private static var aboutCredits: NSAttributedString {
+        let credits = NSMutableAttributedString(string: "Copyright © 2026 Lab421\n")
+        let repository = NSAttributedString(
+            string: "GitHub Repository",
+            attributes: [.link: URL(string: "https://github.com/lab421/forel")!]
+        )
+        let separator = NSAttributedString(string: "  •  ")
+        let license = NSAttributedString(
+            string: "GPL-3.0-or-later License",
+            attributes: [.link: URL(string: "https://github.com/lab421/forel/blob/main/LICENSE")!]
+        )
+        credits.append(repository)
+        credits.append(separator)
+        credits.append(license)
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        credits.addAttribute(
+            .paragraphStyle,
+            value: paragraphStyle,
+            range: NSRange(location: 0, length: credits.length)
+        )
+        return credits
     }
 }
