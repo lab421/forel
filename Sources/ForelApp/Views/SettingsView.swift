@@ -92,6 +92,12 @@ struct SettingsView: View {
             SectionLabel(title: "General")
             GlassCard {
                 ToggleRow(
+                    title: "Automatic watching",
+                    subtitle: model.paused ? "Paused — new files are ignored" : "Watching folders — rules run automatically",
+                    isOn: watchingBinding
+                )
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                ToggleRow(
                     title: "Start at login",
                     subtitle: "Open Forel automatically when you log in",
                     isOn: launchAtLoginBinding
@@ -190,6 +196,14 @@ struct SettingsView: View {
 
     private var watcherNotificationsBinding: Binding<Bool> {
         Binding(get: { model.watcherNotificationsEnabled }, set: { model.setWatcherNotificationsEnabled($0) })
+    }
+
+    private var watchingBinding: Binding<Bool> {
+        Binding(get: { !model.paused }, set: { enabled in
+            if enabled == model.paused {
+                model.togglePaused()
+            }
+        })
     }
 
     private var historyMaxDaysBinding: Binding<Int> {
