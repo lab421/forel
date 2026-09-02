@@ -3,6 +3,11 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- Automatic rules now keep processing simultaneous file arrivals when an earlier file takes time to move to another disk or network folder.
+
 ## [1.0.8] - 2026-07-24
 
 ### Fixed
