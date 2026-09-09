@@ -117,6 +117,41 @@ import SQLite3
         #expect(loaded.recursionDepth == nil)
     }
 
+    @Test func enabledRuleLimitAppliesGloballyAndKeepsThePreferredRule() throws {
+        let db = try makeDB()
+        let firstFolder = WatchedFolder(path: "/tmp/forel-limit-a-\(UUID().uuidString)")
+        let secondFolder = WatchedFolder(path: "/tmp/forel-limit-b-\(UUID().uuidString)")
+        try db.insertFolder(firstFolder)
+        try db.insertFolder(secondFolder)
+
+        let firstRule = makeRule(folderId: firstFolder.id, name: "First", enabled: true)
+        let preferredRule = makeRule(folderId: secondFolder.id, name: "Preferred", enabled: true)
+        try db.insertRule(firstRule)
+        try db.insertRule(preferredRule)
+
+        let disabled = try db.enforceEnabledRuleLimit(1, keeping: preferredRule.id)
+
+        #expect(disabled == [firstRule.id])
+        #expect(try db.listRules(folderId: firstFolder.id).allSatisfy { !$0.enabled })
+        #expect(try db.listRules(folderId: secondFolder.id).filter(\.enabled).map(\.id) == [preferredRule.id])
+    }
+
+    @Test func enabledRuleLimitKeepsOneDeterministicRuleWithoutAPreference() throws {
+        let db = try makeDB()
+        let folder = WatchedFolder(path: "/tmp/forel-limit-\(UUID().uuidString)")
+        try db.insertFolder(folder)
+        var firstRule = makeRule(folderId: folder.id, name: "First", enabled: true)
+        firstRule.createdAt = "2026-01-01T00:00:00Z"
+        var secondRule = makeRule(folderId: folder.id, name: "Second", enabled: true)
+        secondRule.createdAt = "2026-01-02T00:00:00Z"
+        try db.insertRule(firstRule)
+        try db.insertRule(secondRule)
+
+        _ = try db.enforceEnabledRuleLimit(1)
+
+        #expect(try db.listRules(folderId: folder.id).filter(\.enabled).map(\.id) == [firstRule.id])
+    }
+
     @Test func openApplicationActionSurvivesDatabaseRoundTrip() throws {
         let db = try makeDB()
         let folder = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")

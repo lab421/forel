@@ -572,6 +572,40 @@ public final class Database: @unchecked Sendable {
         try stmt.runToCompletion()
     }
 
+    /// Keeps at most `maximum` rules enabled across the whole app. When a
+    /// preferred rule is supplied (for example the one the user just
+    /// enabled), it is retained before older enabled rules are considered.
+    /// Returns the identifiers that were disabled.
+    @discardableResult
+    public func enforceEnabledRuleLimit(_ maximum: Int, keeping preferredRuleId: String? = nil) throws -> [String] {
+        let limit = max(0, maximum)
+        let preferred = preferredRuleId ?? ""
+        let query = try statement(
+            """
+            SELECT id FROM rules
+            WHERE enabled=1
+            ORDER BY CASE WHEN id=?1 THEN 0 ELSE 1 END, created_at ASC, priority ASC, id ASC
+            """
+        )
+        query.bind(1, preferred)
+
+        var enabledRuleIds: [String] = []
+        while try query.step() {
+            enabledRuleIds.append(query.columnText(0))
+        }
+        let disabledRuleIds = Array(enabledRuleIds.dropFirst(limit))
+        guard !disabledRuleIds.isEmpty else { return [] }
+
+        try transaction {
+            for id in disabledRuleIds {
+                let update = try statement("UPDATE rules SET enabled=0 WHERE id=?1")
+                update.bind(1, id)
+                try update.runToCompletion()
+            }
+        }
+        return disabledRuleIds
+    }
+
     public func reorderRules(folderId: String, ruleIds: [String]) throws {
         let current = try listRules(folderId: folderId)
         guard current.count == ruleIds.count else {

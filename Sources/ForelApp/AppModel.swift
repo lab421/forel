@@ -60,12 +60,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var isPreviewing = false
     @Published var previewResult: PreviewResult?
     @Published private var ruleExpansionPreferences = RuleExpansionPreferences()
-    /// Whether `LicenseManager` currently grants access. Kept separate from
-    /// `paused` (the user's own Watching toggle, persisted to the database)
-    /// so a denied trial/license stops the watcher without touching or
-    /// overwriting the user's preference — access resumes exactly where they
-    /// left it once the license becomes valid again.
-    @Published private(set) var licenseAccessGranted = true
+    /// After the trial expires Forel remains usable, but only one rule may be
+    /// enabled globally. This is deliberately separate from the user's
+    /// persisted Watching preference.
+    @Published private(set) var licenseAccessIsLimited = false
 
     let db: Database
     private let coordinator: WatcherCoordinator
@@ -345,10 +343,9 @@ final class AppModel: ObservableObject {
     }
 
     /// Whether folders should actually be registered with the watcher right
-    /// now: the user hasn't paused Watching, and the license/trial grants
-    /// access. Every call site that adds/removes folders from `coordinator`
-    /// must go through this instead of checking `paused` alone.
-    private var isWatchingAllowed: Bool { !paused && licenseAccessGranted }
+    /// now: the user hasn't paused Watching. An expired trial does not stop
+    /// automation; its one-rule restriction is enforced in persistence.
+    private var isWatchingAllowed: Bool { !paused }
 
     private func startWatchingEnabledFolders() {
         guard isWatchingAllowed else { return }
@@ -358,20 +355,15 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Called by `AppDelegate` whenever `LicenseManager.state` changes.
-    /// Stops or resumes the watcher exactly like pausing does, without
-    /// touching (or persisting) the user's own Watching toggle.
-    func setLicenseAccessGranted(_ granted: Bool) {
-        guard granted != licenseAccessGranted else { return }
-        licenseAccessGranted = granted
-        guard !paused else { return }
-        let allFolders = db.withLock { db in (try? db.listFolders()) ?? [] }
-        for folder in allFolders where folder.enabled {
-            if granted {
-                coordinator.add(folder.path)
-            } else {
-                coordinator.remove(folder.path)
-            }
+    /// Called by `AppDelegate` whenever the license state changes. Entering
+    /// limited mode preserves one deterministic enabled rule and disables
+    /// the rest; automation itself continues running.
+    func setLicenseAccessLimited(_ limited: Bool) {
+        guard limited != licenseAccessIsLimited else { return }
+        licenseAccessIsLimited = limited
+        if limited {
+            db.withLock { db in try? db.enforceEnabledRuleLimit(1) }
+            reloadRules()
         }
     }
 
@@ -481,6 +473,9 @@ final class AppModel: ObservableObject {
                 } else {
                     try db.insertRule(rule)
                 }
+                if licenseAccessIsLimited, rule.enabled {
+                    try db.enforceEnabledRuleLimit(1, keeping: rule.id)
+                }
             }
             reloadRules()
         } catch {
@@ -495,8 +490,22 @@ final class AppModel: ObservableObject {
     }
 
     func toggleRule(_ rule: Rule, enabled: Bool) {
-        db.withLock { db in try? db.toggleRule(rule.id, enabled: enabled) }
+        let disabledOtherRules = db.withLock { db -> Bool in
+            do {
+                try db.toggleRule(rule.id, enabled: enabled)
+                guard licenseAccessIsLimited, enabled else { return false }
+                return try !db.enforceEnabledRuleLimit(1, keeping: rule.id).isEmpty
+            } catch {
+                return false
+            }
+        }
         reloadRules()
+        if disabledOtherRules {
+            showNotice(
+                title: "Limited mode",
+                message: "Your trial has ended, so Forel can run one active rule. The previously active rule was paused."
+            )
+        }
     }
 
     func reorderRules(_ ruleIds: [String]) {
@@ -599,8 +608,8 @@ final class AppModel: ObservableObject {
     }
 
     /// The enabled rules and watched root currently covering `path`, if
-    /// watching is actually active there — empty/`nil` when paused, license
-    /// access is denied, or the folder is disabled, since the watcher
+    /// watching is actually active there — empty/`nil` when paused or the
+    /// folder is disabled, since the watcher
     /// wouldn't reprocess anything in that case regardless of what the rules
     /// say.
     private func activeRules(coveringRestorePath path: String) -> (rules: [Rule], watchedRoot: String?) {
@@ -679,7 +688,7 @@ final class AppModel: ObservableObject {
         for folder in allFolders {
             if paused {
                 coordinator.remove(folder.path)
-            } else if folder.enabled, licenseAccessGranted {
+            } else if folder.enabled {
                 coordinator.add(folder.path)
             }
         }

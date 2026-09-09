@@ -52,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         showMainWindowOnFirstLaunch()
 
-        model.setLicenseAccessGranted(license.hasAccess)
+        model.setLicenseAccessLimited(!license.hasAccess)
         // `dropFirst()` skips the state already accounted for above, so a
         // fresh subscriber doesn't double-apply the state it was created
         // with — matching the `hasAccess` snapshot immediately before this.
@@ -61,16 +61,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .dropFirst()
             .sink { [weak self] state in
                 guard let self else { return }
-                self.model?.setLicenseAccessGranted(state.grantsAccess)
-                if state.isDefinitivelyDenied {
-                    self.openLicenseSettings()
-                }
+                self.model?.setLicenseAccessLimited(!state.grantsAccess)
             }
             .store(in: &subscriptions)
         license.start()
-        if license.state.isDefinitivelyDenied {
-            openLicenseSettings()
-        }
     }
 
     /// A brand-new install otherwise only shows up as a menu bar icon

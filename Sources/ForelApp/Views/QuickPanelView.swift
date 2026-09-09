@@ -63,7 +63,6 @@ struct QuickPanelView: View {
                         isOn: watchingBinding
                     )
                 }
-                .disabled(!license.hasAccess)
 
                 if !model.folders.isEmpty {
                     SectionLabel(title: "Watched Folders")
@@ -175,18 +174,15 @@ struct QuickPanelView: View {
             )
         case .trialGracePeriodExpired:
             TrialBanner(
-                title: license.state.localizedTitle,
-                subtitle: license.state.localizedSubtitle(
-                    appName: ForelLicensing.appName,
-                    trialDaysRemaining: license.trialDaysRemaining
-                ),
+                title: "Limited Mode",
+                subtitle: "Forel remains available with one active rule. Connect to verify your trial or activate a license.",
                 buttonTitle: "Activate",
                 action: { onOpenLicense?() }
             )
         case .trialExpired, .invalid:
             TrialBanner(
-                title: "Trial Expired",
-                subtitle: "Activate a license to continue using Forel.",
+                title: "Limited Mode",
+                subtitle: "Your trial has ended. Forel remains available with one active rule.",
                 buttonTitle: "Activate",
                 action: { onOpenLicense?() }
             )
@@ -202,7 +198,6 @@ struct QuickPanelView: View {
 
     private var watchingBinding: Binding<Bool> {
         Binding(get: { !model.paused }, set: { enabled in
-            guard license.hasAccess else { return }
             if enabled == model.paused {
                 model.togglePaused()
             }

@@ -5,6 +5,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- Forel remains usable after the trial ends in a limited mode with one active rule; activating another rule pauses the previous one.
+
 ### Fixed
 - Automatic rules now keep processing simultaneous file arrivals when an earlier file takes time to move to another disk or network folder.
 

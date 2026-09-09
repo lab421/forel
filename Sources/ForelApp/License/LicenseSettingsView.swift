@@ -123,10 +123,14 @@ struct LicenseSettingsView: View {
     }
 
     private var statusTitle: String {
-        license.state.localizedTitle
+        if !license.state.grantsAccess { return "Limited Mode" }
+        return license.state.localizedTitle
     }
 
     private var statusSubtitle: String {
-        license.state.localizedSubtitle(appName: ForelLicensing.appName, trialDaysRemaining: license.trialDaysRemaining)
+        if !license.state.grantsAccess {
+            return "Forel remains available with one active rule. Activate a license to unlock unlimited rules."
+        }
+        return license.state.localizedSubtitle(appName: ForelLicensing.appName, trialDaysRemaining: license.trialDaysRemaining)
     }
 }
