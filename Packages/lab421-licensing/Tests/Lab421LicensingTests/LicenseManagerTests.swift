@@ -164,9 +164,56 @@ struct LicenseManagerTests {
         let token = signedToken(privateKey: privateKey, licenseKey: "OTHER", deviceID: "some-other-mac")
         manager.importLicenseToken(token)
 
-        #expect(manager.state == .trialUnverified)
+        // A rejected import must not itself grant anything — the manager is
+        // left exactly where the fresh install's own grace period put it.
+        guard case .trialGracePeriod = manager.state else {
+            Issue.record("Expected .trialGracePeriod, got \(manager.state)")
+            return
+        }
         #expect(store.record?.licenseKey == nil)
         #expect(manager.lastError == .importDeviceMismatch)
+    }
+
+    @Test func reconnectingRetriesImmediatelyInsteadOfWaitingForTheDailyTimer() async {
+        let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let store = MemoryLicenseStore()
+        let client = MockLicenseClient()
+        let privateKey = Curve25519.Signing.PrivateKey()
+        await client.setNetworkFailure(true)
+        let reachability = MockReachabilityMonitor()
+        let manager = makeManager(
+            store: store,
+            client: client,
+            clock: clock,
+            publicKey: privateKey.publicKey,
+            reachabilityMonitor: reachability
+        )
+
+        manager.start()
+        // The first attempt fails on `startTrial` itself (no network),
+        // never even reaching `trialStatus`. Wait for it to fully resolve
+        // before flipping the mock's network state, so this doesn't race
+        // the in-flight attempt.
+        await waitUntil({ manager.lastError != nil }, timeout: 1.0)
+        #expect(await client.trialStatusCount == 0)
+        #expect(manager.hasAccess) // offline, but still within the grace period
+
+        // The network comes back — without advancing the clock anywhere
+        // near the 24-hour retry interval, a reachability transition alone
+        // must trigger a fresh attempt.
+        await client.setNetworkFailure(false)
+        await client.setTrialStatus(.success(TrialStatus(
+            daysRemaining: 5,
+            expiresAt: clock.date.addingTimeInterval(5 * 86400),
+            trialToken: signedToken(privateKey: privateKey, deviceID: "hardware-fingerprint")
+        )))
+        reachability.simulateReachable()
+
+        await waitUntil({
+            await client.trialStatusCount == 1 && manager.state == .trial
+        }, timeout: 1.0)
+
+        #expect(manager.hasAccess)
     }
 
     @Test func trialStartAndStatusDriveAccess() async {
@@ -300,32 +347,87 @@ struct LicenseManagerTests {
         #expect(store.record?.trialIsValid == false)
     }
 
-    @Test func newInstallWithNoNetworkStartsDeniedNotOpen() async {
+    @Test func newInstallWithNoNetworkGrantsATemporaryGracePeriod() async {
         let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
         let store = MemoryLicenseStore()
         let client = MockLicenseClient()
         await client.setNetworkFailure(true)
         let manager = makeManager(store: store, client: client, clock: clock)
 
-        // Before any successful server check, a fresh trial must not
-        // default to granting access.
-        #expect(manager.state == .trialUnverified)
-        #expect(!manager.hasAccess)
-        // But it's not a *confirmed* denial either — callers that only want
+        // A device that has never reached the server yet still gets to work
+        // for a bounded local grace window, so a missing internet
+        // connection at first launch doesn't block the app outright.
+        guard case .trialGracePeriod(let deadline) = manager.state else {
+            Issue.record("Expected .trialGracePeriod, got \(manager.state)")
+            return
+        }
+        #expect(deadline == clock.date.addingTimeInterval(LicenseManager.trialGracePeriod))
+        #expect(manager.hasAccess)
+        // But it's not a *confirmed* grant either — callers that only want
         // to interrupt the user for a definitive answer (e.g. forcing the
-        // license window open at launch) must not treat it as one, or it
-        // would fire on every single fresh launch while the check is still
-        // in flight.
+        // license window open at launch) must not treat it as one.
         #expect(!manager.state.isDefinitivelyDenied)
+    }
+
+    @Test func graceExpiryWithoutEverReachingTheServerIsDefinitivelyDenied() async {
+        let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let store = MemoryLicenseStore()
+        let client = MockLicenseClient()
+        await client.setNetworkFailure(true)
+        let manager = makeManager(store: store, client: client, clock: clock)
+
+        guard case .trialGracePeriod = manager.state else {
+            Issue.record("Expected .trialGracePeriod, got \(manager.state)")
+            return
+        }
+
+        // Still offline once the grace window has fully elapsed: unlike the
+        // transient window above, this is a confirmed failure to ever
+        // verify the trial, so it must now block access and interrupt the
+        // user for a definitive answer.
+        clock.date.addTimeInterval(LicenseManager.trialGracePeriod + 1)
+        manager.refreshState()
+
+        #expect(manager.state == .trialGracePeriodExpired)
+        #expect(!manager.hasAccess)
+        #expect(manager.state.isDefinitivelyDenied)
+    }
+
+    @Test func relaunchingWhileOfflineDoesNotPushTheGraceDeadlineBack() async {
+        let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let store = MemoryLicenseStore()
+        let client = MockLicenseClient()
+        await client.setNetworkFailure(true)
+        let firstManager = makeManager(store: store, client: client, clock: clock)
+        guard case .trialGracePeriod(let firstDeadline) = firstManager.state else {
+            Issue.record("Expected .trialGracePeriod, got \(firstManager.state)")
+            return
+        }
+
+        // Relaunching later (still offline, still never having reached the
+        // server) must reuse the deadline set on the very first launch, not
+        // grant a fresh 24 hours every time the app restarts.
+        clock.date.addTimeInterval(60 * 60)
+        let secondManager = makeManager(store: store, client: client, clock: clock)
+        guard case .trialGracePeriod(let secondDeadline) = secondManager.state else {
+            Issue.record("Expected .trialGracePeriod, got \(secondManager.state)")
+            return
+        }
+        #expect(secondDeadline == firstDeadline)
     }
 
     @Test func trialExpiredIsDefinitivelyDeniedButUnverifiedIsNot() {
         #expect(LicenseAccessState.trialExpired.isDefinitivelyDenied)
         #expect(LicenseAccessState.invalid(.licenseDisabled).isDefinitivelyDenied)
+        #expect(LicenseAccessState.trialGracePeriodExpired.isDefinitivelyDenied)
         #expect(!LicenseAccessState.trialUnverified.isDefinitivelyDenied)
         #expect(!LicenseAccessState.trial.isDefinitivelyDenied)
+        #expect(!LicenseAccessState.trialGracePeriod(deadline: .distantFuture).isDefinitivelyDenied)
         #expect(!LicenseAccessState.licensed.isDefinitivelyDenied)
         #expect(!LicenseAccessState.bypassed.isDefinitivelyDenied)
+
+        #expect(LicenseAccessState.trialGracePeriod(deadline: .distantFuture).grantsAccess)
+        #expect(!LicenseAccessState.trialGracePeriodExpired.grantsAccess)
     }
 
     @Test func cachedTrialBooleanWithoutASignedTokenDoesNotGrantAccess() async {
@@ -496,7 +598,10 @@ struct LicenseManagerTests {
         await manager.activate(licenseKey: "TEST-KEY")
 
         #expect(manager.lastError == .server(apiError))
-        #expect(!manager.hasAccess)
+        // A rejected activation must not itself grant a license — the
+        // manager's access, if any, still comes solely from the fresh
+        // install's own grace period, untouched by this failure.
+        #expect(manager.state != .licensed)
         #expect(store.record?.licenseKey == nil)
     }
 
@@ -539,11 +644,14 @@ struct LicenseManagerTests {
         let manager = makeManager(store: store, clock: clock)
 
         // A corrupted/unreadable Keychain item at launch must not be
-        // mistaken for "no license yet" and silently grant access — it
-        // falls back to the same denied-until-verified state as a fresh
-        // install, and reports why.
-        #expect(manager.state == .trialUnverified)
-        #expect(!manager.hasAccess)
+        // mistaken for a confirmed license or trial state — it falls back to
+        // the same fresh-install grace period as a device that has never
+        // reached the server, and reports why.
+        guard case .trialGracePeriod = manager.state else {
+            Issue.record("Expected .trialGracePeriod, got \(manager.state)")
+            return
+        }
+        #expect(manager.hasAccess)
         #expect(manager.lastError == .storage(statusCode: -25293, appName: "Test App"))
     }
 
@@ -633,7 +741,8 @@ struct LicenseManagerTests {
         store: MemoryLicenseStore,
         client: MockLicenseClient = MockLicenseClient(),
         clock: TestClock,
-        publicKey: Curve25519.Signing.PublicKey = Curve25519.Signing.PrivateKey().publicKey
+        publicKey: Curve25519.Signing.PublicKey = Curve25519.Signing.PrivateKey().publicKey,
+        reachabilityMonitor: any NetworkReachabilityMonitoring = MockReachabilityMonitor()
     ) -> LicenseManager {
         LicenseManager(
             isEnabled: true,
@@ -644,6 +753,7 @@ struct LicenseManagerTests {
             deviceIdentifierProvider: StaticDeviceIdentifierProvider(deviceID: "hardware-fingerprint"),
             offlineTokenPublicKeyRaw: publicKey.rawRepresentation,
             client: client,
+            reachabilityMonitor: reachabilityMonitor,
             now: { clock.date }
         )
     }
@@ -756,4 +866,17 @@ private actor MockLicenseClient: LicenseAPIClientProtocol {
 
 private struct StaticDeviceIdentifierProvider: DeviceIdentifierProviding {
     let deviceID: String
+}
+
+@MainActor
+private final class MockReachabilityMonitor: NetworkReachabilityMonitoring {
+    private var onReachable: (() -> Void)?
+
+    func startMonitoring(onReachable: @escaping @Sendable () -> Void) {
+        self.onReachable = onReachable
+    }
+
+    func simulateReachable() {
+        onReachable?()
+    }
 }

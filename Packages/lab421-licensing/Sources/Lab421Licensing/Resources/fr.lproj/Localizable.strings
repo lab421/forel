@@ -27,3 +27,4 @@
 "trial_expired_subtitle" = "Votre essai est terminé. Achetez maintenant ou saisissez une clé de licence.";
 "trial_unverified" = "Essai non vérifié";
 "trial_unverified_subtitle" = "%@ a besoin d’une connexion internet pour vérifier votre essai.";
+"trial_grace_period_subtitle" = "%1$@ a besoin d’une connexion internet dans les %2$d heures pour garder votre essai actif.";

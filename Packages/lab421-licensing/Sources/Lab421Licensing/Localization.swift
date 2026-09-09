@@ -86,9 +86,9 @@ public extension LicenseAccessState {
         switch self {
         case .licensed:
             PackageLocalization.string("license_active")
-        case .trial:
+        case .trial, .trialGracePeriod:
             PackageLocalization.string("trial_mode")
-        case .trialUnverified:
+        case .trialUnverified, .trialGracePeriodExpired:
             PackageLocalization.string("trial_unverified")
         case .trialExpired:
             PackageLocalization.string("trial_expired")
@@ -113,7 +113,9 @@ public extension LicenseAccessState {
         case .trial:
             trialDaysRemaining.map(PackageLocalization.trialRemainingText)
                 ?? PackageLocalization.string("trial_active_subtitle")
-        case .trialUnverified:
+        case .trialGracePeriod(let deadline):
+            PackageLocalization.format("trial_grace_period_subtitle", appName, Self.hoursRemaining(until: deadline))
+        case .trialUnverified, .trialGracePeriodExpired:
             PackageLocalization.format("trial_unverified_subtitle", appName)
         case .trialExpired:
             PackageLocalization.string("trial_expired_subtitle")
@@ -122,5 +124,9 @@ public extension LicenseAccessState {
         case .bypassed:
             PackageLocalization.string("license_not_required")
         }
+    }
+
+    private static func hoursRemaining(until deadline: Date) -> Int {
+        max(1, Int(deadline.timeIntervalSinceNow / 3600))
     }
 }

@@ -7,6 +7,13 @@ public struct LicenseRecord: Codable, Equatable, Sendable {
     public var lastObservedAt: Date
     public var trialIsValid: Bool? = nil
     public var trialLastCheckedAt: Date? = nil
+    /// Set once, the first time this record is ever created (fresh install,
+    /// or a Keychain read failure that forces a fresh record), to `now +
+    /// LicenseManager.trialGracePeriod`. Lets a device that has never once
+    /// reached the license server keep working for a bounded window instead
+    /// of blocking outright — see `LicenseManager.state(for:)`. Irrelevant
+    /// once `trialLastCheckedAt` is set (the device has proof either way).
+    public var trialGraceDeadline: Date? = nil
     /// Cached purely for display in the host app's UI (e.g. a trial
     /// countdown) — not consulted anywhere access is decided.
     public var trialDaysRemaining: Int? = nil
@@ -29,6 +36,7 @@ public struct LicenseRecord: Codable, Equatable, Sendable {
         lastObservedAt: Date,
         trialIsValid: Bool? = nil,
         trialLastCheckedAt: Date? = nil,
+        trialGraceDeadline: Date? = nil,
         trialDaysRemaining: Int? = nil,
         trialToken: String? = nil,
         licenseKey: String? = nil,
@@ -40,6 +48,7 @@ public struct LicenseRecord: Codable, Equatable, Sendable {
         self.lastObservedAt = lastObservedAt
         self.trialIsValid = trialIsValid
         self.trialLastCheckedAt = trialLastCheckedAt
+        self.trialGraceDeadline = trialGraceDeadline
         self.trialDaysRemaining = trialDaysRemaining
         self.trialToken = trialToken
         self.licenseKey = licenseKey
@@ -170,11 +179,20 @@ public final class KeychainLicenseStore: LicenseSecureStoring {
 public enum LicenseAccessState: Equatable, Sendable {
     case bypassed
     case trial
-    /// Not yet confirmed — either never checked (e.g. first launch with no
-    /// cached trial token) or the last check yielded no verifiable proof.
-    /// Like an unconfirmed license without a signed offline token, this is
-    /// denied until a fresh, verifiable proof (server round-trip or cached
-    /// signed trial token) resolves it.
+    /// This device has never once reached the license server, but is still
+    /// within its bounded local grace window (see
+    /// `LicenseRecord.trialGraceDeadline`) — grants access so a missing
+    /// internet connection at first launch doesn't block the app outright.
+    case trialGracePeriod(deadline: Date)
+    /// The grace window above ran out without this device ever reaching the
+    /// server: unlike the brief window while grace is open, this is a
+    /// confirmed failure to ever verify the trial, so access is denied.
+    case trialGracePeriodExpired
+    /// Not yet confirmed — the device has reached the server at least once
+    /// before, but the last check yielded no verifiable proof. Like an
+    /// unconfirmed license without a signed offline token, this is denied
+    /// until a fresh, verifiable proof (server round-trip or cached signed
+    /// trial token) resolves it.
     case trialUnverified
     case trialExpired
     case licensed
@@ -182,8 +200,8 @@ public enum LicenseAccessState: Equatable, Sendable {
 
     public var grantsAccess: Bool {
         switch self {
-        case .bypassed, .trial, .licensed: true
-        case .trialUnverified, .trialExpired, .invalid: false
+        case .bypassed, .trial, .licensed, .trialGracePeriod: true
+        case .trialGracePeriodExpired, .trialUnverified, .trialExpired, .invalid: false
         }
     }
 
@@ -194,8 +212,8 @@ public enum LicenseAccessState: Equatable, Sendable {
     /// window for that transient state would fire on every single launch.
     public var isDefinitivelyDenied: Bool {
         switch self {
-        case .trialExpired, .invalid: true
-        case .bypassed, .trial, .trialUnverified, .licensed: false
+        case .trialExpired, .invalid, .trialGracePeriodExpired: true
+        case .bypassed, .trial, .trialGracePeriod, .trialUnverified, .licensed: false
         }
     }
 }
@@ -222,6 +240,10 @@ public enum LicenseManagerError: Error, Equatable, Sendable {
 public final class LicenseManager: ObservableObject {
     public static let validationInterval: TimeInterval = 24 * 60 * 60
     public static let trialSyncInterval = validationInterval
+    /// How long a device that has never reached the license server keeps
+    /// working locally before being blocked. See `trialGracePeriod` on
+    /// `LicenseAccessState`.
+    public static let trialGracePeriod: TimeInterval = 24 * 60 * 60
 
     @Published public private(set) var state: LicenseAccessState
     @Published public private(set) var isWorking = false
@@ -243,8 +265,10 @@ public final class LicenseManager: ObservableObject {
     /// Shown in error messages that need to name the app (e.g. a Keychain
     /// storage failure telling the user to quit and reopen it).
     private let appName: String
+    private let reachabilityMonitor: any NetworkReachabilityMonitoring
     private var record: LicenseRecord?
     private var trialSyncTimer: Timer?
+    private var isSyncingTrial = false
 
     /// - Parameters:
     ///   - isEnabled: Whether this build/distribution channel uses direct
@@ -270,6 +294,11 @@ public final class LicenseManager: ObservableObject {
     ///     Ignored if `client` is provided.
     ///   - client: Full override of the networking layer, e.g. a mock in
     ///     tests. Defaults to a `LicenseAPIClient` built from `baseURL`.
+    ///   - reachabilityMonitor: Notifies `start()` when connectivity comes
+    ///     back, so a trial sync that failed at launch (no internet) is
+    ///     retried immediately instead of waiting for the next scheduled
+    ///     attempt. Defaults to a real `NWPathReachabilityMonitor`; override
+    ///     with a mock in tests.
     public init(
         isEnabled: Bool,
         productID: String,
@@ -280,6 +309,7 @@ public final class LicenseManager: ObservableObject {
         offlineTokenPublicKeyRaw: Data,
         baseURL: URL = LicenseAPIClient.defaultBaseURL,
         client: (any LicenseAPIClientProtocol)? = nil,
+        reachabilityMonitor: any NetworkReachabilityMonitoring = NWPathReachabilityMonitor(),
         now: @escaping () -> Date = Date.init
     ) {
         self.isEnabled = isEnabled
@@ -287,6 +317,7 @@ public final class LicenseManager: ObservableObject {
         self.appName = appName
         self.secureStore = secureStore
         self.client = client ?? LicenseAPIClient(baseURL: baseURL)
+        self.reachabilityMonitor = reachabilityMonitor
         self.now = now
         self.offlineTokenPublicKeyRaw = offlineTokenPublicKeyRaw
         self.deviceID = deviceIdentifierProvider.deviceID
@@ -303,6 +334,14 @@ public final class LicenseManager: ObservableObject {
         } catch {
             record = LicenseRecord(lastObservedAt: currentDate)
             lastError = Self.storageError(for: error, appName: appName)
+        }
+
+        // This device has never once reached the license server: start its
+        // grace window now. Skipped once `trialLastCheckedAt` is set (or a
+        // deadline already exists from an earlier launch), so relaunching
+        // the app while offline doesn't keep pushing the deadline back.
+        if record?.trialGraceDeadline == nil, record?.trialLastCheckedAt == nil {
+            record?.trialGraceDeadline = currentDate.addingTimeInterval(Self.trialGracePeriod)
         }
 
         state = Self.state(
@@ -322,6 +361,9 @@ public final class LicenseManager: ObservableObject {
 
     public func start() {
         guard isEnabled else { return }
+        reachabilityMonitor.startMonitoring { [weak self] in
+            Task { await self?.synchronizeAccessState() }
+        }
         Task { await synchronizeAccessState() }
     }
 
@@ -515,6 +557,12 @@ public final class LicenseManager: ObservableObject {
            ) {
             return .trial
         }
+        if record.trialLastCheckedAt == nil {
+            if let deadline = record.trialGraceDeadline, now < deadline {
+                return .trialGracePeriod(deadline: deadline)
+            }
+            return .trialGracePeriodExpired
+        }
         return .trialUnverified
     }
 
@@ -545,6 +593,14 @@ public final class LicenseManager: ObservableObject {
 
     private func synchronizeTrialState() async {
         guard isEnabled, let record, record.licenseKey == nil else { return }
+        // The periodic timer, the reachability monitor, and a manual
+        // `start()` can all trigger this around the same time (e.g. the
+        // network flapping); without this guard, two overlapping calls
+        // would both see `trialLastCheckedAt == nil` and double up on
+        // `startTrial`/`trialStatus`.
+        guard !isSyncingTrial else { return }
+        isSyncingTrial = true
+        defer { isSyncingTrial = false }
         do {
             if record.trialLastCheckedAt == nil {
                 try await client.startTrial(

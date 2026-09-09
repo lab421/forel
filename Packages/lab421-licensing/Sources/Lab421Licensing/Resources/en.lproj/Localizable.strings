@@ -27,3 +27,4 @@
 "trial_expired_subtitle" = "Your trial has expired. Buy now or enter a license key.";
 "trial_unverified" = "Trial not verified";
 "trial_unverified_subtitle" = "%@ needs an internet connection to verify your trial.";
+"trial_grace_period_subtitle" = "%1$@ needs an internet connection within %2$d hours to keep your trial active.";

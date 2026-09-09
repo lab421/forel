@@ -1,0 +1,30 @@
+"license_key_required" = "Gib einen Lizenzschlüssel ein.";
+"license_storage_error" = "%1$@ konnte deine Lizenz nicht sicher speichern (Fehler %2$d). Beende %1$@ und öffne die App erneut. Falls das Problem weiterhin besteht, starte deinen Mac neu oder wende dich mit diesem Fehlercode an den Support.";
+"license_server_unavailable" = "Der Lizenzserver ist nicht verfügbar. Versuche es erneut.";
+"license_validation_unavailable" = "Die Lizenz konnte nicht überprüft werden. Deine bestehende Aktivierung bleibt aktiv.";
+
+"license_reason_license_not_found" = "Dieser Lizenzschlüssel wurde nicht gefunden.";
+"license_reason_license_disabled" = "Diese Lizenz wurde deaktiviert.";
+"license_reason_license_expired" = "Diese Lizenz ist abgelaufen.";
+"license_reason_device_not_activated" = "Dieser Mac ist für diese Lizenz nicht aktiviert.";
+"license_reason_device_deactivated" = "Dieser Mac wurde deaktiviert.";
+"license_reason_unknown" = "Diese Lizenz ist nicht mehr gültig.";
+
+"license_import_device_mismatch" = "Diese Lizenzdatei wurde für einen anderen Mac ausgestellt.";
+"license_import_expired" = "Diese Lizenzdatei ist abgelaufen.";
+"license_import_invalid" = "Diese Lizenzdatei konnte nicht überprüft werden.";
+
+"license_active" = "Lizenz aktiv";
+"license_active_subtitle" = "Auf diesem Mac ist eine aktive Lizenz für %@ vorhanden.";
+"license_invalid" = "Lizenz ungültig";
+"license_not_required" = "Keine Lizenz erforderlich";
+
+"trial_mode" = "Testmodus";
+"trial_active_subtitle" = "Dein Testzeitraum ist auf diesem Mac aktiv.";
+"trial_day_remaining" = "Noch %d Tag";
+"trial_days_remaining" = "Noch %d Tage";
+"trial_expired" = "Testzeitraum abgelaufen";
+"trial_expired_subtitle" = "Dein Testzeitraum ist abgelaufen. Kaufe jetzt eine Lizenz oder gib einen Lizenzschlüssel ein.";
+"trial_unverified" = "Testzeitraum nicht überprüft";
+"trial_unverified_subtitle" = "%@ benötigt eine Internetverbindung, um deinen Testzeitraum zu überprüfen.";
+"trial_grace_period_subtitle" = "%1$@ benötigt innerhalb von %2$d Stunden eine Internetverbindung, damit dein Testzeitraum aktiv bleibt.";
