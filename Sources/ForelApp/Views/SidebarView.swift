@@ -29,6 +29,14 @@ struct SidebarView: View {
                 StatusBadge(active: !model.paused)
             }
 
+            GlassCard {
+                ToggleRow(
+                    title: "Watching",
+                    subtitle: model.paused ? "Paused — new files are ignored" : "Rules run automatically",
+                    isOn: watchingBinding
+                )
+            }
+
             HStack {
                 SectionLabel(title: "Watched Folders")
                 Spacer()
@@ -202,6 +210,14 @@ struct SidebarView: View {
 
     private func enabledBinding(_ folder: WatchedFolder) -> Binding<Bool> {
         Binding(get: { folder.enabled }, set: { model.toggleFolder(folder, enabled: $0) })
+    }
+
+    private var watchingBinding: Binding<Bool> {
+        Binding(get: { !model.paused }, set: { enabled in
+            if enabled == model.paused {
+                model.togglePaused()
+            }
+        })
     }
 
     private func addFolder() {

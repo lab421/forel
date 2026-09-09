@@ -9,7 +9,11 @@ All notable changes to Forel are documented here. Format loosely follows
 - Forel remains usable after the trial ends in a limited mode with one active rule; activating another rule pauses the previous one.
 
 ### Fixed
+- About Forel now displays the app name, version, build number, copyright, and repository link.
 - Automatic rules now keep processing simultaneous file arrivals when an earlier file takes time to move to another disk or network folder.
+- Activity timestamps now follow the Mac's current locale, time zone, and clock format instead of displaying UTC.
+- Automatic watching can now be paused or resumed from the main window and Settings, with a clear explanation above paused rules.
+- File actions no longer crash when macOS or a network volume returns a file identifier outside the signed integer range.
 
 ## [1.0.8] - 2026-07-24
 

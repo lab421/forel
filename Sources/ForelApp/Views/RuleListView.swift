@@ -46,6 +46,9 @@ struct RuleListView: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
+            if model.paused, model.selectedFolderId != nil {
+                pausedBanner
+            }
             if !model.rules.isEmpty {
                 actionBar
             }
@@ -168,6 +171,38 @@ struct RuleListView: View {
 
             Spacer()
         }
+    }
+
+    private var pausedBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pause.circle.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.orange)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Automatic watching is paused")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(ForelTheme.primaryText)
+                Text("Rules only run when you choose Run Now.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(ForelTheme.secondaryText)
+            }
+
+            Spacer(minLength: 8)
+
+            Button("Resume Watching", action: model.togglePaused)
+                .buttonStyle(SecondaryButtonStyle())
+        }
+        .padding(.vertical, 9)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.orange.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.30))
+        )
     }
 
     private var emptyState: some View {

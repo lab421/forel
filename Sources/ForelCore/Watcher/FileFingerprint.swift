@@ -38,6 +38,19 @@ enum FileFingerprint {
     static func identity(_ path: String) -> FileIdentity? {
         var st = stat()
         guard stat(path, &st) == 0 else { return nil }
-        return FileIdentity(volumeId: Int64(st.st_dev), fileId: Int64(st.st_ino))
+        // `st_ino` is an unsigned filesystem value, while SQLite only stores
+        // signed 64-bit integers. A checked `Int64(...)` conversion traps when
+        // a filesystem (including newer macOS/network filesystems) uses the
+        // high bit. Preserve the raw bits instead; equality remains stable and
+        // every possible inode can be persisted without crashing after an
+        // otherwise-successful action.
+        return FileIdentity(
+            volumeId: databaseInteger(st.st_dev),
+            fileId: databaseInteger(st.st_ino)
+        )
+    }
+
+    static func databaseInteger<T: BinaryInteger>(_ value: T) -> Int64 {
+        Int64(truncatingIfNeeded: value)
     }
 }
