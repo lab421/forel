@@ -148,6 +148,20 @@ struct QuickPanelView: View {
                     }
                 }
             )
+        case .trialGracePeriod:
+            TrialBanner(
+                title: license.state.localizedTitle,
+                subtitle: license.state.localizedSubtitle(
+                    appName: ForelLicensing.appName,
+                    trialDaysRemaining: license.trialDaysRemaining
+                ),
+                buttonTitle: "Buy Now",
+                action: {
+                    if let url = URL(string: "https://forel.app") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            )
         case .trialUnverified:
             TrialBanner(
                 title: "Trial Unverified",
@@ -158,6 +172,16 @@ struct QuickPanelView: View {
                         NSWorkspace.shared.open(url)
                     }
                 }
+            )
+        case .trialGracePeriodExpired:
+            TrialBanner(
+                title: license.state.localizedTitle,
+                subtitle: license.state.localizedSubtitle(
+                    appName: ForelLicensing.appName,
+                    trialDaysRemaining: license.trialDaysRemaining
+                ),
+                buttonTitle: "Activate",
+                action: { onOpenLicense?() }
             )
         case .trialExpired, .invalid:
             TrialBanner(

@@ -606,7 +606,6 @@ struct LicenseManagerTests {
     }
 
     @Test func importLicenseTokenRejectsAnExpiredToken() {
-        let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
         let privateKey = Curve25519.Signing.PrivateKey()
         let validUntil = Date(timeIntervalSince1970: 1_700_000_000)
         let store = MemoryLicenseStore()

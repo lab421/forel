@@ -107,8 +107,8 @@ struct LicenseSettingsView: View {
     private var statusSymbol: String {
         switch license.state {
         case .licensed: "checkmark.seal.fill"
-        case .trial: "clock.fill"
-        case .trialUnverified: "wifi.slash"
+        case .trial, .trialGracePeriod: "clock.fill"
+        case .trialUnverified, .trialGracePeriodExpired: "wifi.slash"
         case .trialExpired, .invalid: "exclamationmark.triangle.fill"
         case .bypassed: "checkmark.circle.fill"
         }
@@ -117,8 +117,8 @@ struct LicenseSettingsView: View {
     private var statusColor: Color {
         switch license.state {
         case .licensed, .bypassed: .green
-        case .trial, .trialUnverified: .orange
-        case .trialExpired, .invalid: .red
+        case .trial, .trialGracePeriod, .trialUnverified: .orange
+        case .trialGracePeriodExpired, .trialExpired, .invalid: .red
         }
     }
 
