@@ -40,6 +40,30 @@ import Foundation
         try Database(path: ":memory:")
     }
 
+    @Test func invalidUploadIsSkippedByTheWatcherWithoutTouchingTheFile() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "report")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "upload reports")
+        rule.actions = [makeAction(
+            .upload,
+            .object([ActionParam.uploadURL: .string("file:///tmp/report.txt")]),
+            ruleId: rule.id
+        )]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(path: file)
+
+        let history = try db.listHistory()
+        #expect(history.count == 1)
+        #expect(history[0].status == .skipped)
+        #expect(history[0].message == "Skip — enter a valid FTP, FTPS, SFTP, HTTP, or HTTPS upload URL")
+        #expect(FileManager.default.fileExists(atPath: file))
+    }
+
     @Test func handleTriggersPlanAndExecution() throws {
         let db = try makeDB()
         let dir = TempDir()

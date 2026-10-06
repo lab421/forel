@@ -473,6 +473,9 @@ private struct RuleDetails: View {
             return ("to folder", action.params[ActionParam.destination]?.stringValue)
         case .rename:
             return ("to \(action.params[ActionParam.pattern]?.stringValue ?? "")", action.params[ActionParam.cleanFileName]?.boolValue == true ? "clean file name" : nil)
+        case .upload:
+            let destination = action.params[ActionParam.uploadURL]?.stringValue ?? ""
+            return ("upload", destination.isEmpty ? nil : UploadDestination.displayString(for: destination))
         case .moveToTrash:
             return ("move to Trash", nil)
         case .delete:

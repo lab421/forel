@@ -205,10 +205,55 @@ public enum ActionParam {
     public static let cleanFileName = "clean_file_name"
     public static let libraryType = "library_type"
     public static let targetPlaylist = "target_playlist"
+    public static let uploadURL = "upload_url"
+}
+
+/// Validation, display, and command construction shared by upload previews,
+/// execution, and rule validation.
+public enum UploadDestination {
+    private static let supportedSchemes = Set(["ftp", "ftps", "sftp", "http", "https"])
+
+    public static func url(from value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
+              var components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              supportedSchemes.contains(scheme),
+              components.host?.isEmpty == false else { return nil }
+        components.scheme = scheme
+        return components.url
+    }
+
+    /// Removes credentials before a destination is shown in previews,
+    /// history, and rule summaries.
+    public static func displayString(for value: String) -> String {
+        guard let url = url(from: value),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return "Invalid upload URL"
+        }
+        components.user = nil
+        components.password = nil
+        return components.string ?? value
+    }
+
+    static func curlArguments(sourcePath: String, destination: URL) -> [String] {
+        var arguments = [
+            "--fail", "--silent", "--show-error",
+            "--connect-timeout", "30", "--speed-limit", "1", "--speed-time", "60",
+            "--netrc-optional",
+            "--proto", "=ftp,ftps,sftp,http,https",
+        ]
+        if ["ftp", "ftps", "sftp"].contains(destination.scheme?.lowercased() ?? "") {
+            arguments.append("--ftp-create-dirs")
+        }
+        arguments += ["--upload-file", sourcePath, "--", destination.absoluteString]
+        return arguments
+    }
 }
 
 /// The abstract shape of an action parameter; the UI maps it to a concrete editor.
 public enum ActionParamKind: Sendable, Equatable {
+    case text
     case folderPath
     case renamePattern
     case tags
@@ -238,6 +283,7 @@ public extension ActionKind {
         case .moveToFolder: return "Move to folder"
         case .copyToFolder: return "Copy to folder"
         case .rename: return "Rename"
+        case .upload: return "Upload"
         case .moveToTrash: return "Move to Trash"
         case .delete: return "Delete"
         case .addTag: return "Add tag"
@@ -257,6 +303,7 @@ public extension ActionKind {
         case .moveToFolder: return "arrow.right.doc.on.clipboard"
         case .copyToFolder: return "doc.on.doc"
         case .rename: return "pencil"
+        case .upload: return "arrow.up.circle"
         case .moveToTrash, .delete: return "trash"
         case .addTag, .removeTag: return "tag"
         case .setColorLabel: return "paintpalette"
@@ -276,7 +323,7 @@ public extension ActionKind {
         switch self {
         case .moveToFolder, .copyToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress:
             return true
-        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
+        case .upload, .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
             return false
         }
     }
@@ -289,6 +336,8 @@ public extension ActionKind {
             return [ActionParamSpec(key: ActionParam.destination, kind: .folderPath)]
         case .rename:
             return [ActionParamSpec(key: ActionParam.pattern, kind: .renamePattern)]
+        case .upload:
+            return [ActionParamSpec(key: ActionParam.uploadURL, kind: .text)]
         case .addTag, .removeTag:
             return [ActionParamSpec(key: ActionParam.tags, kind: .tags)]
         case .setColorLabel:
@@ -349,7 +398,7 @@ public enum RuleSchema {
     public static let conditionKinds: [ConditionKind] = conditionKindGroups.flatMap(\.kinds)
 
     public static let actionKindGroups: [ActionKindGroup] = [
-        ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .rename, .uncompress]),
+        ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .rename, .upload, .uncompress]),
         ActionKindGroup(title: "Tags", kinds: [.addTag, .removeTag, .setColorLabel]),
         ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut, .openApplication]),
         ActionKindGroup(title: "Disposal", kinds: [.moveToTrash, .delete]),

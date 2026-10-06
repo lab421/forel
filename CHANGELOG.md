@@ -5,6 +5,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- Rules can now upload matched files to FTP, SFTP, and WebDAV destinations.
+
 ### Fixed
 - Settings → About now shows the version, build, copyright, and repository link, matching the About Forel window.
 

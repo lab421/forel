@@ -191,6 +191,8 @@ public enum ActionExecutor {
             return try copyToFolder(action, path: path)
         case .rename:
             return try renameFile(action, path: path)
+        case .upload:
+            return try upload(action, path: path)
         case .moveToTrash:
             return try moveIntoDir(path: path, destDir: try trashDir())
         case .delete:
@@ -243,6 +245,48 @@ public enum ActionExecutor {
         let dest = try resolveDestination(naiveDest: naiveDest, dir: destDir, fileName: fileName, resolution: conflictResolution(action))
         try FileManager.default.copyItem(atPath: path, toPath: dest)
         return Applied(newPath: path, undo: .none, copiedPath: dest)
+    }
+
+    private static func upload(_ action: Action, path: String) throws -> Applied {
+        let value = try stringParam(action, ActionParam.uploadURL, "Upload")
+        guard let destination = UploadDestination.url(from: value) else {
+            throw ActionError("Upload URL must use FTP, FTPS, SFTP, HTTP, or HTTPS and include a host")
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        process.arguments = UploadDestination.curlArguments(sourcePath: path, destination: destination)
+        process.standardOutput = FileHandle.nullDevice
+        let errors = Pipe()
+        process.standardError = errors
+        try process.run()
+        let errorData = errors.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            let message = sanitizedUploadError(errorData, destination: destination)
+            throw ActionError(message.isEmpty ? "Upload failed (curl exit \(process.terminationStatus))" : message)
+        }
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func sanitizedUploadError(_ data: Data, destination: URL) -> String {
+        var message = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard let components = URLComponents(url: destination, resolvingAgainstBaseURL: false) else {
+            return message
+        }
+        message = message.replacingOccurrences(
+            of: destination.absoluteString,
+            with: UploadDestination.displayString(for: destination.absoluteString)
+        )
+        for secret in [components.user, components.password].compactMap({ $0 }).filter({ !$0.isEmpty }) {
+            message = message.replacingOccurrences(of: secret, with: "••••")
+            if let encoded = secret.addingPercentEncoding(withAllowedCharacters: .urlUserAllowed) {
+                message = message.replacingOccurrences(of: encoded, with: "••••")
+            }
+        }
+        return message
     }
 
     private struct ZipExtractionPlan {
@@ -954,6 +998,30 @@ public enum ActionExecutor {
                 copiedPath: target,
                 isTerminal: false
             )
+        case .upload:
+            let value = action.params[ActionParam.uploadURL]?.stringValue ?? ""
+            guard let destination = UploadDestination.url(from: value) else {
+                return ActionPlan(
+                    kind: action.kind,
+                    description: "Skip — enter a valid FTP, FTPS, SFTP, HTTP, or HTTPS upload URL",
+                    sourcePath: path,
+                    targetPath: nil,
+                    status: .wouldSkip,
+                    finalPath: path,
+                    copiedPath: nil,
+                    isTerminal: false
+                )
+            }
+            return ActionPlan(
+                kind: action.kind,
+                description: "Upload to \(UploadDestination.displayString(for: destination.absoluteString))",
+                sourcePath: path,
+                targetPath: nil,
+                status: .wouldRun,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: false
+            )
         case .rename:
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             var newName = try applyRenamePattern(pattern, path: path)
@@ -1177,7 +1245,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .upload, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress:
             return true
         }
     }

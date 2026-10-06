@@ -843,6 +843,8 @@ private struct ActionRow: View {
             FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
         case .rename:
             RenamePatternEditor(pattern: paramBinding(ActionParam.pattern), cleanFileName: action.params[ActionParam.cleanFileName]?.boolValue == true)
+        case .upload:
+            GlassField(placeholder: "FTP, SFTP, or WebDAV destination URL", text: paramBinding(ActionParam.uploadURL))
         case .addTag, .removeTag:
             TagTokensEditor(tags: tagsBinding, placeholder: action.kind == .addTag ? "Add tag" : "Tag")
         case .setColorLabel:

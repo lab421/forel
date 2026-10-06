@@ -3,6 +3,26 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct RuleValidatorTests {
+    @Test func uploadRequiresASupportedRemoteURLWithAHost() {
+        let valid = makeAction(.upload, .object([
+            ActionParam.uploadURL: .string("https://files.example.com/dav/report.pdf"),
+        ]))
+        let local = makeAction(.upload, .object([
+            ActionParam.uploadURL: .string("file:///tmp/report.pdf"),
+        ]))
+        let missingHost = makeAction(.upload, .object([
+            ActionParam.uploadURL: .string("sftp:///report.pdf"),
+        ]))
+
+        #expect(RuleValidator.validate([valid]).isEmpty)
+        #expect(RuleValidator.validate([local]) == [
+            .init(message: "Upload URL must use FTP, FTPS, SFTP, HTTP, or HTTPS and include a host"),
+        ])
+        #expect(RuleValidator.validate([missingHost]) == [
+            .init(message: "Upload URL must use FTP, FTPS, SFTP, HTTP, or HTTPS and include a host"),
+        ])
+    }
+
     // MARK: - Conditions
 
     @Test func validConditionProducesNoIssues() {

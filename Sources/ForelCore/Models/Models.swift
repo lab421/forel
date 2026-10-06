@@ -122,6 +122,7 @@ public enum ActionKind: String, Codable, Equatable, Sendable {
     case moveToFolder = "move_to_folder"
     case copyToFolder = "copy_to_folder"
     case rename
+    case upload
     case moveToTrash = "move_to_trash"
     case delete
     case addTag = "add_tag"
