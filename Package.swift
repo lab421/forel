@@ -10,7 +10,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/weichsel/ZIPFoundation.git", from: "0.9.18"),
-        .package(path: "Packages/lab421-licensing"),
+        .package(url: "https://github.com/lab421/licensing.git", revision: "1569b2038595862084a466d8dea806b360642608"),
     ],
     targets: [
         .target(
@@ -23,7 +23,7 @@ let package = Package(
             name: "ForelApp",
             dependencies: [
                 "ForelCore",
-                .product(name: "Lab421Licensing", package: "lab421-licensing"),
+                .product(name: "Lab421Licensing", package: "licensing"),
             ],
             resources: [.copy("Resources")]
         ),
