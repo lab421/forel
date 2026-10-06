@@ -70,6 +70,8 @@ public enum ConditionValueKind: Sendable, Equatable {
     case relativeDate
     case fileKind
     case colorLabel
+    case number
+    case spotlightMetadata
     /// Free text combined with a suggestion list (e.g. installed apps) —
     /// still a plain string value underneath, just with autocomplete.
     case appPicker
@@ -90,6 +92,15 @@ public extension ConditionKind {
         case .createdAt: return "Date created"
         case .dateModified: return "Date modified"
         case .dateAdded: return "Date added"
+        case .finderComment: return "Finder comment"
+        case .filePath: return "File path"
+        case .itemCount: return "Number of items"
+        case .lastOpened: return "Last opened"
+        case .imageWidth: return "Image width"
+        case .imageHeight: return "Image height"
+        case .photoDateTaken: return "Photo date taken"
+        case .pdfPageCount: return "PDF page count"
+        case .spotlightMetadata: return "Spotlight metadata"
         case .downloadedFromWebsite: return "Downloaded from website"
         case .downloadedWithApp: return "Downloaded with app"
         case .rawWhereFromMetadata: return "Raw where-from metadata"
@@ -101,13 +112,13 @@ public extension ConditionKind {
     /// `RuleSchemaTests`.
     var validOperators: [Operator] {
         switch self {
-        case .createdAt, .dateModified, .dateAdded:
+        case .createdAt, .dateModified, .dateAdded, .lastOpened, .photoDateTaken:
             return [.before, .after, .olderThan, .withinLast]
-        case .sizeBytes:
+        case .sizeBytes, .itemCount, .imageWidth, .imageHeight, .pdfPageCount:
             return [.is, .isNot, .greaterThan, .lessThan]
         case .kind, .colorLabel:
             return [.is, .isNot]
-        case .name, .extension_, .tags, .contents,
+        case .name, .extension_, .tags, .contents, .finderComment, .filePath, .spotlightMetadata,
              .downloadedFromWebsite, .rawWhereFromMetadata:
             return [.is, .isNot, .contains, .doesNotContain, .startsWith, .endsWith, .matchesRegex]
         case .downloadedWithApp:
@@ -125,9 +136,11 @@ public extension ConditionKind {
         switch self {
         case .kind: return .fileKind
         case .sizeBytes: return .size
+        case .itemCount, .imageWidth, .imageHeight, .pdfPageCount: return .number
         case .colorLabel: return .colorLabel
-        case .createdAt, .dateModified, .dateAdded: return .absoluteDate
-        case .name, .extension_, .tags, .contents,
+        case .createdAt, .dateModified, .dateAdded, .lastOpened, .photoDateTaken: return .absoluteDate
+        case .spotlightMetadata: return .spotlightMetadata
+        case .name, .extension_, .tags, .contents, .finderComment, .filePath,
              .downloadedFromWebsite, .rawWhereFromMetadata: return .text
         case .downloadedWithApp: return .appPicker
         }
@@ -146,6 +159,14 @@ public extension ConditionKind {
         case .createdAt: return "calendar.badge.plus"
         case .dateModified: return "calendar.badge.clock"
         case .dateAdded: return "calendar.day.timeline.left"
+        case .finderComment: return "text.bubble"
+        case .filePath: return "point.topleft.down.curvedto.point.bottomright.up"
+        case .itemCount: return "folder.badge.plus"
+        case .lastOpened: return "clock.arrow.circlepath"
+        case .imageWidth, .imageHeight: return "aspectratio"
+        case .photoDateTaken: return "camera"
+        case .pdfPageCount: return "doc.richtext"
+        case .spotlightMetadata: return "magnifyingglass"
         case .downloadedFromWebsite: return "globe"
         case .downloadedWithApp: return "macwindow"
         case .rawWhereFromMetadata: return "curlybraces"
@@ -161,6 +182,8 @@ public extension ConditionKind {
             return "Uses macOS download metadata. Availability depends on the app that created the file."
         case .contents:
             return "Matches text from plain files, PDFs, Word documents, and images via OCR when available."
+        case .spotlightMetadata:
+            return "Enter a Spotlight key (for example kMDItemAuthors) and the value to match. Availability depends on macOS indexing."
         default:
             return nil
         }
@@ -339,10 +362,11 @@ public enum RuleSchema {
     public static let conditionKindGroups: [ConditionKindGroup] = [
         ConditionKindGroup(title: nil, kinds: [
             .name, .extension_, .kind, .sizeBytes, .tags, .colorLabel, .contents,
-            .createdAt, .dateModified, .dateAdded,
+            .createdAt, .dateModified, .dateAdded, .finderComment, .filePath, .itemCount,
+            .lastOpened, .imageWidth, .imageHeight, .photoDateTaken, .pdfPageCount,
         ]),
         ConditionKindGroup(title: "Metadata", kinds: [
-            .downloadedFromWebsite, .downloadedWithApp,
+            .downloadedFromWebsite, .downloadedWithApp, .spotlightMetadata,
         ]),
     ]
 
@@ -364,5 +388,22 @@ public enum RuleSchema {
         if op == .matchesRegex { return .regex }
         if kind.baseValueKind == .absoluteDate && op.usesRelativeDateValue { return .relativeDate }
         return kind.baseValueKind
+    }
+}
+
+/// Encodes the key and comparison value for the advanced Spotlight metadata
+/// condition in the existing single string column used by `Condition`.
+public enum SpotlightMetadataCondition {
+    private static let separator = "\u{1F}"
+
+    public static func parse(_ storedValue: String) -> (key: String, value: String)? {
+        let parts = storedValue.components(separatedBy: separator)
+        guard parts.count == 2,
+              !parts[0].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return (parts[0], parts[1])
+    }
+
+    public static func make(key: String, value: String) -> String {
+        "\(key)\(separator)\(value)"
     }
 }

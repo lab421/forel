@@ -60,6 +60,7 @@ public struct WatchedPathState: Codable, Equatable, Sendable {
 public enum ConditionMatch: String, Codable, Equatable, Sendable {
     case all
     case any
+    case none
 }
 
 public enum ConditionKind: String, Codable, Equatable, Sendable {
@@ -73,6 +74,15 @@ public enum ConditionKind: String, Codable, Equatable, Sendable {
     case createdAt = "created_at"
     case dateModified = "date_modified"
     case dateAdded = "date_added"
+    case finderComment = "finder_comment"
+    case filePath = "file_path"
+    case itemCount = "item_count"
+    case lastOpened = "last_opened"
+    case imageWidth = "image_width"
+    case imageHeight = "image_height"
+    case photoDateTaken = "photo_date_taken"
+    case pdfPageCount = "pdf_page_count"
+    case spotlightMetadata = "spotlight_metadata"
     case downloadedFromWebsite = "downloaded_from_website"
     case downloadedWithApp = "downloaded_with_app"
     case rawWhereFromMetadata = "raw_where_from_metadata"

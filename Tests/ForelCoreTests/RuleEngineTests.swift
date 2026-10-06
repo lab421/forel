@@ -104,6 +104,49 @@ import Foundation
         #expect(matched == ["any contents-gated"])
     }
 
+    @Test func noneConditionMatchRequiresEveryConditionToFailInPreviewAndRun() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.txt", contents: "paid")
+        let matchesNone = makeRule(
+            name: "matches none",
+            conditionMatch: .none,
+            conditions: [
+                makeCondition(.name, .contains, "receipt"),
+                makeCondition(.contents, .contains, "refunded"),
+            ]
+        )
+        let matchesOne = makeRule(
+            name: "matches one",
+            conditionMatch: .none,
+            conditions: [
+                makeCondition(.name, .contains, "invoice"),
+                makeCondition(.contents, .contains, "refunded"),
+            ]
+        )
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [matchesNone, matchesOne])
+        let run = RuleEngine.run(path: file, depth: 0, rules: [matchesNone, matchesOne], batchId: "batch")
+
+        #expect(preview?.rules.map(\.ruleName) == ["matches none"])
+        #expect(run.matched == ["matches none"])
+    }
+
+    @Test func finderCommentConditionMatchesInPreviewAndRun() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.txt")
+        try FinderTags.writeComment(file, "Ready to file")
+        let rule = makeRule(
+            name: "file ready invoices",
+            conditions: [makeCondition(.finderComment, .contains, "Ready")]
+        )
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+        let run = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(preview?.rules.map(\.ruleName) == ["file ready invoices"])
+        #expect(run.matched == ["file ready invoices"])
+    }
+
     @Test func allConditionsCombineRegexWithCompleteFilenameExclusionsInPreviewAndRun() throws {
         let dir = TempDir()
         let destination = dir.dir("Processed")

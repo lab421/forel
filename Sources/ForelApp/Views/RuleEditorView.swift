@@ -59,6 +59,7 @@ struct RuleEditorView: View {
                             Picker("", selection: $rule.conditionMatch) {
                                 Text("Match all conditions").tag(ConditionMatch.all)
                                 Text("Match any condition").tag(ConditionMatch.any)
+                                Text("Match no conditions").tag(ConditionMatch.none)
                             }
                             .labelsHidden()
                             .pickerStyle(.segmented)
@@ -362,6 +363,8 @@ private struct ConditionRow: View {
             AppPickerField(value: $condition.value)
         case .size:
             SizeValueEditor(value: $condition.value)
+        case .number:
+            NumberValueEditor(value: $condition.value)
         case .relativeDate:
             RelativeDateValueEditor(value: $condition.value)
         case .absoluteDate:
@@ -370,6 +373,8 @@ private struct ConditionRow: View {
             RegexValueEditor(value: $condition.value)
         case .text:
             GlassField(placeholder: "Value", text: $condition.value)
+        case .spotlightMetadata:
+            SpotlightMetadataValueEditor(value: $condition.value)
         }
     }
 
@@ -416,6 +421,8 @@ private struct ConditionRow: View {
         switch kind.baseValueKind {
         case .fileKind: return "image"
         case .size: return "0 MB"
+        case .number: return "0"
+        case .spotlightMetadata: return SpotlightMetadataCondition.make(key: "kMDItemAuthors", value: "")
         case .absoluteDate:
             return operator_.usesRelativeDateValue ? "7 days" : DateValueFormatter.string(from: Date())
         default: return ""
@@ -682,6 +689,48 @@ private struct SizeValueEditor: View {
         let rawUnit = pieces.count > 1 ? pieces[1] : "MB"
         let unit = ["bytes", "KB", "MB", "GB"].contains(rawUnit) ? rawUnit : "MB"
         return ((number?.isEmpty == false ? number! : "0"), unit)
+    }
+}
+
+private struct NumberValueEditor: View {
+    @Binding var value: String
+
+    var body: some View {
+        GlassField(placeholder: "0", text: Binding(
+            get: { value },
+            set: { value = $0.filter { $0.isNumber || $0 == "." } }
+        ))
+        .frame(width: 100, alignment: .leading)
+    }
+}
+
+private struct SpotlightMetadataValueEditor: View {
+    @Binding var value: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            GlassField(placeholder: "kMDItemAuthors", text: keyBinding)
+                .frame(width: 180)
+            GlassField(placeholder: "Value", text: matchValueBinding)
+        }
+    }
+
+    private var parsed: (key: String, value: String) {
+        SpotlightMetadataCondition.parse(value) ?? ("kMDItemAuthors", "")
+    }
+
+    private var keyBinding: Binding<String> {
+        Binding(
+            get: { parsed.key },
+            set: { value = SpotlightMetadataCondition.make(key: $0, value: parsed.value) }
+        )
+    }
+
+    private var matchValueBinding: Binding<String> {
+        Binding(
+            get: { parsed.value },
+            set: { value = SpotlightMetadataCondition.make(key: parsed.key, value: $0) }
+        )
     }
 }
 

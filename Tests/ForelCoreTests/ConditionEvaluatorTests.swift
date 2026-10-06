@@ -17,7 +17,47 @@
 import Testing
 import Foundation
 import Darwin
+import AppKit
+import ImageIO
+import PDFKit
 @testable import ForelCore
+
+private func writeTestImage(width: Int, height: Int, dateTaken: String? = nil, to path: String) throws {
+    guard let bitmap = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: width,
+        pixelsHigh: height,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ), let image = bitmap.cgImage,
+       let destination = CGImageDestinationCreateWithURL(
+           URL(fileURLWithPath: path) as CFURL,
+           "public.png" as CFString,
+           1,
+           nil
+       ) else {
+        throw CocoaError(.fileWriteUnknown)
+    }
+    let properties: [CFString: Any]
+    if let dateTaken {
+        properties = [
+            kCGImagePropertyExifDictionary: [
+                kCGImagePropertyExifDateTimeOriginal: dateTaken,
+            ],
+        ]
+    } else {
+        properties = [:]
+    }
+    CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+    guard CGImageDestinationFinalize(destination) else {
+        throw CocoaError(.fileWriteUnknown)
+    }
+}
 
 @Suite struct ConditionEvaluatorTests {
     @Test func sizeConditionComparesParsedThresholds() throws {
@@ -31,6 +71,50 @@ import Darwin
         #expect(ConditionEvaluator.evaluate(makeCondition(.sizeBytes, .lessThan, "1 MB"), path: file))
         #expect(ConditionEvaluator.evaluate(makeCondition(.sizeBytes, .lessThan, "1 GB"), path: file))
         #expect(!ConditionEvaluator.evaluate(makeCondition(.sizeBytes, .greaterThan, "1 KB"), path: file))
+    }
+
+    @Test func finderCommentAndFilePathConditionsMatchText() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.txt")
+        try FinderTags.writeComment(file, "Paid by Acme")
+
+        #expect(ConditionEvaluator.evaluate(makeCondition(.finderComment, .contains, "Acme"), path: file))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.finderComment, .doesNotContain, "Overdue"), path: file))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.filePath, .contains, dir.path), path: file))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.filePath, .endsWith, "invoice.txt"), path: file))
+    }
+
+    @Test func itemCountAndMediaConditionsEvaluateFileMetadata() throws {
+        let dir = TempDir()
+        let folder = dir.dir("Batch")
+        FileManager.default.createFile(atPath: (folder as NSString).appendingPathComponent("one.txt"), contents: Data())
+        FileManager.default.createFile(atPath: (folder as NSString).appendingPathComponent("two.txt"), contents: Data())
+        let imagePath = (dir.path as NSString).appendingPathComponent("image.png")
+        try writeTestImage(width: 320, height: 180, dateTaken: "2020:02:03 04:05:06", to: imagePath)
+
+        #expect(ConditionEvaluator.evaluate(makeCondition(.itemCount, .is, "2"), path: folder))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.itemCount, .greaterThan, "1"), path: folder))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.imageWidth, .is, "320"), path: imagePath))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.imageHeight, .lessThan, "200"), path: imagePath))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.photoDateTaken, .before, "2021-01-01"), path: imagePath))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.lastOpened, .withinLast, "36500 days"), path: imagePath))
+    }
+
+    @Test func pdfPageCountComparesNumbers() throws {
+        let dir = TempDir()
+        let path = (dir.path as NSString).appendingPathComponent("document.pdf")
+        let document = PDFDocument()
+        let image = NSImage(size: NSSize(width: 20, height: 20))
+        image.lockFocus()
+        NSColor.white.setFill()
+        NSRect(origin: .zero, size: image.size).fill()
+        image.unlockFocus()
+        document.insert(PDFPage(image: image)!, at: 0)
+        document.insert(PDFPage(image: image)!, at: 1)
+        #expect(document.write(to: URL(fileURLWithPath: path)))
+
+        #expect(ConditionEvaluator.evaluate(makeCondition(.pdfPageCount, .is, "2"), path: path))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.pdfPageCount, .greaterThan, "1"), path: path))
     }
 
     @Test func stringOperatorsWorkAcrossNameExtensionAndContents() throws {

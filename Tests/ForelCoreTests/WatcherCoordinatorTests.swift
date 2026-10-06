@@ -61,6 +61,31 @@ import Foundation
         #expect(try db.listHistory().count == 1)
     }
 
+    @Test func watcherUsesExpandedConditionsAndNoneMatching() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("invoice.txt")
+        try FinderTags.writeComment(file, "Ready to file")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+
+        var commentRule = makeRule(folderId: folder.id, name: "tag ready files")
+        commentRule.conditions = [makeCondition(.finderComment, .contains, "Ready", ruleId: commentRule.id)]
+        commentRule.actions = [makeAction(.addTag, .object([ActionParam.tags: .stringArray(["Ready"])]), ruleId: commentRule.id)]
+        try db.insertRule(commentRule)
+
+        var noneRule = makeRule(folderId: folder.id, name: "tag non-drafts", conditionMatch: .none)
+        noneRule.conditions = [makeCondition(.filePath, .contains, "/Drafts/", ruleId: noneRule.id)]
+        noneRule.actions = [makeAction(.addTag, .object([ActionParam.tags: .stringArray(["Not Draft"])]), ruleId: noneRule.id)]
+        try db.insertRule(noneRule)
+
+        WatcherCoordinator(db: db).handle(path: file)
+
+        #expect(FinderTags.read(file).contains("Ready"))
+        #expect(FinderTags.read(file).contains("Not Draft"))
+        #expect(try db.listHistory().map(\.actionKind) == [.addTag, .addTag])
+    }
+
     @Test func successiveArrivalsAllRunAfterAnEarlierFileWasMoved() throws {
         let db = try makeDB()
         let dir = TempDir()

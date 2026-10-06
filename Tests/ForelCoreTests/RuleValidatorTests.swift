@@ -20,6 +20,14 @@ import Foundation
         #expect(RuleValidator.validate(conditions) == [.init(message: "Condition value cannot be empty")])
     }
 
+    @Test func spotlightMetadataConditionRequiresAKeyAndValue() {
+        let valid = [makeCondition(.spotlightMetadata, .contains, SpotlightMetadataCondition.make(key: "kMDItemAuthors", value: "Ada"))]
+        let missingValue = [makeCondition(.spotlightMetadata, .contains, SpotlightMetadataCondition.make(key: "kMDItemAuthors", value: ""))]
+
+        #expect(RuleValidator.validate(valid).isEmpty)
+        #expect(RuleValidator.validate(missingValue) == [.init(message: "Spotlight metadata needs both a key and a value")])
+    }
+
     @Test func conditionWithInvalidRegexReportsIssue() {
         let conditions = [makeCondition(.name, .matchesRegex, "[invalid")]
         #expect(RuleValidator.validate(conditions) == [.init(message: "Regex pattern is invalid")])

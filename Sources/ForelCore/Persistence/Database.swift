@@ -481,7 +481,7 @@ public final class Database: @unchecked Sendable {
                     folderId: stmt.columnText(1),
                     name: stmt.columnText(2),
                     enabled: stmt.columnBool(3),
-                    conditionMatch: stmt.columnText(4) == "any" ? .any : .all,
+                    conditionMatch: ConditionMatch(rawValue: stmt.columnText(4)) ?? .all,
                     recursionDepth: depth >= 0 ? depth : nil,
                     priority: stmt.columnInt64(6),
                     createdAt: stmt.columnText(7)
@@ -522,7 +522,7 @@ public final class Database: @unchecked Sendable {
             stmt.bind(2, rule.folderId)
             stmt.bind(3, rule.name)
             stmt.bind(4, bool: rule.enabled)
-            stmt.bind(5, rule.conditionMatch == .any ? "any" : "all")
+            stmt.bind(5, rule.conditionMatch.rawValue)
             stmt.bind(6, rule.recursionDepth ?? -1)
             stmt.bind(7, priority)
             stmt.bind(8, rule.createdAt)
@@ -540,7 +540,7 @@ public final class Database: @unchecked Sendable {
             )
             stmt.bind(1, rule.name)
             stmt.bind(2, bool: rule.enabled)
-            stmt.bind(3, rule.conditionMatch == .any ? "any" : "all")
+            stmt.bind(3, rule.conditionMatch.rawValue)
             stmt.bind(4, rule.recursionDepth ?? -1)
             stmt.bind(5, rule.priority)
             stmt.bind(6, rule.id)

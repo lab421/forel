@@ -26,6 +26,14 @@ public enum RuleValidator {
 
     public static func validate(_ conditions: [Condition]) -> [Issue] {
         conditions.compactMap { condition in
+            if condition.kind == .spotlightMetadata {
+                guard let metadata = SpotlightMetadataCondition.parse(condition.value),
+                      !metadata.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      !metadata.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    return Issue(message: "Spotlight metadata needs both a key and a value")
+                }
+                return nil
+            }
             if condition.value.trimmingCharacters(in: .whitespaces).isEmpty {
                 return Issue(message: "Condition value cannot be empty")
             }

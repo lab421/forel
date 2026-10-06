@@ -24,6 +24,17 @@ import SQLite3
         try Database(path: ":memory:")
     }
 
+    @Test func ruleRoundTripPreservesNoneConditionMatching() throws {
+        let db = try makeDB()
+        let folder = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")
+        try db.insertFolder(folder)
+        let rule = makeRule(folderId: folder.id, name: "not drafts", conditionMatch: .none)
+
+        try db.insertRule(rule)
+
+        #expect(try db.listRules(folderId: folder.id).first?.conditionMatch == ConditionMatch.none)
+    }
+
     @Test func ruleRoundTripPreservesTagAndColorVariants() throws {
         let db = try makeDB()
         let folder = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")

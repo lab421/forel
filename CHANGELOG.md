@@ -5,6 +5,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- Rules can now match when none of their conditions pass and can evaluate Finder comments, file paths, folder item counts, last-opened dates, image dimensions, photo capture dates, PDF page counts, and Spotlight metadata.
+
 ### Fixed
 - Settings → About now shows the version, build, copyright, and repository link, matching the About Forel window.
 

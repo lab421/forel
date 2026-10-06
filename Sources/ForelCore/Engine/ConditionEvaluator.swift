@@ -16,6 +16,8 @@
 
 import Foundation
 import Darwin
+import ImageIO
+import PDFKit
 
 public enum ConditionEvaluator {
     /// Returns true if the file at `path` satisfies the condition.
@@ -95,6 +97,42 @@ public enum ConditionEvaluator {
             guard let added = dateAdded(path: path) else { return false }
             return matchDate(condition.operator, added, condition.value)
 
+        case .finderComment:
+            guard let comment = FinderTags.readComment(path) else { return false }
+            return matchString(condition.operator, comment, condition.value)
+
+        case .filePath:
+            return matchString(condition.operator, path, condition.value)
+
+        case .itemCount:
+            guard let count = itemCount(path: path) else { return false }
+            return matchNumber(condition.operator, count, condition.value)
+
+        case .lastOpened:
+            guard let accessed = try? url.resourceValues(forKeys: [.contentAccessDateKey]).contentAccessDate else { return false }
+            return matchDate(condition.operator, accessed, condition.value)
+
+        case .imageWidth:
+            guard let dimensions = imageDimensions(path: path) else { return false }
+            return matchNumber(condition.operator, dimensions.width, condition.value)
+
+        case .imageHeight:
+            guard let dimensions = imageDimensions(path: path) else { return false }
+            return matchNumber(condition.operator, dimensions.height, condition.value)
+
+        case .photoDateTaken:
+            guard let taken = photoDateTaken(path: path) else { return false }
+            return matchDate(condition.operator, taken, condition.value)
+
+        case .pdfPageCount:
+            guard let pageCount = PDFDocument(url: url)?.pageCount else { return false }
+            return matchNumber(condition.operator, Double(pageCount), condition.value)
+
+        case .spotlightMetadata:
+            guard let (key, value) = SpotlightMetadataCondition.parse(condition.value),
+                  let metadata = spotlightMetadata(path: path, key: key) else { return false }
+            return matchString(condition.operator, metadata, value)
+
         case .downloadedFromWebsite:
             return matchAnyOf(condition.operator, DownloadMetadata.websiteURLs(path), condition.value)
 
@@ -162,6 +200,63 @@ public enum ConditionEvaluator {
         default:
             return matchAnyOf(operator_, [actual], expected)
         }
+    }
+
+    private static func matchNumber(_ operator_: Operator, _ actual: Double, _ expected: String) -> Bool {
+        guard let target = Double(expected.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+        switch operator_ {
+        case .is: return actual == target
+        case .isNot: return actual != target
+        case .greaterThan: return actual > target
+        case .lessThan: return actual < target
+        default: return false
+        }
+    }
+
+    private static func itemCount(path: String) -> Double? {
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue,
+              let children = try? FileManager.default.contentsOfDirectory(atPath: path) else { return nil }
+        return Double(children.filter { !SystemFileFilter.isExcluded($0) }.count)
+    }
+
+    private static func imageDimensions(path: String) -> (width: Double, height: Double)? {
+        guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+              let height = properties[kCGImagePropertyPixelHeight] as? NSNumber else { return nil }
+        return (width.doubleValue, height.doubleValue)
+    }
+
+    private static func photoDateTaken(path: String) -> Date? {
+        guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
+              let raw = exif[kCGImagePropertyExifDateTimeOriginal] as? String else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+        return formatter.date(from: raw)
+    }
+
+    private static func spotlightMetadata(path: String, key: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdls")
+        process.arguments = ["-name", key, "-raw", path]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        let result = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let result, result != "(null)" else { return nil }
+        return result
     }
 
     private static func appNamesMatch(actual: String, expected: String) -> Bool {
