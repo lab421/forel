@@ -73,7 +73,7 @@ And everything happens **on your Mac**. No cloud. No API keys. Your files never 
 ## Features
 
 - **Rule-based automation** — Create flexible rules combining filename patterns, file types, sizes, dates, tags, and Finder color labels.
-- **Folder watching** — Monitor any number of folders in real time with native macOS FSEvents.
+- **Folder watching** — Monitor folders in real time with native macOS FSEvents: up to 2 in Free, unlimited in Pro.
 - **Menu bar app** — Forel lives in your menu bar. Toggle individual rules on/off without opening the main window.
 - **Actions** — Move, copy, rename, tag, trash, delete, or run a custom script.
 - **SQLite persistence** — Rules, folders, and history are stored locally in a bundled SQLite database.
@@ -81,6 +81,10 @@ And everything happens **on your Mac**. No cloud. No API keys. Your files never 
 ---
 
 ## Installation
+
+Forel Free is available indefinitely without a license. It supports **2 watched folders** and **5 saved rules per folder**, including disabled rules. A **Forel Pro license** unlocks unlimited folders and rules.
+
+If you return to Free with a larger configuration, extra folders and rules are kept. Only the first 2 folders and the first 5 rules per folder can run; reorder them to choose which ones remain available in Free.
 
 ### Homebrew
 

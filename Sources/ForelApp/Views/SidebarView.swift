@@ -44,7 +44,7 @@ struct SidebarView: View {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(IconButtonStyle())
-                .help("Add a folder to watch")
+                .help(model.canAddFolder ? "Add a folder to watch" : "Free supports 2 watched folders. Remove a folder or activate Pro.")
             }
 
             if model.folders.isEmpty {
@@ -164,6 +164,11 @@ struct SidebarView: View {
 
             Spacer(minLength: 4)
 
+            if !FreePlan.allows(folderID: folder.id, folders: model.folders, isPro: model.isPro) {
+                Text("Pro")
+                    .font(.caption)
+                    .foregroundStyle(ForelTheme.secondaryText)
+            }
             ForelSwitch(isOn: enabledBinding(folder), compact: true)
         }
         .padding(.vertical, 8)
@@ -221,6 +226,10 @@ struct SidebarView: View {
     }
 
     private func addFolder() {
+        guard model.canAddFolder else {
+            model.showNotice(title: "Free folder limit", message: "Forel Free supports 2 watched folders. Remove a folder or activate Pro to add another.")
+            return
+        }
         if let path = FolderPicker.choose() {
             model.addFolder(path: path)
         }

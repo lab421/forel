@@ -46,6 +46,12 @@ struct RuleListView: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
+            if let notice = model.planNotice {
+                Text(notice)
+                    .font(.caption)
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if model.paused, model.selectedFolderId != nil {
                 pausedBanner
             }
@@ -75,13 +81,20 @@ struct RuleListView: View {
             } else {
                 List {
                     ForEach(Array(model.rules.enumerated()), id: \.element.id) { index, rule in
-                        RuleCard(
+                        VStack(alignment: .leading, spacing: 4) {
+                            if !model.selectedFolderIsAllowed || (!model.isPro && index >= FreePlan.ruleLimit) {
+                                Text("Kept for Pro — not running")
+                                    .font(.caption)
+                                    .foregroundStyle(ForelTheme.secondaryText)
+                            }
+                            RuleCard(
                             rule: rule,
                             order: index + 1,
                             isExpanded: model.isRuleExpanded(rule),
                             onToggleExpanded: { model.toggleRuleExpanded(rule) },
                             onEdit: { editingRule = rule }
-                        )
+                            )
+                        }
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -137,7 +150,7 @@ struct RuleListView: View {
                 Label("New Rule", systemImage: "plus")
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(model.selectedFolderId == nil)
+            .disabled(!model.canAddRule)
 
             Button {
                 model.runNow()
@@ -237,6 +250,7 @@ struct RuleListView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.top, 8)
+                .disabled(!model.canAddRule)
             }
         }
         .frame(maxWidth: .infinity)

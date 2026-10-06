@@ -26,7 +26,7 @@ import Lab421Licensing
 struct QuickPanelView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var updater: UpdaterManager
-    @EnvironmentObject var license: LicenseManager
+    @EnvironmentObject var license: ForelLicenseManager
     let onOpenMainWindow: () -> Void
     let onQuit: () -> Void
     var onOpenLicense: (() -> Void)?
@@ -53,8 +53,6 @@ struct QuickPanelView: View {
                         action: updater.installUpdate
                     )
                 }
-
-                licenseBanner
 
                 GlassCard {
                     ToggleRow(
@@ -124,76 +122,23 @@ struct QuickPanelView: View {
         HStack(alignment: .top, spacing: 12) {
             BrandMark(size: 38)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Forel")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(ForelTheme.primaryText)
+                HStack(spacing: 7) {
+                    Text("Forel")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(ForelTheme.primaryText)
+                    Text(license.hasAccess ? "Pro" : "Free")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(ForelTheme.primaryText)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(ForelTheme.surface))
+                        .overlay(Capsule().strokeBorder(ForelTheme.surfaceBorder, lineWidth: 1))
+                        .accessibilityLabel(license.hasAccess ? "Forel Pro" : "Forel Free")
+                }
                 StatusBadge(active: !model.paused)
             }
             Spacer(minLength: 0)
         }
-    }
-
-    @ViewBuilder
-    private var licenseBanner: some View {
-        switch license.state {
-        case .trial:
-            TrialBanner(
-                title: "Trial Mode",
-                subtitle: trialRemainingText(days: license.trialDaysRemaining) ?? "Trial is active.",
-                buttonTitle: "Buy Now",
-                action: {
-                    if let url = URL(string: "https://forel.app") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-            )
-        case .trialGracePeriod:
-            TrialBanner(
-                title: license.state.localizedTitle,
-                subtitle: license.state.localizedSubtitle(
-                    appName: ForelLicensing.appName,
-                    trialDaysRemaining: license.trialDaysRemaining
-                ),
-                buttonTitle: "Buy Now",
-                action: {
-                    if let url = URL(string: "https://forel.app") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-            )
-        case .trialUnverified:
-            TrialBanner(
-                title: "Trial Unverified",
-                subtitle: "Could not verify trial — check internet.",
-                buttonTitle: "Buy Now",
-                action: {
-                    if let url = URL(string: "https://forel.app") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-            )
-        case .trialGracePeriodExpired:
-            TrialBanner(
-                title: "Limited Mode",
-                subtitle: "Forel remains available with one active rule. Connect to verify your trial or activate a license.",
-                buttonTitle: "Activate",
-                action: { onOpenLicense?() }
-            )
-        case .trialExpired, .invalid:
-            TrialBanner(
-                title: "Limited Mode",
-                subtitle: "Your trial has ended. Forel remains available with one active rule.",
-                buttonTitle: "Activate",
-                action: { onOpenLicense?() }
-            )
-        case .bypassed, .licensed:
-            EmptyView()
-        }
-    }
-
-    private func trialRemainingText(days: Int?) -> String? {
-        guard let days else { return nil }
-        return days == 1 ? "1 day remaining" : "\(days) days remaining"
     }
 
     private var watchingBinding: Binding<Bool> {
@@ -211,54 +156,5 @@ struct QuickPanelView: View {
             },
             set: { model.toggleFolder(folder, enabled: $0) }
         )
-    }
-}
-
-private struct TrialBanner: View {
-    let title: String
-    let subtitle: String
-    let buttonTitle: String
-    let action: () -> Void
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle().fill(Color.white.opacity(0.22))
-                Image(systemName: "clock.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 26, height: 26)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 6)
-
-            Button(buttonTitle, action: action)
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(Color.orange)
-                .lineLimit(1)
-                .fixedSize()
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(.white))
-        }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(LinearGradient(colors: [Color.orange, Color.orange.opacity(0.85)], startPoint: .topLeading, endPoint: .bottomTrailing))
-        )
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.25)))
     }
 }

@@ -60,13 +60,28 @@ final class AppModel: ObservableObject {
     @Published private(set) var isPreviewing = false
     @Published var previewResult: PreviewResult?
     @Published private var ruleExpansionPreferences = RuleExpansionPreferences()
-    /// After the trial expires Forel remains usable, but only one rule may be
-    /// enabled globally. This is deliberately separate from the user's
-    /// persisted Watching preference.
-    @Published private(set) var licenseAccessIsLimited = false
+    @Published private(set) var licenseAccessIsLimited = true
+    var isPro: Bool { !licenseAccessIsLimited }
+    var canAddFolder: Bool { FreePlan.canAddFolder(count: folders.count, isPro: isPro) }
+    var canAddRule: Bool { selectedFolderId != nil && FreePlan.canAddRule(count: rules.count, isPro: isPro) && selectedFolderIsAllowed }
+    var selectedFolderIsAllowed: Bool {
+        guard let selectedFolderId else { return false }
+        return FreePlan.allows(folderID: selectedFolderId, folders: folders, isPro: isPro)
+    }
+    var planNotice: String? {
+        guard !isPro, selectedFolderId != nil else { return nil }
+        if !selectedFolderIsAllowed { return "This folder is kept for Pro. Free supports the first 2 watched folders; reorder folders or activate Pro to use it." }
+        if rules.count > FreePlan.ruleLimit { return "Free runs the first 5 rules in this folder. Extra rules are kept for Pro; reorder rules or activate Pro to use them." }
+        if rules.count == FreePlan.ruleLimit { return "Free supports 5 rules per folder, including disabled rules. Delete a rule or activate Pro to add another." }
+        return nil
+    }
+    private func executionRules(for folder: WatchedFolder) -> [Rule] {
+        db.withLock { db in (try? db.executionRules(folderID: folder.id, isPro: isPro)) ?? [] }
+    }
 
     let db: Database
     private let coordinator: WatcherCoordinator
+    private var registeredWatchPaths = Set<String>()
     private let historyPageSize = 200
     private let previewMatchLimit = 500
     private let ruleRunStatsWindowDays = 30
@@ -113,8 +128,8 @@ final class AppModel: ObservableObject {
 
         self.ruleExpansionPreferences = db.withLock { db in RuleExpansionPreferences.load(from: db) }
 
+        coordinator.setProAccess(isPro)
         reloadFolders()
-        startWatchingEnabledFolders()
         startHistoryCleanupTimer()
     }
 
@@ -263,6 +278,7 @@ final class AppModel: ObservableObject {
             reloadHistory()
         }
         reloadRules()
+        refreshWatching()
     }
 
     func reloadRules() {
@@ -342,29 +358,22 @@ final class AppModel: ObservableObject {
         return folders.first(where: { $0.id == historyFolderFilterId })?.path
     }
 
-    /// Whether folders should actually be registered with the watcher right
-    /// now: the user hasn't paused Watching. An expired trial does not stop
-    /// automation; its one-rule restriction is enforced in persistence.
     private var isWatchingAllowed: Bool { !paused }
 
-    private func startWatchingEnabledFolders() {
-        guard isWatchingAllowed else { return }
-        let allFolders = db.withLock { db in (try? db.listFolders()) ?? [] }
-        for folder in allFolders where folder.enabled {
-            coordinator.add(folder.path)
-        }
+    func setLicenseAccessLimited(_ limited: Bool) {
+        licenseAccessIsLimited = limited
+        coordinator.setProAccess(!limited)
+        refreshWatching()
+        reloadRules()
     }
 
-    /// Called by `AppDelegate` whenever the license state changes. Entering
-    /// limited mode preserves one deterministic enabled rule and disables
-    /// the rest; automation itself continues running.
-    func setLicenseAccessLimited(_ limited: Bool) {
-        guard limited != licenseAccessIsLimited else { return }
-        licenseAccessIsLimited = limited
-        if limited {
-            db.withLock { db in try? db.enforceEnabledRuleLimit(1) }
-            reloadRules()
-        }
+    private func refreshWatching() {
+        let paths = Set(folders.filter {
+            isWatchingAllowed && $0.enabled && FreePlan.allows(folderID: $0.id, folders: folders, isPro: isPro)
+        }.map(\.path))
+        for path in registeredWatchPaths.subtracting(paths) { coordinator.remove(path) }
+        for path in paths.subtracting(registeredWatchPaths) { coordinator.add(path) }
+        registeredWatchPaths = paths
     }
 
     func addFolder(path: String) {
@@ -380,10 +389,13 @@ final class AppModel: ObservableObject {
             return
         }
 
+        guard canAddFolder else {
+            showNotice(title: "Free folder limit", message: "Forel Free supports 2 watched folders. Remove a folder or activate Pro to add another.")
+            return
+        }
         let folder = WatchedFolder(path: normalizedPath)
         do {
-            try db.withLock { db in try db.insertFolder(folder) }
-            if isWatchingAllowed { coordinator.add(normalizedPath) }
+            try db.withLock { db in try db.insertFolder(folder, isPro: isPro) }
             reloadFolders()
         } catch {
             showError(error)
@@ -435,10 +447,6 @@ final class AppModel: ObservableObject {
 
         do {
             try db.withLock { db in try db.updateFolderPath(folder.id, path: normalizedPath) }
-            if folder.enabled, isWatchingAllowed {
-                coordinator.remove(folder.path)
-                coordinator.add(normalizedPath)
-            }
             reloadFolders()
             reloadRules()
             if historyFolderFilterId == folder.id {
@@ -451,11 +459,6 @@ final class AppModel: ObservableObject {
 
     func toggleFolder(_ folder: WatchedFolder, enabled: Bool) {
         db.withLock { db in try? db.toggleFolder(folder.id, enabled: enabled) }
-        if enabled, isWatchingAllowed {
-            coordinator.add(folder.path)
-        } else {
-            coordinator.remove(folder.path)
-        }
         reloadFolders()
     }
 
@@ -466,21 +469,24 @@ final class AppModel: ObservableObject {
 
     func saveRule(_ rule: Rule) {
         do {
-            let isUpdate = rules.contains(where: { $0.id == rule.id })
             try db.withLock { db in
-                if isUpdate {
+                let existing = try db.listRules(folderId: rule.folderId)
+                if existing.contains(where: { $0.id == rule.id }) {
                     try db.updateRule(rule)
                 } else {
-                    try db.insertRule(rule)
-                }
-                if licenseAccessIsLimited, rule.enabled {
-                    try db.enforceEnabledRuleLimit(1, keeping: rule.id)
+                    guard isPro || existing.count < FreePlan.ruleLimit else {
+                        showNotice(title: "Free rule limit", message: "Forel Free supports 5 rules per watched folder, including disabled rules. Delete a rule or activate Pro to add another.")
+                        return
+                    }
+                    guard FreePlan.allows(folderID: rule.folderId, folders: folders, isPro: isPro) else {
+                        showNotice(title: "Pro folder", message: "Activate Pro or move this folder into the first 2 watched folders before adding rules.")
+                        return
+                    }
+                    try db.insertRule(rule, isPro: isPro)
                 }
             }
             reloadRules()
-        } catch {
-            showError(error)
-        }
+        } catch { showError(error) }
     }
 
     func deleteRule(_ rule: Rule) {
@@ -490,22 +496,9 @@ final class AppModel: ObservableObject {
     }
 
     func toggleRule(_ rule: Rule, enabled: Bool) {
-        let disabledOtherRules = db.withLock { db -> Bool in
-            do {
-                try db.toggleRule(rule.id, enabled: enabled)
-                guard licenseAccessIsLimited, enabled else { return false }
-                return try !db.enforceEnabledRuleLimit(1, keeping: rule.id).isEmpty
-            } catch {
-                return false
-            }
-        }
+        do { try db.withLock { db in try db.toggleRule(rule.id, enabled: enabled) } }
+        catch { showError(error) }
         reloadRules()
-        if disabledOtherRules {
-            showNotice(
-                title: "Limited mode",
-                message: "Your trial has ended, so Forel can run one active rule. The previously active rule was paused."
-            )
-        }
     }
 
     func reorderRules(_ ruleIds: [String]) {
@@ -519,7 +512,7 @@ final class AppModel: ObservableObject {
     func runNow() {
         guard !isRunningNow else { return }
         guard let folder = folders.first(where: { $0.id == selectedFolderId }) else { return }
-        let folderRules = rules.filter(\.enabled)
+        let folderRules = executionRules(for: folder)
         guard !folderRules.isEmpty else {
             showRunNowMessage("Run complete — no enabled rules")
             return
@@ -572,7 +565,7 @@ final class AppModel: ObservableObject {
             previewResult = PreviewResult(filesScanned: 0, matches: [])
             return
         }
-        let folderRules = rules.filter(\.enabled)
+        let folderRules = executionRules(for: folder)
         guard !folderRules.isEmpty else {
             previewResult = PreviewResult(filesScanned: 0, matches: [])
             return
@@ -616,7 +609,7 @@ final class AppModel: ObservableObject {
         guard isWatchingAllowed else { return ([], nil) }
         return db.withLock { db -> (rules: [Rule], watchedRoot: String?) in
             guard let folder = try? db.folderForPath(path), folder.enabled else { return ([], nil) }
-            let rules = (try? db.listRules(folderId: folder.id))?.filter(\.enabled) ?? []
+            let rules = (try? db.executionRules(folderID: folder.id, isPro: isPro)) ?? []
             return (rules, folder.path)
         }
     }
@@ -681,20 +674,11 @@ final class AppModel: ObservableObject {
     func togglePaused() {
         paused.toggle()
         let isPaused = paused
-        let allFolders = db.withLock { db -> [WatchedFolder] in
-            try? db.setSetting("paused", isPaused ? "1" : "0")
-            return (try? db.listFolders()) ?? []
-        }
-        for folder in allFolders {
-            if paused {
-                coordinator.remove(folder.path)
-            } else if folder.enabled {
-                coordinator.add(folder.path)
-            }
-        }
+        db.withLock { db in try? db.setSetting("paused", isPaused ? "1" : "0") }
+        refreshWatching()
     }
 
-    private func showNotice(title: String, message: String) {
+    func showNotice(title: String, message: String) {
         alertTitle = title
         errorMessage = message
     }

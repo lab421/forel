@@ -1,9 +1,9 @@
 import SwiftUI
 import AppKit
-import Lab421Licensing
+import ForelCore
 
 struct LicenseSettingsView: View {
-    @EnvironmentObject var license: LicenseManager
+    @EnvironmentObject var license: ForelLicenseManager
     @Environment(\.openURL) private var openURL
     @State private var licenseKey = ""
     @State private var showingDeactivationConfirmation = false
@@ -31,7 +31,7 @@ struct LicenseSettingsView: View {
                 .padding(.horizontal, 14)
             }
 
-            if case .licensed = license.state {
+            if case .pro = license.state {
                 SectionLabel(title: "Licensed Device")
                 GlassCard {
                     SettingsActionRow(
@@ -49,7 +49,7 @@ struct LicenseSettingsView: View {
                             .onSubmit { activate() }
 
                         HStack {
-                            Button("Buy Forel") {
+                            Button("Buy Forel Pro") {
                                 if let url = URL(string: "https://forel.app") {
                                     openURL(url)
                                 }
@@ -72,7 +72,7 @@ struct LicenseSettingsView: View {
             }
 
             if let lastError = license.lastError {
-                Text(lastError.localizedDescription)
+                Text(lastError)
                     .font(.system(size: 11))
                     .foregroundStyle(Color.red)
                     .fixedSize(horizontal: false, vertical: true)
@@ -85,7 +85,7 @@ struct LicenseSettingsView: View {
         }
         .frame(maxWidth: 460)
         .confirmationDialog(
-            "Deactivate this license? You can activate it on another Mac.",
+            "Deactivate Forel Pro? Free mode allows 2 watched folders and 5 rules per folder. Extra folders and rules will be kept but will not run.",
             isPresented: $showingDeactivationConfirmation
         ) {
             Button("Deactivate", role: .destructive) {
@@ -98,39 +98,18 @@ struct LicenseSettingsView: View {
     private func activate() {
         Task {
             await license.activate(licenseKey: licenseKey)
-            if case .licensed = license.state {
+            if case .pro = license.state {
                 licenseKey = ""
             }
         }
     }
 
-    private var statusSymbol: String {
-        switch license.state {
-        case .licensed: "checkmark.seal.fill"
-        case .trial, .trialGracePeriod: "clock.fill"
-        case .trialUnverified, .trialGracePeriodExpired: "wifi.slash"
-        case .trialExpired, .invalid: "exclamationmark.triangle.fill"
-        case .bypassed: "checkmark.circle.fill"
-        }
-    }
-
-    private var statusColor: Color {
-        switch license.state {
-        case .licensed, .bypassed: .green
-        case .trial, .trialGracePeriod, .trialUnverified: .orange
-        case .trialGracePeriodExpired, .trialExpired, .invalid: .red
-        }
-    }
-
-    private var statusTitle: String {
-        if !license.state.grantsAccess { return "Limited Mode" }
-        return license.state.localizedTitle
-    }
-
+    private var statusSymbol: String { license.hasAccess ? "checkmark.seal.fill" : "person.crop.circle" }
+    private var statusColor: Color { license.hasAccess ? .green : ForelTheme.secondaryText }
+    private var statusTitle: String { license.hasAccess ? "Forel Pro" : "Forel Free" }
     private var statusSubtitle: String {
-        if !license.state.grantsAccess {
-            return "Forel remains available with one active rule. Activate a license to unlock unlimited rules."
-        }
-        return license.state.localizedSubtitle(appName: ForelLicensing.appName, trialDaysRemaining: license.trialDaysRemaining)
+        license.hasAccess
+            ? "Unlimited watched folders and rules."
+            : "Free forever: up to 2 watched folders and 5 rules per folder. Activate a license to unlock Pro."
     }
 }

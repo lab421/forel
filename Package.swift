@@ -17,6 +17,7 @@ let package = Package(
             name: "ForelCore",
             dependencies: [
                 .product(name: "ZIPFoundation", package: "ZIPFoundation"),
+                .product(name: "Lab421Licensing", package: "licensing"),
             ]
         ),
         .executableTarget(

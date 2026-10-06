@@ -27,9 +27,7 @@ enum ForelLicensing {
     static let keychainService = "com.lab421.forel.license"
     static let userDefaultsSuite = "com.lab421.forel"
 
-    /// Forel's license server isn't deployed yet; this points at the local
-    /// dev server used during development instead of the shared
-    /// `api.ombrelle.app` production endpoint.
+    /// Local license server endpoint used during development.
     static let baseURL = URL(string: "http://localhost:8787/api/v1/license")!
 
     /// Raw 32-byte Ed25519 public key matching the `LICENSE_SIGNING_PRIVATE_KEY`

@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import SwiftUI
+import ForelCore
 import Lab421Licensing
 
 /// Shared across the app delegate and `SettingsView` so code outside SwiftUI
@@ -32,7 +33,7 @@ final class SettingsNavigation: ObservableObject {
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var updater: UpdaterManager
-    @EnvironmentObject var license: LicenseManager
+    @EnvironmentObject var license: ForelLicenseManager
     @EnvironmentObject var navigation: SettingsNavigation
     @State private var launchAtLogin = LoginItem.isEnabled
 

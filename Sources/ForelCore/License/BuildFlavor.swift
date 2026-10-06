@@ -27,20 +27,17 @@ public enum BuildFlavor: String, CaseIterable, Sendable {
         switch self {
         case .development:
             BuildCapabilities(
-                usesDirectLicensing: false,
-                directLicenseTrialDays: nil,
+                usesDirectLicensing: true,
                 supportsSelfUpdates: true
             )
         case .adHoc:
             BuildCapabilities(
                 usesDirectLicensing: true,
-                directLicenseTrialDays: 7,
                 supportsSelfUpdates: true
             )
         case .appStore:
             BuildCapabilities(
                 usesDirectLicensing: false,
-                directLicenseTrialDays: nil,
                 supportsSelfUpdates: false
             )
         }
@@ -49,7 +46,6 @@ public enum BuildFlavor: String, CaseIterable, Sendable {
 
 public struct BuildCapabilities: Equatable, Sendable {
     public let usesDirectLicensing: Bool
-    public let directLicenseTrialDays: Int?
     public let supportsSelfUpdates: Bool
 
     public static var current: BuildCapabilities {

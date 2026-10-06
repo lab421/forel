@@ -29,6 +29,11 @@ public struct WatcherActivitySummary: Equatable, Sendable {
 public final class WatcherCoordinator: @unchecked Sendable {
     private let db: Database
     private let watcher: FileWatcher
+    private var isPro = false
+
+    public func setProAccess(_ enabled: Bool) {
+        db.withLock { _ in isPro = enabled }
+    }
     /// FSEvents callbacks must return promptly. File operations can take an
     /// arbitrary amount of time, especially when moving across volumes or to
     /// a network share, so process their immutable event snapshots here
@@ -89,7 +94,8 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
         guard let (folder, rules) = db.withLock({ db -> (WatchedFolder, [Rule])? in
             guard let folder = try? db.folderForPath(path) else { return nil }
-            let rules = (try? db.listRules(folderId: folder.id)) ?? []
+            let rules = (try? db.executionRules(folderID: folder.id, isPro: isPro)) ?? []
+            guard !rules.isEmpty else { return nil }
             return (folder, rules)
         }) else { return }
 
@@ -186,7 +192,8 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
         guard let (folder, rules) = db.withLock({ db -> (WatchedFolder, [Rule])? in
             guard let folder = try? db.folderForPath(root) else { return nil }
-            let rules = (try? db.listRules(folderId: folder.id)) ?? []
+            let rules = (try? db.executionRules(folderID: folder.id, isPro: isPro)) ?? []
+            guard !rules.isEmpty else { return nil }
             return (folder, rules)
         }) else { return }
         guard let rootDepth = RuleEngine.pathDepth(root: folder.path, path: root) else { return }

@@ -28,7 +28,7 @@ final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let model: AppModel
     private let updater: UpdaterManager
-    private let license: LicenseManager
+    private let license: ForelLicenseManager
     private weak var window: NSWindow?
     private var popover: NSPopover?
     private var localDismissMonitor: Any?
@@ -38,7 +38,7 @@ final class StatusBarController: NSObject {
     private var licenseSubscription: AnyCancellable?
     private var onOpenLicense: (() -> Void)?
 
-    init(model: AppModel, updater: UpdaterManager, license: LicenseManager, window: NSWindow?, onOpenLicense: (() -> Void)? = nil) {
+    init(model: AppModel, updater: UpdaterManager, license: ForelLicenseManager, window: NSWindow?, onOpenLicense: (() -> Void)? = nil) {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         self.model = model
         self.updater = updater

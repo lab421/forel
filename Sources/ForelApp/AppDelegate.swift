@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var statusBarController: StatusBarController?
     private var model: AppModel?
     private var updater: UpdaterManager?
-    let license = LicenseManager(
+    let license = ForelLicenseManager(
         isEnabled: BuildCapabilities.current.usesDirectLicensing,
         productID: ForelLicensing.productID,
         appName: ForelLicensing.appName,
@@ -61,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .dropFirst()
             .sink { [weak self] state in
                 guard let self else { return }
-                self.model?.setLicenseAccessLimited(!state.grantsAccess)
+                self.model?.setLicenseAccessLimited(state == .free)
             }
             .store(in: &subscriptions)
         license.start()
@@ -160,8 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     /// Opens the `Settings` scene directly on the License tab — used both by
-    /// the quick panel's "Activate" button and whenever the license/trial
-    /// becomes definitively denied. `showSettingsWindow:` is the same
+    /// the quick panel's "Upgrade" button. `showSettingsWindow:` is the same
     /// selector SwiftUI's own "Settings…" menu item sends; there's no public
     /// API to open a SwiftUI `Settings` scene from AppKit code on macOS 13.
     private func openLicenseSettings() {
