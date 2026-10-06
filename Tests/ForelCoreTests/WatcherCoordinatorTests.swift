@@ -61,6 +61,21 @@ import Foundation
         #expect(try db.listHistory().count == 1)
     }
 
+    @Test func watcherExecutesPauseActions() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("a.txt")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "pause")
+        rule.actions = [makeAction(.pause, .object([ActionParam.pauseSeconds: .number(0)]), ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        WatcherCoordinator(db: db).handle(path: file)
+
+        #expect(try db.listHistory().map(\.actionKind) == [.pause])
+    }
+
     @Test func successiveArrivalsAllRunAfterAnEarlierFileWasMoved() throws {
         let db = try makeDB()
         let dir = TempDir()

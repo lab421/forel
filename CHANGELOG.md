@@ -5,6 +5,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- Rules can now run AppleScript, JavaScript, and Automator workflows, pause between actions, and display notifications.
+
 ### Fixed
 - Settings → About now shows the version, build, copyright, and repository link, matching the About Forel window.
 

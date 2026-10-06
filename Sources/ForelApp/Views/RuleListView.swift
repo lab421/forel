@@ -491,6 +491,12 @@ private struct RuleDetails: View {
         case .runShortcut:
             let name = action.params[ActionParam.shortcutName]?.stringValue ?? ""
             return (name.isEmpty ? "run shortcut" : name, ActionExecutor.shortcutInputMode(action).label)
+        case .runAppleScript, .runJavaScript:
+            let script = action.params[ActionParam.script]?.stringValue ?? ""
+            let firstLine = script.split(separator: "\n").first.map(String.init) ?? ""
+            return (firstLine.isEmpty ? action.kind.label : firstLine, nil)
+        case .runAutomatorWorkflow:
+            return ("run Automator workflow", action.params[ActionParam.workflowPath]?.stringValue)
         case .openApplication:
             let path = action.params[ActionParam.applicationPath]?.stringValue ?? ""
             let appName = path.isEmpty ? "open application" : ((path as NSString).lastPathComponent as NSString).deletingPathExtension
@@ -502,6 +508,19 @@ private struct RuleDetails: View {
             return ("import to \(library)", playlist.isEmpty ? nil : playlist)
         case .uncompress:
             return ("uncompress ZIP", MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
+        case .pause:
+            let seconds: String
+            let isSingular: Bool
+            if case .number(let value) = action.params[ActionParam.pauseSeconds] {
+                seconds = value.formatted()
+                isSingular = value == 1
+            } else {
+                seconds = "invalid duration"
+                isSingular = false
+            }
+            return ("pause for \(seconds) second\(isSingular ? "" : "s")", nil)
+        case .displayNotification:
+            return ("display notification", action.params[ActionParam.notificationTitle]?.stringValue)
         }
     }
 

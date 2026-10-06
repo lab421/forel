@@ -142,6 +142,27 @@ import Foundation
         ))
     }
 
+    @Test func pauseIsShownInPreviewAndDelaysRun() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.txt")
+        let pause = makeAction(.pause, .object([ActionParam.pauseSeconds: .number(0.02)]))
+        let rule = makeRule(name: "pause", actions: [pause])
+
+        let previewStarted = Date()
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+        let previewElapsed = Date().timeIntervalSince(previewStarted)
+
+        let runStarted = Date()
+        let run = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+        let runElapsed = Date().timeIntervalSince(runStarted)
+
+        #expect(preview?.rules[0].actions.map(\.description) == ["Pause for 0.02 seconds"])
+        #expect(previewElapsed < 0.01)
+        #expect(run.matched == ["pause"])
+        #expect(run.history.map(\.actionKind) == [.pause])
+        #expect(runElapsed >= 0.015)
+    }
+
     @Test func previewFileHidesAlreadyAppliedActions() throws {
         let dir = TempDir()
         let file = dir.file("photo.jpg", contents: "img")

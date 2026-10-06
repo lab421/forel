@@ -851,6 +851,12 @@ private struct ActionRow: View {
             GlassField(placeholder: "Bash script (file path in $FOREL_FILE)", text: paramBinding(ActionParam.script))
         case .runShortcut:
             ShortcutPicker(selection: paramBinding(ActionParam.shortcutName))
+        case .runAppleScript:
+            GlassField(placeholder: "AppleScript (forelFile is the matched file)", text: paramBinding(ActionParam.script))
+        case .runJavaScript:
+            GlassField(placeholder: "JavaScript (forelFile is the matched file)", text: paramBinding(ActionParam.script))
+        case .runAutomatorWorkflow:
+            GlassField(placeholder: "Automator workflow path", text: paramBinding(ActionParam.workflowPath))
         case .openApplication:
             ApplicationPathPickerField(path: paramBinding(ActionParam.applicationPath))
         case .importToLibrary:
@@ -889,6 +895,19 @@ private struct ActionRow: View {
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
+        case .pause:
+            HStack(spacing: 8) {
+                GlassField(placeholder: "1", text: pauseSecondsBinding)
+                    .frame(width: 72)
+                Text("seconds")
+                    .font(.system(size: 12))
+                    .foregroundStyle(ForelTheme.secondaryText)
+            }
+        case .displayNotification:
+            VStack(alignment: .leading, spacing: 6) {
+                GlassField(placeholder: "Notification title (optional)", text: paramBinding(ActionParam.notificationTitle))
+                GlassField(placeholder: "Notification message (optional)", text: paramBinding(ActionParam.notificationBody))
+            }
         case .moveToTrash, .delete:
             Text("No parameters")
                 .font(.system(size: 11))
@@ -906,6 +925,8 @@ private struct ActionRow: View {
                     params[ActionParam.libraryType] = .string(LibraryType.music.rawValue)
                 } else if newKind == .openApplication {
                     params[ActionParam.passFileToApplication] = .bool(true)
+                } else if newKind == .pause {
+                    params[ActionParam.pauseSeconds] = .number(1)
                 }
                 action = Action(id: action.id, ruleId: action.ruleId, kind: newKind, params: .object(params), position: action.position)
             }
@@ -944,6 +965,25 @@ private struct ActionRow: View {
                 let normalized = newTags.map { JSONValue.string($0) }
                 dict[ActionParam.tags] = .array(normalized)
                 dict.removeValue(forKey: "tag")
+                action.params = .object(dict)
+            }
+        )
+    }
+
+    private var pauseSecondsBinding: Binding<String> {
+        Binding(
+            get: {
+                guard case .number(let seconds) = action.params[ActionParam.pauseSeconds] else { return "" }
+                return seconds.formatted()
+            },
+            set: { newValue in
+                var dict: [String: JSONValue] = [:]
+                if case .object(let existing) = action.params { dict = existing }
+                if let seconds = Double(newValue), seconds.isFinite, seconds >= 0 {
+                    dict[ActionParam.pauseSeconds] = .number(seconds)
+                } else {
+                    dict.removeValue(forKey: ActionParam.pauseSeconds)
+                }
                 action.params = .object(dict)
             }
         )

@@ -56,6 +56,19 @@ public enum RuleValidator {
                 if action.params[ActionParam.applicationPath]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
                     return Issue(message: "Application cannot be empty")
                 }
+            case .pause:
+                guard case .number(let seconds) = action.params[ActionParam.pauseSeconds],
+                      seconds.isFinite, seconds >= 0 else {
+                    return Issue(message: "Pause duration must be a non-negative number of seconds")
+                }
+            case .runAppleScript, .runJavaScript, .runScript:
+                if action.params[ActionParam.script]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                    return Issue(message: "Script cannot be empty")
+                }
+            case .runAutomatorWorkflow:
+                if action.params[ActionParam.workflowPath]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                    return Issue(message: "Automator workflow cannot be empty")
+                }
             default:
                 break
             }

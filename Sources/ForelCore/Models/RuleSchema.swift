@@ -205,6 +205,10 @@ public enum ActionParam {
     public static let cleanFileName = "clean_file_name"
     public static let libraryType = "library_type"
     public static let targetPlaylist = "target_playlist"
+    public static let pauseSeconds = "pause_seconds"
+    public static let workflowPath = "workflow_path"
+    public static let notificationTitle = "notification_title"
+    public static let notificationBody = "notification_body"
 }
 
 /// The abstract shape of an action parameter; the UI maps it to a concrete editor.
@@ -218,6 +222,9 @@ public enum ActionParamKind: Sendable, Equatable {
     case applicationPath
     case libraryType
     case playlist
+    case duration
+    case text
+    case filePath
 }
 
 public struct ActionParamSpec: Sendable, Equatable {
@@ -243,11 +250,16 @@ public extension ActionKind {
         case .addTag: return "Add tag"
         case .removeTag: return "Remove tag"
         case .setColorLabel: return "Set color label"
-        case .runScript: return "Run script"
+        case .runScript: return "Run shell script"
         case .runShortcut: return "Run shortcut"
+        case .runAppleScript: return "Run AppleScript"
+        case .runJavaScript: return "Run JavaScript"
+        case .runAutomatorWorkflow: return "Run Automator workflow"
         case .openApplication: return "Open application"
         case .importToLibrary: return "Import to library"
         case .uncompress: return "Uncompress"
+        case .pause: return "Pause"
+        case .displayNotification: return "Display notification"
         }
     }
 
@@ -262,9 +274,14 @@ public extension ActionKind {
         case .setColorLabel: return "paintpalette"
         case .runScript: return "terminal"
         case .runShortcut: return "square.stack.3d.up"
+        case .runAppleScript: return "applescript"
+        case .runJavaScript: return "curlybraces"
+        case .runAutomatorWorkflow: return "gearshape.2"
         case .openApplication: return "app"
         case .importToLibrary: return "tray.full"
         case .uncompress: return "doc.zipper"
+        case .pause: return "pause.circle"
+        case .displayNotification: return "bell"
         }
     }
 
@@ -276,7 +293,7 @@ public extension ActionKind {
         switch self {
         case .moveToFolder, .copyToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress:
             return true
-        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
+        case .addTag, .removeTag, .setColorLabel, .runScript, .runAppleScript, .runJavaScript, .runAutomatorWorkflow, .moveToTrash, .delete, .pause, .displayNotification:
             return false
         }
     }
@@ -293,8 +310,10 @@ public extension ActionKind {
             return [ActionParamSpec(key: ActionParam.tags, kind: .tags)]
         case .setColorLabel:
             return [ActionParamSpec(key: ActionParam.color, kind: .colorLabel)]
-        case .runScript:
+        case .runScript, .runAppleScript, .runJavaScript:
             return [ActionParamSpec(key: ActionParam.script, kind: .script)]
+        case .runAutomatorWorkflow:
+            return [ActionParamSpec(key: ActionParam.workflowPath, kind: .filePath)]
         case .runShortcut:
             return [ActionParamSpec(key: ActionParam.shortcutName, kind: .shortcut)]
         case .openApplication:
@@ -302,6 +321,11 @@ public extension ActionKind {
         case .importToLibrary:
             return [ActionParamSpec(key: ActionParam.libraryType, kind: .libraryType),
                     ActionParamSpec(key: ActionParam.targetPlaylist, kind: .playlist)]
+        case .pause:
+            return [ActionParamSpec(key: ActionParam.pauseSeconds, kind: .duration)]
+        case .displayNotification:
+            return [ActionParamSpec(key: ActionParam.notificationTitle, kind: .text),
+                    ActionParamSpec(key: ActionParam.notificationBody, kind: .text)]
         case .moveToTrash, .delete, .uncompress:
             return []
         }
@@ -351,7 +375,7 @@ public enum RuleSchema {
     public static let actionKindGroups: [ActionKindGroup] = [
         ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .rename, .uncompress]),
         ActionKindGroup(title: "Tags", kinds: [.addTag, .removeTag, .setColorLabel]),
-        ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut, .openApplication]),
+        ActionKindGroup(title: "Automation", kinds: [.runShortcut, .runAppleScript, .runJavaScript, .runAutomatorWorkflow, .runScript, .openApplication, .pause, .displayNotification]),
         ActionKindGroup(title: "Disposal", kinds: [.moveToTrash, .delete]),
         ActionKindGroup(title: "Library", kinds: [.importToLibrary]),
     ]

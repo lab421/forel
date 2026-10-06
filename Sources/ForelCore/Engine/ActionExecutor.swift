@@ -17,6 +17,9 @@
 import Foundation
 import UniformTypeIdentifiers
 import ZIPFoundation
+#if canImport(UserNotifications)
+import UserNotifications
+#endif
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -206,13 +209,36 @@ public enum ActionExecutor {
             return try runScript(action, path: path)
         case .runShortcut:
             return try runShortcut(action, path: path)
+        case .runAppleScript:
+            return try runAppleScriptAction(action, path: path)
+        case .runJavaScript:
+            return try runJavaScript(action, path: path)
+        case .runAutomatorWorkflow:
+            return try runAutomatorWorkflow(action, path: path)
         case .openApplication:
             return try openApplication(action, path: path)
         case .importToLibrary:
             return try importToLibrary(action, path: path)
         case .uncompress:
             return try uncompress(action, path: path)
+        case .pause:
+            let seconds = try pauseDuration(action)
+            if seconds > 0 {
+                Thread.sleep(forTimeInterval: seconds)
+            }
+            return Applied(newPath: path, undo: .none)
+        case .displayNotification:
+            displayNotification(action, path: path)
+            return Applied(newPath: path, undo: .none)
         }
+    }
+
+    private static func pauseDuration(_ action: Action) throws -> TimeInterval {
+        guard case .number(let seconds) = action.params[ActionParam.pauseSeconds],
+              seconds.isFinite, seconds >= 0 else {
+            throw ActionError("Pause requires a non-negative number of seconds")
+        }
+        return seconds
     }
 
     private static func stringParam(_ action: Action, _ key: String, _ kind: String) throws -> String {
@@ -396,6 +422,61 @@ public enum ActionExecutor {
         return Applied(newPath: path, undo: .none)
     }
 
+    private static func runAppleScriptAction(_ action: Action, path: String) throws -> Applied {
+        let script = try stringParam(action, ActionParam.script, "RunAppleScript")
+        let file = appleScriptEscapePath(path)
+        try runAppleScript("set forelFile to POSIX file \"\(file)\"\n\(script)")
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func runJavaScript(_ action: Action, path: String) throws -> Applied {
+        let script = try stringParam(action, ActionParam.script, "RunJavaScript")
+        let data = try JSONEncoder().encode(path)
+        let literal = String(data: data, encoding: .utf8) ?? "\"\""
+        try runOSA(script: "const forelFile = Path(\(literal));\n\(script)", language: "JavaScript")
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func runAutomatorWorkflow(_ action: Action, path: String) throws -> Applied {
+        let workflow = try stringParam(action, ActionParam.workflowPath, "RunAutomatorWorkflow")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/automator")
+        process.arguments = ["-i", path, workflow]
+        let errors = Pipe()
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = errors
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let message = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? "Automator workflow failed"
+            throw ActionError(message)
+        }
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func displayNotification(_ action: Action, path: String) {
+        #if canImport(UserNotifications)
+        let title = action.params[ActionParam.notificationTitle]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = action.params[ActionParam.notificationBody]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+            if settings.authorizationStatus == .notDetermined {
+                guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
+            } else if settings.authorizationStatus == .denied {
+                return
+            }
+            let content = UNMutableNotificationContent()
+            content.title = title?.isEmpty == false ? title! : "Forel"
+            content.body = body?.isEmpty == false ? body! : (path as NSString).lastPathComponent
+            content.sound = .default
+            let request = UNNotificationRequest(identifier: "forel-action-\(UUID().uuidString)", content: content, trigger: nil)
+            try? await center.add(request)
+        }
+        #endif
+    }
+
     private static func openApplication(_ action: Action, path: String) throws -> Applied {
         #if canImport(AppKit)
         let appPath = try stringParam(action, ActionParam.applicationPath, "OpenApplication")
@@ -534,9 +615,17 @@ public enum ActionExecutor {
 
     @discardableResult
     static func runAppleScript(_ script: String) throws -> String {
+        try runOSA(script: script)
+    }
+
+    @discardableResult
+    private static func runOSA(script: String, language: String? = nil) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
+        var arguments: [String] = []
+        if let language { arguments += ["-l", language] }
+        arguments += ["-e", script]
+        process.arguments = arguments
         let outputPipe = Pipe()
         let errorPipe = Pipe()
         process.standardOutput = outputPipe
@@ -954,6 +1043,12 @@ public enum ActionExecutor {
                 copiedPath: target,
                 isTerminal: false
             )
+        case .runAppleScript, .runJavaScript:
+            let script = action.params[ActionParam.script]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: action.kind.label, sourcePath: path, targetPath: nil, status: script.isEmpty ? .wouldSkip : .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .runAutomatorWorkflow:
+            let workflow = action.params[ActionParam.workflowPath]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: workflow.isEmpty ? "Run Automator workflow" : "Run \((workflow as NSString).lastPathComponent)", sourcePath: path, targetPath: nil, status: workflow.isEmpty ? .wouldSkip : .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
         case .rename:
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             var newName = try applyRenamePattern(pattern, path: path)
@@ -1159,6 +1254,21 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .pause:
+            let seconds = try pauseDuration(action)
+            return ActionPlan(
+                kind: action.kind,
+                description: "Pause for \(seconds.formatted()) second\(seconds == 1 ? "" : "s")",
+                sourcePath: path,
+                targetPath: nil,
+                status: .wouldRun,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: false
+            )
+        case .displayNotification:
+            let title = action.params[ActionParam.notificationTitle]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: title.isEmpty ? "Display notification" : "Display notification: \(title)", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
         }
     }
 
@@ -1177,7 +1287,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .runAppleScript, .runJavaScript, .runAutomatorWorkflow, .openApplication, .importToLibrary, .uncompress, .pause, .displayNotification:
             return true
         }
     }

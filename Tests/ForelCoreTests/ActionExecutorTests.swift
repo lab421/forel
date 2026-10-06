@@ -19,6 +19,25 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct ActionExecutorTests {
+    @Test func automationActionsExecuteScriptsAndPlanExternalWorkflows() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "report")
+        let appleScript = makeAction(.runAppleScript, .object([ActionParam.script: .string("return POSIX path of forelFile")]))
+        let javaScript = makeAction(.runJavaScript, .object([ActionParam.script: .string("forelFile.toString();")]))
+
+        #expect(try ActionExecutor.execute(appleScript, path: file).newPath == file)
+        #expect(try ActionExecutor.execute(javaScript, path: file).newPath == file)
+
+        let plannedActions = [
+            makeAction(.runAutomatorWorkflow, .object([ActionParam.workflowPath: .string("/tmp/example.workflow")])),
+            makeAction(.displayNotification, .object([ActionParam.notificationTitle: .string("Done")])),
+        ]
+        for action in plannedActions {
+            let plan = try ActionExecutor.plan(action, path: file)
+            #expect(plan.kind == action.kind)
+            #expect(plan.status == .wouldRun)
+        }
+    }
     @Test func addAndRemoveTagUpdatesFinderTagXattrWithoutDuplicates() throws {
         let dir = TempDir()
         let file = dir.file("document.txt", contents: "hello")
