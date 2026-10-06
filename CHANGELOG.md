@@ -5,6 +5,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- The menu bar icon can now be hidden while Forel remains available from Finder or Spotlight.
+
 ### Fixed
 - Settings → About now shows the version, build, copyright, and repository link, matching the About Forel window.
 

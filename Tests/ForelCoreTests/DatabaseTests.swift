@@ -24,6 +24,16 @@ import SQLite3
         try Database(path: ":memory:")
     }
 
+    @Test func menuBarIconPreferenceRoundTrips() throws {
+        let db = try makeDB()
+
+        try db.setSetting("show_menu_bar_icon", "0")
+        #expect(try db.getSetting("show_menu_bar_icon") == "0")
+
+        try db.setSetting("show_menu_bar_icon", "1")
+        #expect(try db.getSetting("show_menu_bar_icon") == "1")
+    }
+
     @Test func ruleRoundTripPreservesTagAndColorVariants() throws {
         let db = try makeDB()
         let folder = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")

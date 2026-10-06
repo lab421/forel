@@ -48,6 +48,7 @@ final class AppModel: ObservableObject {
     @Published var detailRoute: DetailRoute = .rules
     @Published var accentPreset: AccentPreset = .default
     @Published var showDockIcon: Bool = true
+    @Published var showMenuBarIcon: Bool = true
     @Published var watcherNotificationsEnabled: Bool = true
     @Published var historyMaxDays: Int = 30
     /// Bumped whenever the accent colour changes, so views can force a full
@@ -100,6 +101,9 @@ final class AppModel: ObservableObject {
 
         let storedShowDockIcon = db.withLock { db in try? db.getSetting("show_dock_icon") }
         self.showDockIcon = storedShowDockIcon.map { $0 == "1" } ?? true
+
+        let storedShowMenuBarIcon = db.withLock { db in try? db.getSetting("show_menu_bar_icon") }
+        self.showMenuBarIcon = storedShowMenuBarIcon.map { $0 == "1" } ?? true
 
         let storedWatcherNotificationsEnabled = db.withLock { db in try? db.getSetting("watcher_notifications_enabled") }
         self.watcherNotificationsEnabled = storedWatcherNotificationsEnabled.map { $0 == "1" } ?? true
@@ -165,6 +169,11 @@ final class AppModel: ObservableObject {
         showDockIcon = enabled
         db.withLock { db in try? db.setSetting("show_dock_icon", enabled ? "1" : "0") }
         applyDockIconPreference(keepingWindowsVisible: true)
+    }
+
+    func setShowMenuBarIcon(_ enabled: Bool) {
+        showMenuBarIcon = enabled
+        db.withLock { db in try? db.setSetting("show_menu_bar_icon", enabled ? "1" : "0") }
     }
 
     func setWatcherNotificationsEnabled(_ enabled: Bool) {
