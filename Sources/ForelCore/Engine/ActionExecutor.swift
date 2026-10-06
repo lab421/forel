@@ -212,6 +212,8 @@ public enum ActionExecutor {
             return try importToLibrary(action, path: path)
         case .uncompress:
             return try uncompress(action, path: path)
+        case .runRulesOnFolderContents, .ignore:
+            return Applied(newPath: path, undo: .none)
         }
     }
 
@@ -1159,6 +1161,12 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .runRulesOnFolderContents:
+            var isDirectory = ObjCBool(false)
+            let isFolder = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+            return ActionPlan(kind: action.kind, description: isFolder ? "Run rules on folder contents" : "Requires a folder", sourcePath: path, targetPath: nil, status: isFolder ? .wouldRun : .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .ignore:
+            return ActionPlan(kind: action.kind, description: "Ignore", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: true)
         }
     }
 
@@ -1177,7 +1185,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress, .runRulesOnFolderContents, .ignore:
             return true
         }
     }

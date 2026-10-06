@@ -142,6 +142,47 @@ import Foundation
         ))
     }
 
+    @Test func runRulesOnFolderContentsMatchesPreviewAndRun() throws {
+        let dir = TempDir()
+        let folder = dir.dir("Incoming")
+        let child = (folder as NSString).appendingPathComponent("document.txt")
+        FileManager.default.createFile(atPath: child, contents: Data())
+        let descend = makeRule(
+            name: "descend",
+            conditions: [makeCondition(.kind, .is, "folder")],
+            actions: [makeAction(.runRulesOnFolderContents, .object([:]))]
+        )
+        let tag = makeRule(
+            name: "tag text",
+            conditions: [makeCondition(.extension_, .is, "txt")],
+            actions: [makeAction(.addTag, .object([ActionParam.tags: .stringArray(["Processed"])]))]
+        )
+
+        let preview = RuleEngine.previewFile(path: folder, depth: 0, rules: [descend, tag])
+        #expect(preview?.rules.map(\.ruleName) == ["descend", "tag text"])
+        #expect(!FinderTags.read(child).contains("Processed"))
+
+        let result = RuleEngine.run(path: folder, depth: 0, rules: [descend, tag], batchId: "batch", root: dir.path)
+        #expect(result.matched == ["descend", "tag text"])
+        #expect(result.history.map(\.actionKind) == [.runRulesOnFolderContents, .addTag])
+        #expect(FinderTags.read(child).contains("Processed"))
+    }
+
+    @Test func ignoreStopsLaterRulesInPreviewAndRun() throws {
+        let dir = TempDir()
+        let file = dir.file("document.txt")
+        let ignore = makeRule(name: "ignore", actions: [makeAction(.ignore, .object([:]))])
+        let tag = makeRule(name: "tag", actions: [makeAction(.addTag, .object([ActionParam.tags: .stringArray(["Wrong"])]))])
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [ignore, tag])
+        let result = RuleEngine.run(path: file, depth: 0, rules: [ignore, tag], batchId: "batch")
+
+        #expect(preview?.rules.map(\.ruleName) == ["ignore"])
+        #expect(result.matched == ["ignore"])
+        #expect(result.history.map(\.actionKind) == [.ignore])
+        #expect(!FinderTags.read(file).contains("Wrong"))
+    }
+
     @Test func previewFileHidesAlreadyAppliedActions() throws {
         let dir = TempDir()
         let file = dir.file("photo.jpg", contents: "img")

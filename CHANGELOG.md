@@ -5,6 +5,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- Rules can now process a matched folder's contents or ignore an item before it reaches later rules.
+
 ### Fixed
 - Settings → About now shows the version, build, copyright, and repository link, matching the About Forel window.
 

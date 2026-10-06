@@ -61,6 +61,54 @@ import Foundation
         #expect(try db.listHistory().count == 1)
     }
 
+    @Test func watcherRunsRulesOnFolderContents() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let nested = dir.dir("Incoming")
+        let child = (nested as NSString).appendingPathComponent("document.txt")
+        FileManager.default.createFile(atPath: child, contents: Data())
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+
+        var descend = makeRule(folderId: folder.id, name: "descend")
+        descend.conditions = [makeCondition(.kind, .is, "folder", ruleId: descend.id)]
+        descend.actions = [makeAction(.runRulesOnFolderContents, .object([:]), ruleId: descend.id)]
+        try db.insertRule(descend)
+
+        var tag = makeRule(folderId: folder.id, name: "tag text")
+        tag.conditions = [makeCondition(.extension_, .is, "txt", ruleId: tag.id)]
+        tag.actions = [makeAction(.addTag, .object([ActionParam.tags: .stringArray(["Processed"])]), ruleId: tag.id)]
+        try db.insertRule(tag)
+
+        WatcherCoordinator(db: db).handle(path: nested)
+
+        #expect(FinderTags.read(child).contains("Processed"))
+        let actionKinds = try db.listHistory().map(\.actionKind)
+        #expect(actionKinds.count == 2)
+        #expect(Set(actionKinds) == [.runRulesOnFolderContents, .addTag])
+    }
+
+    @Test func watcherIgnoreActionStopsLaterRules() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("document.txt")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+
+        var ignore = makeRule(folderId: folder.id, name: "ignore")
+        ignore.actions = [makeAction(.ignore, .object([:]), ruleId: ignore.id)]
+        try db.insertRule(ignore)
+
+        var tag = makeRule(folderId: folder.id, name: "tag")
+        tag.actions = [makeAction(.addTag, .object([ActionParam.tags: .stringArray(["Wrong"])]), ruleId: tag.id)]
+        try db.insertRule(tag)
+
+        WatcherCoordinator(db: db).handle(path: file)
+
+        #expect(!FinderTags.read(file).contains("Wrong"))
+        #expect(try db.listHistory().map(\.actionKind) == [.ignore])
+    }
+
     @Test func successiveArrivalsAllRunAfterAnEarlierFileWasMoved() throws {
         let db = try makeDB()
         let dir = TempDir()
