@@ -16,6 +16,7 @@
 
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import ForelCore
 
 struct RuleListView: View {
@@ -49,7 +50,7 @@ struct RuleListView: View {
             if model.paused, model.selectedFolderId != nil {
                 pausedBanner
             }
-            if !model.rules.isEmpty {
+            if model.selectedFolderId != nil {
                 actionBar
             }
 
@@ -169,8 +170,41 @@ struct RuleListView: View {
             .buttonStyle(SecondaryButtonStyle())
             .disabled(model.selectedFolderId == nil || model.isPreviewing)
 
+            Menu {
+                Button("Import Rules…", action: importRules)
+                Button("Export Rules…", action: exportRules)
+                    .disabled(model.rules.isEmpty)
+            } label: {
+                Label("Import / Export", systemImage: "arrow.left.arrow.right")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(model.selectedFolderId == nil)
+
             Spacer()
         }
+    }
+
+    private func importRules() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "forelrules") ?? .json,
+            UTType(filenameExtension: "hazelrules") ?? .data,
+        ]
+        panel.prompt = "Import"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.importRules(from: url)
+    }
+
+    private func exportRules() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "forelrules") ?? .json]
+        panel.nameFieldStringValue = "Forel Rules.forelrules"
+        panel.prompt = "Export"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.exportRules(to: url)
     }
 
     private var pausedBanner: some View {

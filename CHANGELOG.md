@@ -5,6 +5,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- Rules can now be imported and exported as `.forelrules` files, and Hazel exports can be migrated with unsupported parts clearly flagged for review.
+
 ### Fixed
 - Settings → About now shows the version, build, copyright, and repository link, matching the About Forel window.
 

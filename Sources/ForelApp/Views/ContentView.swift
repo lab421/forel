@@ -39,6 +39,10 @@ struct ContentView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+        .sheet(isPresented: $model.showHazelImportAssistant) {
+            HazelImportAssistantView()
+                .environmentObject(model)
+        }
         .tint(ForelTheme.accent)
         // ForelTheme.accent is a plain static var, not observable; bumping the
         // identity here forces every descendant to rebuild and re-read it.
