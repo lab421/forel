@@ -61,6 +61,22 @@ import Foundation
         #expect(try db.listHistory().count == 1)
     }
 
+    @Test func watcherExecutesFinderCommentAction() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("invoice.txt")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "comment invoices")
+        rule.actions = [makeAction(.addComment, .object([ActionParam.comment: .string("Processed")]), ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        WatcherCoordinator(db: db).handle(path: file)
+
+        #expect(FinderTags.readComment(file) == "Processed")
+        #expect(try db.listHistory().map(\.actionKind) == [.addComment])
+    }
+
     @Test func successiveArrivalsAllRunAfterAnEarlierFileWasMoved() throws {
         let db = try makeDB()
         let dir = TempDir()

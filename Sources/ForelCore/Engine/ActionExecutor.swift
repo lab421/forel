@@ -191,6 +191,18 @@ public enum ActionExecutor {
             return try copyToFolder(action, path: path)
         case .rename:
             return try renameFile(action, path: path)
+        case .sortIntoSubfolder:
+            let subfolder = try stringParam(action, ActionParam.subfolder, "SortIntoSubfolder")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !subfolder.isEmpty,
+                  !(subfolder as NSString).isAbsolutePath,
+                  !subfolder.split(separator: "/").contains("..") else {
+                throw ActionError("Sort into subfolder requires a relative path")
+            }
+            let destination = ((path as NSString).deletingLastPathComponent as NSString).appendingPathComponent(subfolder)
+            return try moveIntoDir(path: path, destDir: destination, resolution: conflictResolution(action))
+        case .syncToFolder:
+            return try syncToFolder(action, path: path)
         case .moveToTrash:
             return try moveIntoDir(path: path, destDir: try trashDir())
         case .delete:
@@ -202,12 +214,26 @@ public enum ActionExecutor {
             return try applyTags(action, path: path, add: false)
         case .setColorLabel:
             return try setColor(action, path: path)
+        case .addComment:
+            return try addComment(action, path: path)
+        case .toggleExtension:
+            return try toggleExtension(path: path)
+        case .toggleLock:
+            return try toggleLock(path: path)
+        case .archive:
+            return try archive(path: path)
         case .runScript:
             return try runScript(action, path: path)
         case .runShortcut:
             return try runShortcut(action, path: path)
         case .openApplication:
             return try openApplication(action, path: path)
+        case .open:
+            return try open(path: path)
+        case .showInFinder:
+            return try showInFinder(path: path)
+        case .makeAlias:
+            return try makeAlias(action, path: path)
         case .importToLibrary:
             return try importToLibrary(action, path: path)
         case .uncompress:
@@ -243,6 +269,25 @@ public enum ActionExecutor {
         let dest = try resolveDestination(naiveDest: naiveDest, dir: destDir, fileName: fileName, resolution: conflictResolution(action))
         try FileManager.default.copyItem(atPath: path, toPath: dest)
         return Applied(newPath: path, undo: .none, copiedPath: dest)
+    }
+
+    private static func syncToFolder(_ action: Action, path: String) throws -> Applied {
+        let destDir = try stringParam(action, ActionParam.destination, "SyncToFolder")
+        try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
+        let fileName = (path as NSString).lastPathComponent
+        let naiveDestination = (destDir as NSString).appendingPathComponent(fileName)
+        if FileManager.default.fileExists(atPath: naiveDestination),
+           FileManager.default.contentsEqual(atPath: path, andPath: naiveDestination) {
+            return Applied(newPath: path, undo: .none)
+        }
+        let destination = try resolveDestination(
+            naiveDest: naiveDestination,
+            dir: destDir,
+            fileName: fileName,
+            resolution: conflictResolution(action)
+        )
+        try FileManager.default.copyItem(atPath: path, toPath: destination)
+        return Applied(newPath: path, undo: .none, copiedPath: destination)
     }
 
     private struct ZipExtractionPlan {
@@ -357,6 +402,38 @@ public enum ActionExecutor {
         return Applied(newPath: path, undo: .color(path: path, previous: previous))
     }
 
+    private static func addComment(_ action: Action, path: String) throws -> Applied {
+        let comment = try stringParam(action, ActionParam.comment, "AddComment")
+        try FinderTags.writeComment(path, comment)
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func toggleExtension(path: String) throws -> Applied {
+        var url = URL(fileURLWithPath: path)
+        let values = try url.resourceValues(forKeys: [.hasHiddenExtensionKey])
+        var updated = URLResourceValues()
+        updated.hasHiddenExtension = !(values.hasHiddenExtension ?? false)
+        try url.setResourceValues(updated)
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func toggleLock(path: String) throws -> Applied {
+        var url = URL(fileURLWithPath: path)
+        let values = try url.resourceValues(forKeys: [.isUserImmutableKey])
+        var updated = URLResourceValues()
+        updated.isUserImmutable = !(values.isUserImmutable ?? false)
+        try url.setResourceValues(updated)
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func archive(path: String) throws -> Applied {
+        let parent = (path as NSString).deletingLastPathComponent
+        let name = (path as NSString).lastPathComponent
+        let target = uniqueDest(dir: parent, fileName: "\(name).zip")
+        try FileManager.default.zipItem(at: URL(fileURLWithPath: path), to: URL(fileURLWithPath: target))
+        return Applied(newPath: path, undo: .none, copiedPath: target)
+    }
+
     private static let scriptDefaultTimeout: TimeInterval = 60
 
     private static func runScript(_ action: Action, path: String) throws -> Applied {
@@ -418,6 +495,42 @@ public enum ActionExecutor {
         #else
         throw ActionError("Open Application is not available on this platform")
         #endif
+    }
+
+    private static func open(path: String) throws -> Applied {
+        #if canImport(AppKit)
+        guard NSWorkspace.shared.open(URL(fileURLWithPath: path)) else {
+            throw ActionError("Could not open the matched item")
+        }
+        return Applied(newPath: path, undo: .none)
+        #else
+        throw ActionError("Open is not available on this platform")
+        #endif
+    }
+
+    private static func showInFinder(path: String) throws -> Applied {
+        #if canImport(AppKit)
+        guard NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "") else {
+            throw ActionError("Could not reveal the matched item in Finder")
+        }
+        return Applied(newPath: path, undo: .none)
+        #else
+        throw ActionError("Show in Finder is not available on this platform")
+        #endif
+    }
+
+    private static func makeAlias(_ action: Action, path: String) throws -> Applied {
+        let destination = try stringParam(action, ActionParam.aliasDestination, "MakeAlias")
+        let source = appleScriptEscapePath(path)
+        let target = appleScriptEscapePath(destination)
+        try runAppleScript("""
+        tell application "Finder"
+            set sourceItem to POSIX file "\(source)" as alias
+            set destinationFolder to POSIX file "\(target)" as alias
+            make new alias file to sourceItem at destinationFolder
+        end tell
+        """)
+        return Applied(newPath: path, undo: .none)
     }
 
     // MARK: - Import to Library
@@ -971,6 +1084,37 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .sortIntoSubfolder:
+            let subfolder = action.params[ActionParam.subfolder]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !subfolder.isEmpty else {
+                return ActionPlan(kind: action.kind, description: "Sort into subfolder", sourcePath: path, targetPath: nil, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
+            }
+            let destDir = ((path as NSString).deletingLastPathComponent as NSString).appendingPathComponent(subfolder)
+            let naiveTarget = (destDir as NSString).appendingPathComponent(fileName)
+            let resolution = conflictResolution(action)
+            let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
+            if conflicts, resolution == .skip {
+                return ActionPlan(kind: action.kind, description: "Skip — a file already exists at \(naiveTarget)", sourcePath: path, targetPath: naiveTarget, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: true)
+            }
+            let (target, description) = conflictAwarePlan(verb: "Sort", naiveTarget: naiveTarget, destDir: destDir, fileName: fileName, resolution: resolution, conflicts: conflicts)
+            return ActionPlan(kind: action.kind, description: description, sourcePath: path, targetPath: target, status: .wouldRun, finalPath: target, copiedPath: nil, isTerminal: true)
+        case .syncToFolder:
+            let destDir = action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let naiveTarget = (destDir as NSString).appendingPathComponent(fileName)
+            guard !destDir.isEmpty else {
+                return ActionPlan(kind: action.kind, description: "Sync to folder", sourcePath: path, targetPath: nil, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
+            }
+            let exists = FileManager.default.fileExists(atPath: naiveTarget)
+            let unchanged = exists && FileManager.default.contentsEqual(atPath: path, andPath: naiveTarget)
+            if unchanged {
+                return ActionPlan(kind: action.kind, description: "Already synced", sourcePath: path, targetPath: naiveTarget, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
+            }
+            let resolution = conflictResolution(action)
+            if exists, resolution == .skip {
+                return ActionPlan(kind: action.kind, description: "Skip — a file already exists at \(naiveTarget)", sourcePath: path, targetPath: naiveTarget, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
+            }
+            let (target, description) = conflictAwarePlan(verb: "Sync", naiveTarget: naiveTarget, destDir: destDir, fileName: fileName, resolution: resolution, conflicts: exists)
+            return ActionPlan(kind: action.kind, description: description, sourcePath: path, targetPath: target, status: .wouldRun, finalPath: path, copiedPath: target, isTerminal: false)
         case .moveToTrash:
             let target = (try trashDir() as NSString).appendingPathComponent(fileName)
             return ActionPlan(
@@ -1038,6 +1182,17 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .addComment:
+            let comment = action.params[ActionParam.comment]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: "Add Finder comment", sourcePath: path, targetPath: nil, status: comment.isEmpty ? .wouldSkip : .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .toggleExtension:
+            return ActionPlan(kind: action.kind, description: "Toggle extension visibility", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .toggleLock:
+            return ActionPlan(kind: action.kind, description: "Toggle file lock", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .archive:
+            let parent = (path as NSString).deletingLastPathComponent
+            let target = uniqueDest(dir: parent, fileName: "\(fileName).zip")
+            return ActionPlan(kind: action.kind, description: "Archive to \(target)", sourcePath: path, targetPath: target, status: .wouldRun, finalPath: path, copiedPath: target, isTerminal: false)
         case .runScript:
             let script = action.params[ActionParam.script]?.stringValue ?? ""
             let firstLine = script.split(separator: "\n").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
@@ -1080,6 +1235,13 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .open:
+            return ActionPlan(kind: action.kind, description: "Open", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .showInFinder:
+            return ActionPlan(kind: action.kind, description: "Show in Finder", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .makeAlias:
+            let destination = action.params[ActionParam.aliasDestination]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: destination.isEmpty ? "Make alias" : "Make alias in \(destination)", sourcePath: path, targetPath: destination.isEmpty ? nil : destination, status: destination.isEmpty ? .wouldSkip : .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
         case .importToLibrary:
             let libraryTypeRaw = action.params[ActionParam.libraryType]?.stringValue ?? LibraryType.music.rawValue
             guard let libraryType = LibraryType(rawValue: libraryTypeRaw) else {
@@ -1177,7 +1339,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .sortIntoSubfolder, .syncToFolder, .moveToTrash, .delete, .addComment, .toggleExtension, .toggleLock, .archive, .runScript, .runShortcut, .openApplication, .open, .showInFinder, .makeAlias, .importToLibrary, .uncompress:
             return true
         }
     }

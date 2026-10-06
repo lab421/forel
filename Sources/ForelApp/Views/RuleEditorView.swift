@@ -841,18 +841,36 @@ private struct ActionRow: View {
         switch action.kind {
         case .moveToFolder, .copyToFolder:
             FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
+        case .syncToFolder:
+            FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
         case .rename:
             RenamePatternEditor(pattern: paramBinding(ActionParam.pattern), cleanFileName: action.params[ActionParam.cleanFileName]?.boolValue == true)
+        case .sortIntoSubfolder:
+            GlassField(placeholder: "Subfolder path", text: paramBinding(ActionParam.subfolder))
         case .addTag, .removeTag:
             TagTokensEditor(tags: tagsBinding, placeholder: action.kind == .addTag ? "Add tag" : "Tag")
         case .setColorLabel:
             ColorLabelPicker(selection: paramBinding(ActionParam.color), allowNone: true)
+        case .addComment:
+            GlassField(placeholder: "Finder comment", text: paramBinding(ActionParam.comment))
+        case .toggleExtension:
+            actionDescription("Shows or hides the filename extension")
+        case .toggleLock:
+            actionDescription("Locks or unlocks the item")
+        case .archive:
+            actionDescription("Creates a ZIP archive beside the item")
         case .runScript:
             GlassField(placeholder: "Bash script (file path in $FOREL_FILE)", text: paramBinding(ActionParam.script))
         case .runShortcut:
             ShortcutPicker(selection: paramBinding(ActionParam.shortcutName))
         case .openApplication:
             ApplicationPathPickerField(path: paramBinding(ActionParam.applicationPath))
+        case .open:
+            actionDescription("Opens the matched item with its default app")
+        case .showInFinder:
+            actionDescription("Reveals the matched item in Finder")
+        case .makeAlias:
+            FolderField(placeholder: "Alias destination folder", path: paramBinding(ActionParam.aliasDestination))
         case .importToLibrary:
             let libTypeBinding = paramBinding(ActionParam.libraryType, defaultValue: LibraryType.music.rawValue)
             let libType = LibraryType(rawValue: libTypeBinding.wrappedValue)
@@ -895,6 +913,13 @@ private struct ActionRow: View {
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
         }
+    }
+
+    private func actionDescription(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11))
+            .foregroundStyle(ForelTheme.secondaryText)
+            .frame(minHeight: 32, alignment: .center)
     }
 
     private var kindBinding: Binding<ActionKind> {
@@ -964,7 +989,7 @@ private struct ActionOptionsView: View {
                 shortcutOptions
             case .openApplication:
                 openApplicationOptions
-            case .moveToFolder, .copyToFolder, .importToLibrary, .uncompress:
+            case .moveToFolder, .copyToFolder, .sortIntoSubfolder, .syncToFolder, .importToLibrary, .uncompress:
                 conflictResolutionOptions
             case .rename:
                 renameOptions

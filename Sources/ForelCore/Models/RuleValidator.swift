@@ -40,9 +40,14 @@ public enum RuleValidator {
     public static func validate(_ actions: [Action]) -> [Issue] {
         actions.compactMap { action in
             switch action.kind {
-            case .moveToFolder, .copyToFolder:
+            case .moveToFolder, .copyToFolder, .syncToFolder:
                 if action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
                     return Issue(message: "Destination path cannot be empty")
+                }
+            case .sortIntoSubfolder:
+                let subfolder = action.params[ActionParam.subfolder]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if subfolder.isEmpty || (subfolder as NSString).isAbsolutePath || subfolder.split(separator: "/").contains("..") {
+                    return Issue(message: "Subfolder must be a relative path")
                 }
             case .rename:
                 if action.params[ActionParam.pattern]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
@@ -55,6 +60,14 @@ public enum RuleValidator {
             case .openApplication:
                 if action.params[ActionParam.applicationPath]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
                     return Issue(message: "Application cannot be empty")
+                }
+            case .addComment:
+                if action.params[ActionParam.comment]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                    return Issue(message: "Comment cannot be empty")
+                }
+            case .makeAlias:
+                if action.params[ActionParam.aliasDestination]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                    return Issue(message: "Alias destination cannot be empty")
                 }
             default:
                 break

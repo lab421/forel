@@ -205,6 +205,9 @@ public enum ActionParam {
     public static let cleanFileName = "clean_file_name"
     public static let libraryType = "library_type"
     public static let targetPlaylist = "target_playlist"
+    public static let subfolder = "subfolder"
+    public static let comment = "comment"
+    public static let aliasDestination = "alias_destination"
 }
 
 /// The abstract shape of an action parameter; the UI maps it to a concrete editor.
@@ -218,6 +221,7 @@ public enum ActionParamKind: Sendable, Equatable {
     case applicationPath
     case libraryType
     case playlist
+    case text
 }
 
 public struct ActionParamSpec: Sendable, Equatable {
@@ -238,14 +242,23 @@ public extension ActionKind {
         case .moveToFolder: return "Move to folder"
         case .copyToFolder: return "Copy to folder"
         case .rename: return "Rename"
+        case .sortIntoSubfolder: return "Sort into subfolder"
+        case .syncToFolder: return "Sync to folder"
         case .moveToTrash: return "Move to Trash"
         case .delete: return "Delete"
         case .addTag: return "Add tag"
         case .removeTag: return "Remove tag"
         case .setColorLabel: return "Set color label"
+        case .addComment: return "Add comment"
+        case .toggleExtension: return "Toggle extension"
+        case .toggleLock: return "Toggle lock"
+        case .archive: return "Archive"
         case .runScript: return "Run script"
         case .runShortcut: return "Run shortcut"
         case .openApplication: return "Open application"
+        case .open: return "Open"
+        case .showInFinder: return "Show in Finder"
+        case .makeAlias: return "Make alias"
         case .importToLibrary: return "Import to library"
         case .uncompress: return "Uncompress"
         }
@@ -257,12 +270,21 @@ public extension ActionKind {
         case .moveToFolder: return "arrow.right.doc.on.clipboard"
         case .copyToFolder: return "doc.on.doc"
         case .rename: return "pencil"
+        case .sortIntoSubfolder: return "folder.badge.gearshape"
+        case .syncToFolder: return "arrow.triangle.2.circlepath"
         case .moveToTrash, .delete: return "trash"
         case .addTag, .removeTag: return "tag"
         case .setColorLabel: return "paintpalette"
+        case .addComment: return "text.bubble"
+        case .toggleExtension: return "textformat.abc"
+        case .toggleLock: return "lock"
+        case .archive: return "archivebox"
         case .runScript: return "terminal"
         case .runShortcut: return "square.stack.3d.up"
         case .openApplication: return "app"
+        case .open: return "arrow.up.forward.app"
+        case .showInFinder: return "folder"
+        case .makeAlias: return "arrowshape.turn.up.right"
         case .importToLibrary: return "tray.full"
         case .uncompress: return "doc.zipper"
         }
@@ -274,9 +296,9 @@ public extension ActionKind {
     /// have none, instead of showing an empty "No options" popover.
     var hasOptions: Bool {
         switch self {
-        case .moveToFolder, .copyToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .sortIntoSubfolder, .syncToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress:
             return true
-        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
+        case .addTag, .removeTag, .setColorLabel, .addComment, .toggleExtension, .toggleLock, .archive, .runScript, .open, .showInFinder, .makeAlias, .moveToTrash, .delete:
             return false
         }
     }
@@ -287,22 +309,30 @@ public extension ActionKind {
         switch self {
         case .moveToFolder, .copyToFolder:
             return [ActionParamSpec(key: ActionParam.destination, kind: .folderPath)]
+        case .syncToFolder:
+            return [ActionParamSpec(key: ActionParam.destination, kind: .folderPath)]
+        case .sortIntoSubfolder:
+            return [ActionParamSpec(key: ActionParam.subfolder, kind: .text)]
         case .rename:
             return [ActionParamSpec(key: ActionParam.pattern, kind: .renamePattern)]
         case .addTag, .removeTag:
             return [ActionParamSpec(key: ActionParam.tags, kind: .tags)]
         case .setColorLabel:
             return [ActionParamSpec(key: ActionParam.color, kind: .colorLabel)]
+        case .addComment:
+            return [ActionParamSpec(key: ActionParam.comment, kind: .text)]
         case .runScript:
             return [ActionParamSpec(key: ActionParam.script, kind: .script)]
         case .runShortcut:
             return [ActionParamSpec(key: ActionParam.shortcutName, kind: .shortcut)]
         case .openApplication:
             return [ActionParamSpec(key: ActionParam.applicationPath, kind: .applicationPath)]
+        case .makeAlias:
+            return [ActionParamSpec(key: ActionParam.aliasDestination, kind: .folderPath)]
         case .importToLibrary:
             return [ActionParamSpec(key: ActionParam.libraryType, kind: .libraryType),
                     ActionParamSpec(key: ActionParam.targetPlaylist, kind: .playlist)]
-        case .moveToTrash, .delete, .uncompress:
+        case .moveToTrash, .delete, .toggleExtension, .toggleLock, .archive, .open, .showInFinder, .uncompress:
             return []
         }
     }
@@ -349,8 +379,9 @@ public enum RuleSchema {
     public static let conditionKinds: [ConditionKind] = conditionKindGroups.flatMap(\.kinds)
 
     public static let actionKindGroups: [ActionKindGroup] = [
-        ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .rename, .uncompress]),
+        ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .rename, .sortIntoSubfolder, .syncToFolder, .archive, .uncompress]),
         ActionKindGroup(title: "Tags", kinds: [.addTag, .removeTag, .setColorLabel]),
+        ActionKindGroup(title: "Finder", kinds: [.addComment, .toggleExtension, .toggleLock, .open, .showInFinder, .makeAlias]),
         ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut, .openApplication]),
         ActionKindGroup(title: "Disposal", kinds: [.moveToTrash, .delete]),
         ActionKindGroup(title: "Library", kinds: [.importToLibrary]),

@@ -142,6 +142,26 @@ import Foundation
         ))
     }
 
+    @Test func syncActionIsPureInPreviewAndCopiesDuringRun() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "report")
+        let destination = dir.dir("Synced")
+        let rule = makeRule(
+            name: "sync reports",
+            actions: [makeAction(.syncToFolder, .object([ActionParam.destination: .string(destination)]))]
+        )
+        let synced = (destination as NSString).appendingPathComponent("report.txt")
+
+        let preview = RuleEngine.previewFile(path: file, depth: 0, rules: [rule])
+        #expect(preview?.rules.first?.actions.first?.targetPath == synced)
+        #expect(!FileManager.default.fileExists(atPath: synced))
+
+        let run = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+        #expect(run.matched == ["sync reports"])
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(FileManager.default.fileExists(atPath: synced))
+    }
+
     @Test func previewFileHidesAlreadyAppliedActions() throws {
         let dir = TempDir()
         let file = dir.file("photo.jpg", contents: "img")

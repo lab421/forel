@@ -473,6 +473,10 @@ private struct RuleDetails: View {
             return ("to folder", action.params[ActionParam.destination]?.stringValue)
         case .rename:
             return ("to \(action.params[ActionParam.pattern]?.stringValue ?? "")", action.params[ActionParam.cleanFileName]?.boolValue == true ? "clean file name" : nil)
+        case .sortIntoSubfolder:
+            return ("into \(action.params[ActionParam.subfolder]?.stringValue ?? "subfolder")", nil)
+        case .syncToFolder:
+            return ("sync to folder", action.params[ActionParam.destination]?.stringValue)
         case .moveToTrash:
             return ("move to Trash", nil)
         case .delete:
@@ -484,6 +488,14 @@ private struct RuleDetails: View {
         case .setColorLabel:
             let color = action.params[ActionParam.color]?.stringValue ?? ""
             return (color.isEmpty ? "clear color label" : "set to \(color)", nil)
+        case .addComment:
+            return ("add Finder comment", action.params[ActionParam.comment]?.stringValue)
+        case .toggleExtension:
+            return ("toggle extension visibility", nil)
+        case .toggleLock:
+            return ("toggle lock", nil)
+        case .archive:
+            return ("create ZIP archive", nil)
         case .runScript:
             let script = action.params[ActionParam.script]?.stringValue ?? ""
             let firstLine = script.split(separator: "\n").first.map(String.init) ?? ""
@@ -496,6 +508,12 @@ private struct RuleDetails: View {
             let appName = path.isEmpty ? "open application" : ((path as NSString).lastPathComponent as NSString).deletingPathExtension
             let detail = ActionExecutor.passesFileToApplication(action) ? "with matched file" : nil
             return (appName, detail)
+        case .open:
+            return ("open", nil)
+        case .showInFinder:
+            return ("show in Finder", nil)
+        case .makeAlias:
+            return ("make alias", action.params[ActionParam.aliasDestination]?.stringValue)
         case .importToLibrary:
             let library = LibraryType(rawValue: action.params[ActionParam.libraryType]?.stringValue ?? "")?.label ?? "Library"
             let playlist = action.params[ActionParam.targetPlaylist]?.stringValue ?? ""
