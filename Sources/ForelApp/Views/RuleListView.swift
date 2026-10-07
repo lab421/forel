@@ -282,11 +282,14 @@ private struct RuleCard: View {
                 .buttonStyle(.plain)
                 .pointingHandCursor()
 
-                Toggle("", isOn: enabledBinding)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .tint(ForelTheme.accent)
-                    .controlSize(.small)
+                Toggle(isOn: enabledBinding) {
+                    Text(rule.enabled ? "Enabled" : "Disabled")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(rule.enabled ? ForelTheme.accent : ForelTheme.secondaryText)
+                }
+                .toggleStyle(.switch)
+                .tint(ForelTheme.accent)
+                .controlSize(.small)
 
                 Button(action: onToggleExpanded) {
                     VStack(alignment: .leading, spacing: 3) {

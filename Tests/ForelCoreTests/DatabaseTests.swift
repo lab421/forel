@@ -24,6 +24,30 @@ import SQLite3
         try Database(path: ":memory:")
     }
 
+    @Test func reorderedActionsArePersistedInTheirNewOrder() throws {
+        let db = try makeDB()
+        let folder = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "ordered")
+        rule.actions = [
+            makeAction(.addTag, .object(["tag": .string("A")]), position: 0, ruleId: rule.id),
+            makeAction(.addTag, .object(["tag": .string("B")]), position: 1, ruleId: rule.id),
+            makeAction(.addTag, .object(["tag": .string("C")]), position: 2, ruleId: rule.id),
+        ]
+        try db.insertRule(rule)
+        let tags = { (rule: Rule) in rule.actions.map { $0.params["tag"]?.stringValue } }
+        #expect(tags(try #require(try db.listRules(folderId: folder.id).first)) == ["A", "B", "C"])
+
+        // Chevron: move B up, then drag C to the very top.
+        rule.actions.moveAction(at: 1, by: -1)
+        rule.actions.moveAction(id: rule.actions[2].id, toInsertionIndex: 0)
+        try db.updateRule(rule)
+
+        let reloaded = try #require(try db.listRules(folderId: folder.id).first)
+        #expect(tags(reloaded) == ["C", "B", "A"])
+        #expect(reloaded.actions.map(\.position) == [0, 1, 2])
+    }
+
     @Test func countRulesIncludesEveryWatchedFolder() throws {
         let db = try makeDB()
         #expect(try db.countRules() == 0)

@@ -16,6 +16,7 @@
 
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import ForelCore
 #if canImport(Photos)
 import Photos
@@ -25,6 +26,8 @@ struct RuleEditorView: View {
     @State private var rule: Rule
     @State private var showValidationErrors = false
     @State private var errorDismissTask: Task<Void, Never>?
+    @State private var draggedActionId: String?
+    @State private var actionInsertionIndex: Int?
     @EnvironmentObject private var model: AppModel
     private let preferredHeight: CGFloat
     let onSave: (Rule) -> Void
@@ -91,7 +94,12 @@ struct RuleEditorView: View {
                     }
 
                     HStack {
-                        SectionLabel(title: "Actions")
+                        VStack(alignment: .leading, spacing: 2) {
+                            SectionLabel(title: "Actions")
+                            Text("Run from top to bottom")
+                                .font(.system(size: 11))
+                                .foregroundStyle(ForelTheme.secondaryText)
+                        }
                         Spacer()
                         Button {
                             rule.actions.append(Action(ruleId: rule.id, kind: .moveToFolder, params: .object(["destination": .string("")]), position: Int64(rule.actions.count)))
@@ -101,17 +109,51 @@ struct RuleEditorView: View {
                         .buttonStyle(IconButtonStyle())
                     }
                     GlassCard {
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 0) {
                             if rule.actions.isEmpty {
                                 placeholder("No actions yet — add at least one to make this rule do something.")
                             }
-                            ForEach($rule.actions, id: \.id) { $action in
-                                ActionRow(action: $action) {
+                            ForEach(Array(rule.actions.enumerated()), id: \.element.id) { index, action in
+                                actionDropTarget(index)
+                                ActionRow(
+                                    action: Binding(
+                                        get: { rule.actions[index] },
+                                        set: { rule.actions[index] = $0 }
+                                    ),
+                                    order: index + 1,
+                                    canMoveUp: index > 0,
+                                    canMoveDown: index < rule.actions.count - 1,
+                                    onMoveUp: { moveAction(at: index, by: -1) },
+                                    onMoveDown: { moveAction(at: index, by: 1) },
+                                    dragProvider: {
+                                        draggedActionId = action.id
+                                        watchForDragEnd(of: action.id)
+                                        let provider = NSItemProvider()
+                                        provider.registerDataRepresentation(forTypeIdentifier: UTType.forelActionID.identifier, visibility: .ownProcess) { completion in
+                                            completion(Data(action.id.utf8), nil)
+                                            return nil
+                                        }
+                                        return provider
+                                    }
+                                ) {
                                     rule.actions.removeAll { $0.id == action.id }
+                                    rule.actions.normalizeActionPositions()
                                 }
+                                .opacity(draggedActionId == action.id ? 0.55 : 1)
+                                .onDrop(
+                                    of: [.forelActionID],
+                                    delegate: ActionInsertionDropDelegate(
+                                        insertionIndex: rule.actions.dropInsertionIndex(onRowAt: index, dragging: draggedActionId),
+                                        draggedActionId: $draggedActionId,
+                                        activeInsertionIndex: $actionInsertionIndex,
+                                        move: moveAction(id:toInsertionIndex:)
+                                    )
+                                )
                             }
+                            if !rule.actions.isEmpty { actionDropTarget(rule.actions.count) }
                         }
                         .padding(18)
+                        .animation(.easeInOut(duration: 0.12), value: actionInsertionIndex)
                     }
                 }
             }
@@ -120,7 +162,9 @@ struct RuleEditorView: View {
             Divider().overlay(ForelTheme.divider)
 
             HStack {
-                Toggle("Enabled", isOn: $rule.enabled)
+                Toggle(isOn: $rule.enabled) {
+                    Text(rule.enabled ? "Enabled" : "Disabled")
+                }
                     .toggleStyle(.switch)
                     .tint(ForelTheme.accent)
                     .font(.system(size: 12))
@@ -167,6 +211,61 @@ struct RuleEditorView: View {
 
     private var hasValidationErrors: Bool {
         !validationMessages.isEmpty
+    }
+
+    private func moveAction(at index: Int, by offset: Int) {
+        // A springy settle makes the two swapped rows read as moving past
+        // each other instead of snapping.
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.68)) {
+            rule.actions.moveAction(at: index, by: offset)
+        }
+    }
+
+    private func moveAction(id: String, toInsertionIndex insertionIndex: Int) {
+        rule.actions.moveAction(id: id, toInsertionIndex: insertionIndex)
+    }
+
+    /// `onDrag` has no end callback, so a drag that is cancelled (Esc, released
+    /// outside any drop target) would leave the row dimmed and the drop
+    /// delegates believing a local reorder is still in progress. Once the
+    /// mouse button is up, clear that state — after a short grace period so a
+    /// real drop, delivered right after the release, still finds it.
+    private func watchForDragEnd(of actionId: String) {
+        Task { @MainActor in
+            while draggedActionId == actionId {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                guard draggedActionId == actionId, NSEvent.pressedMouseButtons & 1 == 0 else { continue }
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                if draggedActionId == actionId {
+                    draggedActionId = nil
+                    actionInsertionIndex = nil
+                }
+            }
+        }
+    }
+
+    private func actionDropTarget(_ index: Int) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.clear)
+                .frame(height: 8)
+            if actionInsertionIndex == index, draggedActionId != nil {
+                Capsule()
+                    .fill(ForelTheme.accent)
+                    .frame(height: 2)
+                    .shadow(color: ForelTheme.accent.opacity(0.35), radius: 2, y: 1)
+            }
+        }
+        .contentShape(Rectangle())
+        .onDrop(
+            of: [.forelActionID],
+            delegate: ActionInsertionDropDelegate(
+                insertionIndex: index,
+                draggedActionId: $draggedActionId,
+                activeInsertionIndex: $actionInsertionIndex,
+                move: moveAction(id:toInsertionIndex:)
+            )
+        )
     }
 
     private func placeholder(_ text: String) -> some View {
@@ -795,11 +894,50 @@ private struct KindValuePicker: View {
 
 private struct ActionRow: View {
     @Binding var action: Action
+    let order: Int
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
+    let dragProvider: () -> NSItemProvider
     let onDelete: () -> Void
     @State private var showingOptions = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
+            VStack(spacing: 2) {
+                Text("\(order)")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(ForelTheme.accent)
+                    .frame(width: 18, height: 18)
+                    .background(Circle().fill(ForelTheme.accent.opacity(0.14)))
+                HStack(spacing: 0) {
+                    Button(action: onMoveUp) {
+                        chevronLabel("chevron.up")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canMoveUp)
+                    .help("Move action earlier")
+                    Button(action: onMoveDown) {
+                        chevronLabel("chevron.down")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canMoveDown)
+                    .help("Move action later")
+                }
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(ForelTheme.secondaryText)
+            }
+            .frame(width: 40)
+
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(ForelTheme.secondaryText.opacity(0.75))
+                .frame(width: 16)
+                .contentShape(Rectangle())
+                .onDrag(dragProvider)
+                .help("Drag to reorder")
+
             ActionKindMenu(selection: kindBinding)
             .frame(minWidth: 160, alignment: .leading)
 
@@ -895,6 +1033,14 @@ private struct ActionRow: View {
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
         }
+    }
+
+    /// The icon sits at the bottom of a larger transparent frame, so the gap
+    /// above it is part of the click target and a near miss still registers.
+    private func chevronLabel(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .frame(width: 20, height: 18, alignment: .bottom)
+            .contentShape(Rectangle())
     }
 
     private var kindBinding: Binding<ActionKind> {
