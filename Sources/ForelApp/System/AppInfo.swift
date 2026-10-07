@@ -27,6 +27,13 @@ enum AppInfo {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Development"
     }
 
+    /// `./build.sh dev` stamps this placeholder version; it is never a release.
+    static let developmentVersion = "0.0.0-dev"
+
+    static var isDevelopmentBuild: Bool {
+        version == developmentVersion
+    }
+
     static var build: String {
         Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Development"
     }
