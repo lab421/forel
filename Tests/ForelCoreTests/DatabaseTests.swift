@@ -24,6 +24,21 @@ import SQLite3
         try Database(path: ":memory:")
     }
 
+    @Test func countRulesIncludesEveryWatchedFolder() throws {
+        let db = try makeDB()
+        #expect(try db.countRules() == 0)
+
+        let first = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")
+        let second = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")
+        try db.insertFolder(first)
+        try db.insertFolder(second)
+        try db.insertRule(makeRule(folderId: first.id, name: "first A"))
+        try db.insertRule(makeRule(folderId: first.id, name: "first B"))
+        try db.insertRule(makeRule(folderId: second.id, name: "second A"))
+
+        #expect(try db.countRules() == 3)
+    }
+
     @Test func ruleRoundTripPreservesTagAndColorVariants() throws {
         let db = try makeDB()
         let folder = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")

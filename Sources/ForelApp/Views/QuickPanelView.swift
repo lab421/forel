@@ -27,6 +27,7 @@ struct QuickPanelView: View {
     @EnvironmentObject var updater: UpdaterManager
     let onOpenMainWindow: () -> Void
     let onQuit: () -> Void
+    @State private var totalRuleCount = 0
 
     var body: some View {
         ZStack {
@@ -73,28 +74,20 @@ struct QuickPanelView: View {
                     }
                 }
 
-                SectionLabel(title: "Activity")
-                HStack(spacing: 10) {
-                    StatTile(icon: "folder", label: "Folders", value: "\(model.folders.count)")
-                    StatTile(icon: "list.bullet", label: "Rules", value: "\(model.rules.count)")
-                    StatTile(icon: "clock.arrow.circlepath", label: "History", value: "\(model.historyTotalCount)")
+                SectionLabel(title: "Overview")
+                GlassCard {
+                    HStack(spacing: 0) {
+                        QuickCount(value: model.folders.count, label: "Folders")
+                        Divider().overlay(ForelTheme.divider).frame(height: 28)
+                        QuickCount(value: totalRuleCount, label: "Rules")
+                        Divider().overlay(ForelTheme.divider).frame(height: 28)
+                        QuickCount(value: model.historyTotalCount, label: "History")
+                    }
+                    .padding(.vertical, 10)
                 }
 
-                SectionLabel(title: "Last 30 Days")
-                HStack(spacing: 10) {
-                    StatTile(
-                        icon: "checkmark.circle.fill",
-                        label: "Success",
-                        value: "\(model.totalSuccessCount30d)",
-                        tint: ForelTheme.success
-                    )
-                    StatTile(
-                        icon: "xmark.circle.fill",
-                        label: "Failed",
-                        value: "\(model.totalFailedCount30d)",
-                        tint: model.totalFailedCount30d > 0 ? ForelTheme.danger : ForelTheme.secondaryText
-                    )
-                }
+                SectionLabel(title: "Recent Activity")
+                QuickActivityFeed(db: model.db)
 
                 Divider().overlay(ForelTheme.divider)
 
@@ -112,7 +105,9 @@ struct QuickPanelView: View {
         .onAppear {
             model.reloadFolders()
             model.reloadHistory()
+            reloadTotalRuleCount()
         }
+        .onReceive(model.$rules) { _ in reloadTotalRuleCount() }
     }
 
     private var header: some View {
@@ -126,6 +121,10 @@ struct QuickPanelView: View {
             }
             Spacer(minLength: 0)
         }
+    }
+
+    private func reloadTotalRuleCount() {
+        totalRuleCount = model.db.withLock { db in (try? db.countRules()) ?? 0 }
     }
 
     private var watchingBinding: Binding<Bool> {
@@ -143,5 +142,23 @@ struct QuickPanelView: View {
             },
             set: { model.toggleFolder(folder, enabled: $0) }
         )
+    }
+}
+
+/// A big number over a small label, used for the quick panel's overview row.
+private struct QuickCount: View {
+    let value: Int
+    let label: String
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text("\(value)")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(ForelTheme.primaryText)
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
