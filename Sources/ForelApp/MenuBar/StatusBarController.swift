@@ -24,7 +24,7 @@ import ForelCore
 /// in place of the old plain `NSMenu`.
 @MainActor
 final class StatusBarController: NSObject {
-    private let statusItem: NSStatusItem
+    private var statusItem: NSStatusItem
     private let model: AppModel
     private let updater: UpdaterManager
     private weak var window: NSWindow?
@@ -41,12 +41,8 @@ final class StatusBarController: NSObject {
         self.window = window
         super.init()
 
-        if let button = statusItem.button {
-            button.image = Self.glyph(paused: model.paused, updateAvailable: updater.updateAvailable)
-            button.image?.isTemplate = false
-            button.target = self
-            button.action = #selector(togglePopover)
-        }
+        configureButton()
+        LaunchDiagnostics.log("status item created \(describeStatusItem())")
 
         pausedSubscription = model.$paused.sink { [weak self] paused in
             self?.refreshGlyph(paused: paused)
@@ -55,6 +51,47 @@ final class StatusBarController: NSObject {
             guard let self else { return }
             self.refreshGlyph(paused: self.model.paused)
         }
+
+        // At login the menu bar may not be ready when the item is first
+        // created; re-check shortly after and rebuild the item if it never
+        // got attached to a menu bar window.
+        for delay in [0.5, 3, 10, 30] as [TimeInterval] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.verifyStatusItem(after: delay)
+            }
+        }
+    }
+
+    private func configureButton() {
+        guard let button = statusItem.button else { return }
+        button.image = Self.glyph(paused: model.paused, updateAvailable: updater.updateAvailable)
+        button.image?.isTemplate = false
+        button.target = self
+        button.action = #selector(togglePopover)
+    }
+
+    private var isStatusItemAttached: Bool {
+        guard let barWindow = statusItem.button?.window else { return false }
+        let frame = barWindow.frame
+        return barWindow.isVisible && frame.width > 0 && frame.height > 0
+            && NSScreen.screens.contains { $0.frame.intersects(frame) }
+    }
+
+    private func verifyStatusItem(after delay: TimeInterval) {
+        let attached = isStatusItemAttached
+        LaunchDiagnostics.log("status item check +\(delay)s attached=\(attached) \(describeStatusItem())")
+        guard !attached else { return }
+
+        NSStatusBar.system.removeStatusItem(statusItem)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        configureButton()
+        LaunchDiagnostics.log("status item recreated +\(delay)s \(describeStatusItem())")
+    }
+
+    private func describeStatusItem() -> String {
+        let barWindow = statusItem.button?.window
+        return "isVisible=\(statusItem.isVisible) hasButtonWindow=\(barWindow != nil) "
+            + "windowVisible=\(barWindow?.isVisible ?? false) frame=\(barWindow.map { NSStringFromRect($0.frame) } ?? "-")"
     }
 
     private func refreshGlyph(paused: Bool) {
@@ -132,6 +169,12 @@ final class StatusBarController: NSObject {
 
     private func openForel() {
         let targetWindow = window ?? NSApp.windows.first { !($0 is NSPanel) }
+        // Started as a login item, Forel may not have created its window yet;
+        // reopening the app makes SwiftUI create it.
+        guard targetWindow != nil else {
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: NSWorkspace.OpenConfiguration())
+            return
+        }
         WindowActivation.activateSoon(targetWindow, showsDockIcon: model.showDockIcon)
     }
 

@@ -20,7 +20,14 @@ import AppKit
 /// the menu bar. Quit is only available from the status item menu.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    /// Set by `ForelMacApp` as soon as the model and updater exist, so the
+    /// menu bar icon can be created at launch instead of waiting for the main
+    /// window's `onAppear`, which may never fire when macOS starts Forel as a
+    /// login item.
+    static var launchContext: (model: AppModel, updater: UpdaterManager)?
+
     var statusBarController: StatusBarController?
+    private var didFinishLaunching = false
     private var model: AppModel?
     private var updater: UpdaterManager?
 
@@ -28,11 +35,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// the app's model/updater are handed in afterward once SwiftUI has
     /// constructed them, from `ForelMacApp`'s `onAppear`.
     func configure(model: AppModel, updater: UpdaterManager) {
+        LaunchDiagnostics.log("configure (main window onAppear) windows=\(NSApp.windows.count)")
         self.model = model
         self.updater = updater
         model.applyDockIconPreference()
         configureMainWindow()
-        if statusBarController == nil {
+        // Before launch finishes the menu bar isn't reliably ready (login);
+        // `applicationDidFinishLaunching` creates the item in that case.
+        if didFinishLaunching {
             setUpStatusBar()
         }
         showMainWindowOnFirstLaunch()
@@ -65,6 +75,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         if warnAndQuitIfRunningFromDiskImage() {
             return
+        }
+
+        LaunchDiagnostics.log(
+            "didFinishLaunching windows=\(NSApp.windows.count) policy=\(NSApp.activationPolicy().rawValue) "
+                + "active=\(NSApp.isActive) args=\(ProcessInfo.processInfo.arguments.dropFirst())"
+        )
+        didFinishLaunching = true
+        if model == nil, let context = Self.launchContext {
+            model = context.model
+            updater = context.updater
         }
 
         // Running as a bare dev executable (no packaged .app/Info.plist) shows
@@ -114,13 +134,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        LaunchDiagnostics.log("reopen hasVisibleWindows=\(flag) windows=\(NSApp.windows.count)")
         guard !flag else { return true }
         openMainWindow()
         return true
     }
 
     private func setUpStatusBar() {
-        guard let model, let updater else { return }
+        guard statusBarController == nil, let model, let updater else { return }
         statusBarController = StatusBarController(
             model: model,
             updater: updater,

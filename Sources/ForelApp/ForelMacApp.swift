@@ -26,7 +26,9 @@ struct ForelMacApp: App {
     init() {
         let model = try! AppModel()
         _model = StateObject(wrappedValue: model)
-        _updater = StateObject(wrappedValue: UpdaterManager(db: model.db))
+        let updater = UpdaterManager(db: model.db)
+        _updater = StateObject(wrappedValue: updater)
+        AppDelegate.launchContext = (model, updater)
     }
 
     var body: some Scene {
