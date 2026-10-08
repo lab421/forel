@@ -62,4 +62,19 @@ import Testing
     @Test func rejectsInvalidStoredTimestamp() {
         #expect(HistoryTimestampFormatter.localized("not-a-date") == nil)
     }
+
+    @Test func relativeLabelDescribesElapsedTimeInTheSelectedLocale() throws {
+        let now = try #require(ISO8601DateFormatter().date(from: "2026-09-01T08:00:00Z"))
+        let timestamp = "2026-09-01T07:55:00Z"
+
+        let english = try #require(HistoryTimestampFormatter.relative(timestamp, relativeTo: now, locale: Locale(identifier: "en_US")))
+        let french = try #require(HistoryTimestampFormatter.relative(timestamp, relativeTo: now, locale: Locale(identifier: "fr_FR")))
+
+        #expect(english.contains("5"))
+        #expect(english != french)
+    }
+
+    @Test func relativeLabelRejectsInvalidTimestamps() {
+        #expect(HistoryTimestampFormatter.relative("not a date") == nil)
+    }
 }

@@ -107,17 +107,18 @@ final class UpdaterManager: ObservableObject {
         }
     }
 
-    /// A dev build (`swift run` / `./build.sh dev`) is a bare executable, not
-    /// a packaged `.app` — there's no Info.plist, so `CFBundleShortVersionString`
-    /// reads as `nil` and falls back to "0", which makes literally any real
-    /// release look newer. Nothing to install anyway outside a packaged app
-    /// (see `installUpdate()`'s own check), so just don't check at all.
-    private var isPackagedApp: Bool {
-        Bundle.main.bundleURL.pathExtension == "app"
+    /// A bare `swift run` executable is not a packaged `.app` — there's no
+    /// Info.plist, so `CFBundleShortVersionString` reads as `nil` and falls
+    /// back to "0", which makes literally any real release look newer. A
+    /// `./build.sh dev` bundle is a real `.app` but is stamped `0.0.0-dev`,
+    /// which has the same problem. Nothing to install in either case (see
+    /// `installUpdate()`'s own check), so just don't check at all.
+    private var canCheckForUpdates: Bool {
+        Bundle.main.bundleURL.pathExtension == "app" && !AppInfo.isDevelopmentBuild
     }
 
     func checkForUpdates() {
-        guard isPackagedApp else { return }
+        guard canCheckForUpdates else { return }
         guard !isChecking else { return }
         isChecking = true
         Task {

@@ -464,6 +464,13 @@ public final class Database: @unchecked Sendable {
 
     // MARK: - Rules
 
+    /// Total number of rules across every watched folder.
+    public func countRules() throws -> Int {
+        let stmt = try statement("SELECT COUNT(*) FROM rules")
+        _ = try stmt.step()
+        return Int(stmt.columnInt64(0))
+    }
+
     public func listRules(folderId: String) throws -> [Rule] {
         let stmt = try statement(
             """
