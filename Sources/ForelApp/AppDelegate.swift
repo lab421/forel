@@ -22,30 +22,45 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Set by `ForelMacApp` as soon as the model and updater exist, so the
     /// menu bar icon can be created at launch instead of waiting for the main
-    /// window's `onAppear`, which may never fire when macOS starts Forel as a
-    /// login item.
+    /// window's `onAppear`: macOS doesn't open that window when it starts
+    /// Forel as a login item, so `onAppear` only fires once the user opens it.
     static var launchContext: (model: AppModel, updater: UpdaterManager)?
 
     var statusBarController: StatusBarController?
-    private var didFinishLaunching = false
     private var model: AppModel?
     private var updater: UpdaterManager?
+    /// The window hosting `ContentView`, reported by `ForelMacApp` through
+    /// `mainWindowDidAttach`. Tracked explicitly rather than looked up in
+    /// `NSApp.windows`, which also holds the menu bar item's own window and
+    /// the Settings window, in no useful order.
+    private weak var mainWindow: NSWindow?
+    /// The main window was asked for before it existed (Forel started as a
+    /// login item); bring it forward as soon as SwiftUI has created it.
+    private var activatesMainWindowWhenAttached = false
 
     /// `@NSApplicationDelegateAdaptor` requires a zero-argument initializer;
     /// the app's model/updater are handed in afterward once SwiftUI has
-    /// constructed them, from `ForelMacApp`'s `onAppear`.
+    /// constructed them, from `ForelMacApp`'s `onAppear` (or from
+    /// `launchContext` at launch, whichever comes first).
     func configure(model: AppModel, updater: UpdaterManager) {
-        LaunchDiagnostics.log("configure (main window onAppear) windows=\(NSApp.windows.count)")
         self.model = model
         self.updater = updater
         model.applyDockIconPreference()
-        configureMainWindow()
-        // Before launch finishes the menu bar isn't reliably ready (login);
-        // `applicationDidFinishLaunching` creates the item in that case.
-        if didFinishLaunching {
-            setUpStatusBar()
-        }
+        setUpStatusBar()
         showMainWindowOnFirstLaunch()
+    }
+
+    /// Called whenever `ContentView` lands in a window — at launch, or later
+    /// when the window is first created by reopening a login-item launch.
+    func mainWindowDidAttach(_ window: NSWindow) {
+        mainWindow = window
+        window.delegate = self
+        window.title = "Forel"
+        window.titleVisibility = .hidden
+        if activatesMainWindowWhenAttached {
+            activatesMainWindowWhenAttached = false
+            WindowActivation.activateSoon(window, showsDockIcon: model?.showDockIcon != false)
+        }
     }
 
     /// A brand-new install otherwise only shows up as a menu bar icon
@@ -77,11 +92,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
 
-        LaunchDiagnostics.log(
-            "didFinishLaunching windows=\(NSApp.windows.count) policy=\(NSApp.activationPolicy().rawValue) "
-                + "active=\(NSApp.isActive) args=\(ProcessInfo.processInfo.arguments.dropFirst())"
-        )
-        didFinishLaunching = true
         if model == nil, let context = Self.launchContext {
             model = context.model
             updater = context.updater
@@ -93,24 +103,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             NSApp.applicationIconImage = appIcon
         }
 
-        if let window = NSApp.windows.first {
-            configureMainWindow(window)
+        // The status item doesn't exist yet, so the only window there can be
+        // at this point is the main one.
+        if mainWindow == nil, let window = NSApp.windows.first {
+            mainWindowDidAttach(window)
         }
         model?.applyDockIconPreference()
-        if model != nil, updater != nil {
-            setUpStatusBar()
-        }
-    }
-
-    private func configureMainWindow() {
-        guard let window = NSApp.windows.first(where: { !($0 is NSPanel) }) else { return }
-        configureMainWindow(window)
-    }
-
-    private func configureMainWindow(_ window: NSWindow) {
-        window.delegate = self
-        window.title = "Forel"
-        window.titleVisibility = .hidden
+        setUpStatusBar()
     }
 
     /// Opening Forel straight from the mounted installer disk image (before
@@ -134,10 +133,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        LaunchDiagnostics.log("reopen hasVisibleWindows=\(flag) windows=\(NSApp.windows.count)")
         guard !flag else { return true }
+        guard mainWindow != nil else {
+            // Returning true lets SwiftUI create the window it skipped at
+            // launch; `mainWindowDidAttach` then brings it forward.
+            activatesMainWindowWhenAttached = true
+            return true
+        }
+        // The window exists but is hidden: show it ourselves, and return
+        // false so SwiftUI doesn't open a second one next to it.
         openMainWindow()
-        return true
+        return false
     }
 
     private func setUpStatusBar() {
@@ -145,13 +151,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusBarController = StatusBarController(
             model: model,
             updater: updater,
-            window: NSApp.windows.first
+            onOpenMainWindow: { [weak self] in self?.openMainWindow() }
         )
     }
 
     private func openMainWindow() {
-        let targetWindow = NSApp.windows.first { !($0 is NSPanel) }
-        WindowActivation.activateSoon(targetWindow, showsDockIcon: model?.showDockIcon != false)
+        guard let mainWindow else {
+            // Started as a login item, Forel has no main window yet; reopening
+            // the app is what makes SwiftUI create it.
+            activatesMainWindowWhenAttached = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: NSWorkspace.OpenConfiguration())
+            return
+        }
+        WindowActivation.activateSoon(mainWindow, showsDockIcon: model?.showDockIcon != false)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
