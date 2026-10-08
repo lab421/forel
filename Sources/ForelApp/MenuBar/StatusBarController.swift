@@ -27,18 +27,18 @@ final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let model: AppModel
     private let updater: UpdaterManager
-    private weak var window: NSWindow?
+    private let onOpenMainWindow: () -> Void
     private var popover: NSPopover?
     private var localDismissMonitor: Any?
     private var globalDismissMonitor: Any?
     private var pausedSubscription: AnyCancellable?
     private var updateSubscription: AnyCancellable?
 
-    init(model: AppModel, updater: UpdaterManager, window: NSWindow?) {
+    init(model: AppModel, updater: UpdaterManager, onOpenMainWindow: @escaping () -> Void) {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         self.model = model
         self.updater = updater
-        self.window = window
+        self.onOpenMainWindow = onOpenMainWindow
         super.init()
 
         if let button = statusItem.button {
@@ -70,7 +70,7 @@ final class StatusBarController: NSObject {
         let panel = QuickPanelView(
             onOpenMainWindow: { [weak self] in
                 self?.popover?.performClose(nil)
-                self?.openForel()
+                self?.onOpenMainWindow()
             },
             onQuit: { NSApp.terminate(nil) }
         )
@@ -128,11 +128,6 @@ final class StatusBarController: NSObject {
     private func closePopover() {
         guard let popover, popover.isShown else { return }
         popover.performClose(nil)
-    }
-
-    private func openForel() {
-        let targetWindow = window ?? NSApp.windows.first { !($0 is NSPanel) }
-        WindowActivation.activateSoon(targetWindow, showsDockIcon: model.showDockIcon)
     }
 
     /// Menu bar glyph: a crisp vector `leaf.fill` SF Symbol, with a colour dot

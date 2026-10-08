@@ -72,3 +72,37 @@ struct WindowActivationBridge: NSViewRepresentable {
         }
     }
 }
+
+/// Reports the `NSWindow` hosting a SwiftUI view once the view is attached
+/// to it, for code that needs the real window rather than a guess from
+/// `NSApp.windows`.
+struct WindowAccessor: NSViewRepresentable {
+    let onAttach: @MainActor (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        AttachmentView(onAttach: onAttach)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class AttachmentView: NSView {
+        private let onAttach: @MainActor (NSWindow) -> Void
+
+        init(onAttach: @escaping @MainActor (NSWindow) -> Void) {
+            self.onAttach = onAttach
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window {
+                onAttach(window)
+            }
+        }
+    }
+}
