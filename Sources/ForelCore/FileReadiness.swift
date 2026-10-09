@@ -77,11 +77,13 @@ enum FileReadiness {
         let isMarkedBusy: Bool
     }
 
-    static func snapshot(_ path: String) -> Snapshot? {
+    /// `includingContents: false` looks at the item alone, for callers that
+    /// already visit a folder's contents one by one.
+    static func snapshot(_ path: String, includingContents: Bool = true) -> Snapshot? {
         guard let own = FileFingerprint.current(path) else { return nil }
         var isBusy = isMarkedBusy(path)
 
-        guard let contents = descendants(of: path) else {
+        guard includingContents, let contents = descendants(of: path) else {
             return Snapshot(fingerprint: own, isMarkedBusy: isBusy)
         }
 

@@ -604,4 +604,26 @@ import Foundation
         #expect(Set(try FileManager.default.contentsOfDirectory(atPath: destination)) == ["a.pdf", "b.pdf"])
         #expect(try db.listHistory().count == 2)
     }
+
+    @Test(.timeLimit(.minutes(1)))
+    func rescanDoesNotReadSubfoldersBeyondWhatTheRulesNeed() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let destination = try makePDFSortingFolder(db: db, dir: dir)
+        let ready = dir.file("ready.pdf", contents: "complete")
+        // Deeper than the rule's depth: a rescan must not look in here, so
+        // this leftover busy file must not keep the subfolder waiting.
+        let deep = dir.dir("Projects/Client")
+        let leftover = (deep as NSString).appendingPathComponent("leftover.bin")
+        try "partial".write(toFile: leftover, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.creationDate: FileReadiness.busyCreationDate], ofItemAtPath: leftover)
+
+        let coordinator = WatcherCoordinator(db: db, settleInterval: 0.05)
+        coordinator.enqueue(event: .rescanSubtree(dir.path))
+        coordinator.waitForPendingEvents()
+
+        #expect(FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("ready.pdf")))
+        #expect(!FileManager.default.fileExists(atPath: ready))
+        #expect(FileManager.default.fileExists(atPath: leftover))
+    }
 }

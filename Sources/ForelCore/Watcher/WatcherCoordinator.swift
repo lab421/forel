@@ -55,6 +55,11 @@ public final class WatcherCoordinator: @unchecked Sendable {
     private struct SettlingState {
         var fingerprint: String?
         var stalledChecks = 0
+        /// Whether a folder is watched through everything it contains. Off
+        /// for a rescan, which already visits the contents one by one down
+        /// to the depth the rules need; reading each folder's whole tree on
+        /// top of that would ignore that limit.
+        var includesContents = true
         /// Items that arrived inside this folder while it was waiting.
         var hasDeferredDescendants = false
     }
@@ -134,7 +139,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
     /// Runs rules on `path` once its fingerprint has stayed the same for a
     /// full `settleInterval` and nothing marks it as still being written.
-    private func awaitSettled(_ path: String) {
+    private func awaitSettled(_ path: String, includingContents: Bool = true) {
         guard settleInterval > 0 else {
             handle(path: path)
             return
@@ -151,14 +156,17 @@ public final class WatcherCoordinator: @unchecked Sendable {
             return
         }
         guard FileManager.default.fileExists(atPath: path), hasPathChangedSinceLastEvaluation(path) else { return }
-        settling[path] = SettlingState(fingerprint: FileReadiness.snapshot(path)?.fingerprint)
+        settling[path] = SettlingState(
+            fingerprint: FileReadiness.snapshot(path, includingContents: includingContents)?.fingerprint,
+            includesContents: includingContents
+        )
         scheduleSettleCheck(path)
     }
 
     private func settlingAncestor(of path: String) -> String? {
         var parent = (path as NSString).deletingLastPathComponent
         while parent.count > 1 {
-            if settling[parent] != nil { return parent }
+            if settling[parent]?.includesContents == true { return parent }
             parent = (parent as NSString).deletingLastPathComponent
         }
         return nil
@@ -172,7 +180,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
     private func checkSettled(_ path: String) {
         guard var state = settling[path] else { return }
-        guard let snapshot = FileReadiness.snapshot(path) else {
+        guard let snapshot = FileReadiness.snapshot(path, includingContents: state.includesContents) else {
             settling[path] = nil
             return
         }
@@ -323,7 +331,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
         // live arrival can, so each one goes through the same wait.
         let process: (String, Int) -> Void = { [self] path, depth in
             if waitsForSettledFiles {
-                awaitSettled(path)
+                awaitSettled(path, includingContents: false)
             } else {
                 handle(path: path, depth: depth, rules: rules, watchedRoot: folder.path)
             }
