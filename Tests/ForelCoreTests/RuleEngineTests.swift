@@ -79,6 +79,31 @@ import Foundation
         #expect(RuleEngine.walkEntries(root: dir.path, maxDepth: 0).map(\.path) == [finished])
     }
 
+    @Test func customFolderIconFileIsIgnoredByRunPreviewAndFolderWalk() throws {
+        // "Icon\r" has no extension, so a "Kind is Document" rule would
+        // otherwise move it and strip the folder of its custom icon.
+        let dir = TempDir()
+        let icon = dir.file("Icon\r", contents: "")
+        let document = dir.file("notes.docx", contents: "done")
+        let destination = dir.dir("Documents")
+        let rule = makeRule(
+            name: "documents",
+            conditions: [makeCondition(.kind, .is, "document")],
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(destination)]))]
+        )
+
+        #expect(RuleEngine.previewFile(path: icon, depth: 0, rules: [rule]) == nil)
+        let walked = RuleEngine.walkEntries(root: dir.path, maxDepth: 0).map(\.path)
+        #expect(!walked.contains(icon))
+        #expect(walked.contains(document))
+
+        let (matched, history) = RuleEngine.run(path: icon, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(matched.isEmpty)
+        #expect(history.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: icon))
+    }
+
     @Test func conditionOrderDoesNotChangeAllOrAnyMatching() throws {
         // `ruleMatches` evaluates cheap conditions before `contents` and
         // short-circuits. Reordering must not change the boolean outcome, so a
