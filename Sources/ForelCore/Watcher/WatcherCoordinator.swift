@@ -36,11 +36,37 @@ public final class WatcherCoordinator: @unchecked Sendable {
     private let processingQueue = DispatchQueue(label: "app.forel.watcher-processing")
     private let activeProcessingLock = NSLock()
     private var activeProcessingRoots: [String: Int] = [:]
+    /// How long a newly arrived file's size and modification time must stay
+    /// unchanged before rules run on it. FSEvents reports a file as soon as
+    /// it is created, which for an in-place transfer (AirDrop, a Finder copy,
+    /// a network download) is long before its contents are complete.
+    private let settleInterval: TimeInterval
+    /// Paths waiting to settle. Only touched on `processingQueue`.
+    private var settling: [String: SettlingState] = [:]
+    /// Folders currently watched. Only touched on `processingQueue`.
+    private var watchedRoots: Set<String> = []
+    /// A file that stays marked busy without changing is a stalled transfer.
+    /// Nothing signals the marker being lifted, so keep checking, but less
+    /// and less often, up to this interval.
+    private let maxStalledInterval: TimeInterval = 60
     public var onRuleMatched: (@Sendable (String, String) -> Void)?
     public var onActivity: (@Sendable (WatcherActivitySummary) -> Void)?
 
-    public init(db: Database) {
+    private struct SettlingState {
+        var fingerprint: String?
+        var stalledChecks = 0
+        /// Whether a folder is watched through everything it contains. Off
+        /// for a rescan, which already visits the contents one by one down
+        /// to the depth the rules need; reading each folder's whole tree on
+        /// top of that would ignore that limit.
+        var includesContents = true
+        /// Items that arrived inside this folder while it was waiting.
+        var hasDeferredDescendants = false
+    }
+
+    public init(db: Database, settleInterval: TimeInterval = 1.0) {
         self.db = db
+        self.settleInterval = settleInterval
         var watcherRef: FileWatcher!
         watcherRef = FileWatcher(onEvent: { _ in })
         self.watcher = watcherRef
@@ -49,26 +75,133 @@ public final class WatcherCoordinator: @unchecked Sendable {
         }
     }
 
-    public func add(_ path: String) { watcher.add(path) }
-    public func remove(_ path: String) { watcher.remove(path) }
-
-    func enqueue(event: FileWatcherEvent) {
+    public func add(_ path: String) {
+        watcher.add(path)
         processingQueue.async { [weak self] in
-            self?.handle(event: event)
+            self?.watchedRoots.insert(path)
         }
     }
 
-    /// Test synchronization point for events already accepted by `enqueue`.
+    public func remove(_ path: String) {
+        watcher.remove(path)
+        processingQueue.async { [weak self] in
+            self?.stopSettling(under: path)
+        }
+    }
+
+    /// Stopping a folder's watcher (pause, disable, removal) must also drop
+    /// the files still waiting to settle under it; otherwise their rules
+    /// would run once the transfer completes, long after watching stopped.
+    /// Files that a still-watched nested folder covers keep waiting.
+    private func stopSettling(under root: String) {
+        watchedRoots.remove(root)
+        settling = settling.filter { path, _ in
+            !Self.isPath(path, under: root) || watchedRoots.contains { Self.isPath(path, under: $0) }
+        }
+    }
+
+    private static func isPath(_ path: String, under root: String) -> Bool {
+        let rootComponents = (root as NSString).pathComponents
+        let pathComponents = (path as NSString).pathComponents
+        return pathComponents.count >= rootComponents.count
+            && Array(pathComponents.prefix(rootComponents.count)) == rootComponents
+    }
+
+    func enqueue(event: FileWatcherEvent) {
+        processingQueue.async { [weak self] in
+            self?.handle(event: event, waitsForSettledFiles: true)
+        }
+    }
+
+    /// Test synchronization point for events already accepted by `enqueue`,
+    /// including files still waiting to settle.
     func waitForPendingEvents() {
+        while processingQueue.sync(execute: { !settling.isEmpty }) {
+            Thread.sleep(forTimeInterval: max(settleInterval / 4, 0.01))
+        }
         processingQueue.sync {}
     }
 
-    func handle(event: FileWatcherEvent) {
+    /// Processes `event`. Live watcher events wait for each file to settle
+    /// first; passing `false` evaluates the files as they are right now.
+    func handle(event: FileWatcherEvent, waitsForSettledFiles: Bool = false) {
         switch event {
         case .pathArrived(let path):
-            handle(path: path)
+            if waitsForSettledFiles {
+                awaitSettled(path)
+            } else {
+                handle(path: path)
+            }
         case .rescanSubtree(let path):
-            handleRescanSubtree(root: path)
+            handleRescanSubtree(root: path, waitsForSettledFiles: waitsForSettledFiles)
+        }
+    }
+
+    /// Runs rules on `path` once its fingerprint has stayed the same for a
+    /// full `settleInterval` and nothing marks it as still being written.
+    private func awaitSettled(_ path: String, includingContents: Bool = true) {
+        guard settleInterval > 0 else {
+            handle(path: path)
+            return
+        }
+        // A check is already scheduled; it will see the file's latest state.
+        guard settling[path] == nil else { return }
+        // Something arriving inside a folder that is itself still waiting is
+        // already covered by that folder's snapshot. Giving every nested item
+        // its own wait would re-read the tree once per item (a `git clone` or
+        // an unzip creates thousands), so it is evaluated when the folder
+        // settles instead.
+        if let ancestor = settlingAncestor(of: path) {
+            settling[ancestor]?.hasDeferredDescendants = true
+            return
+        }
+        guard FileManager.default.fileExists(atPath: path), hasPathChangedSinceLastEvaluation(path) else { return }
+        settling[path] = SettlingState(
+            fingerprint: FileReadiness.snapshot(path, includingContents: includingContents)?.fingerprint,
+            includesContents: includingContents
+        )
+        scheduleSettleCheck(path)
+    }
+
+    private func settlingAncestor(of path: String) -> String? {
+        var parent = (path as NSString).deletingLastPathComponent
+        while parent.count > 1 {
+            if settling[parent]?.includesContents == true { return parent }
+            parent = (parent as NSString).deletingLastPathComponent
+        }
+        return nil
+    }
+
+    private func scheduleSettleCheck(_ path: String, after delay: TimeInterval? = nil) {
+        processingQueue.asyncAfter(deadline: .now() + (delay ?? settleInterval)) { [weak self] in
+            self?.checkSettled(path)
+        }
+    }
+
+    private func checkSettled(_ path: String) {
+        guard var state = settling[path] else { return }
+        guard let snapshot = FileReadiness.snapshot(path, includingContents: state.includesContents) else {
+            settling[path] = nil
+            return
+        }
+        if snapshot.fingerprint != state.fingerprint {
+            state.fingerprint = snapshot.fingerprint
+            state.stalledChecks = 0
+            settling[path] = state
+            scheduleSettleCheck(path)
+            return
+        }
+        if snapshot.isMarkedBusy {
+            state.stalledChecks += 1
+            settling[path] = state
+            let backoff = settleInterval * pow(2, Double(min(state.stalledChecks, 16)))
+            scheduleSettleCheck(path, after: min(backoff, maxStalledInterval))
+            return
+        }
+        settling[path] = nil
+        handle(path: path)
+        if state.hasDeferredDescendants {
+            handleRescanSubtree(root: path, waitsForSettledFiles: false)
         }
     }
 
@@ -176,11 +309,11 @@ public final class WatcherCoordinator: @unchecked Sendable {
         }
     }
 
-    private func handleRescanSubtree(root: String) {
+    private func handleRescanSubtree(root: String, waitsForSettledFiles: Bool) {
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir) else { return }
         guard isDir.boolValue else {
-            handle(path: root)
+            handle(event: .pathArrived(root), waitsForSettledFiles: waitsForSettledFiles)
             return
         }
 
@@ -194,9 +327,19 @@ public final class WatcherCoordinator: @unchecked Sendable {
         beginProcessing(root: folder.path)
         defer { endProcessing(root: folder.path) }
 
+        // A rescan can find files that are still being written just like a
+        // live arrival can, so each one goes through the same wait.
+        let process: (String, Int) -> Void = { [self] path, depth in
+            if waitsForSettledFiles {
+                awaitSettled(path, includingContents: false)
+            } else {
+                handle(path: path, depth: depth, rules: rules, watchedRoot: folder.path)
+            }
+        }
+
         let maxDepth = RuleEngine.maxRuleDepth(rules)
         if root != folder.path, !SystemFileFilter.isExcluded((root as NSString).lastPathComponent) {
-            handle(path: root, depth: rootDepth, rules: rules, watchedRoot: folder.path)
+            process(root, rootDepth)
         }
 
         let remainingDepth: Int?
@@ -210,7 +353,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
         RuleEngine.forEachEntry(root: root, maxDepth: remainingDepth) { entry in
             guard let depth = RuleEngine.pathDepth(root: folder.path, path: entry.path) else { return }
-            handle(path: entry.path, depth: depth, rules: rules, watchedRoot: folder.path)
+            process(entry.path, depth)
         }
     }
 
