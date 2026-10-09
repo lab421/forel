@@ -572,4 +572,36 @@ import Foundation
         let movedInner = (movedPath as NSString).appendingPathComponent("data.bin")
         #expect(try String(contentsOfFile: movedInner, encoding: .utf8) == String(repeating: "chunk", count: 12))
     }
+
+    @Test func itemsArrivingInsideAWaitingFolderAreEvaluatedWhenItSettles() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let destination = dir.dir("Documents")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sort pdf", recursionDepth: nil)
+        rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
+        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        // Like an unzip or a clone: a folder arrives, then its contents.
+        let incoming = dir.dir("Export")
+        let first = (incoming as NSString).appendingPathComponent("a.pdf")
+        let second = (incoming as NSString).appendingPathComponent("Nested/b.pdf")
+        _ = dir.dir("Export/Nested")
+        try "a".write(toFile: first, atomically: true, encoding: .utf8)
+        try "b".write(toFile: second, atomically: true, encoding: .utf8)
+
+        let coordinator = WatcherCoordinator(db: db, settleInterval: 0.1)
+        coordinator.enqueue(event: .pathArrived(incoming))
+        coordinator.enqueue(event: .pathArrived(first))
+        coordinator.enqueue(event: .pathArrived((incoming as NSString).appendingPathComponent("Nested")))
+        coordinator.enqueue(event: .pathArrived(second))
+        coordinator.waitForPendingEvents()
+
+        #expect(!FileManager.default.fileExists(atPath: first))
+        #expect(!FileManager.default.fileExists(atPath: second))
+        #expect(Set(try FileManager.default.contentsOfDirectory(atPath: destination)) == ["a.pdf", "b.pdf"])
+        #expect(try db.listHistory().count == 2)
+    }
 }

@@ -45,16 +45,18 @@ public final class WatcherCoordinator: @unchecked Sendable {
     private var settling: [String: SettlingState] = [:]
     /// Folders currently watched. Only touched on `processingQueue`.
     private var watchedRoots: Set<String> = []
-    /// A file that stays marked busy without changing is a stalled or
-    /// abandoned transfer; stop polling it after this many checks. A later
-    /// event for the same path starts the wait again.
-    private let maxStalledChecks = 600
+    /// A file that stays marked busy without changing is a stalled transfer.
+    /// Nothing signals the marker being lifted, so keep checking, but less
+    /// and less often, up to this interval.
+    private let maxStalledInterval: TimeInterval = 60
     public var onRuleMatched: (@Sendable (String, String) -> Void)?
     public var onActivity: (@Sendable (WatcherActivitySummary) -> Void)?
 
     private struct SettlingState {
         var fingerprint: String?
         var stalledChecks = 0
+        /// Items that arrived inside this folder while it was waiting.
+        var hasDeferredDescendants = false
     }
 
     public init(db: Database, settleInterval: TimeInterval = 1.0) {
@@ -139,13 +141,31 @@ public final class WatcherCoordinator: @unchecked Sendable {
         }
         // A check is already scheduled; it will see the file's latest state.
         guard settling[path] == nil else { return }
+        // Something arriving inside a folder that is itself still waiting is
+        // already covered by that folder's snapshot. Giving every nested item
+        // its own wait would re-read the tree once per item (a `git clone` or
+        // an unzip creates thousands), so it is evaluated when the folder
+        // settles instead.
+        if let ancestor = settlingAncestor(of: path) {
+            settling[ancestor]?.hasDeferredDescendants = true
+            return
+        }
         guard FileManager.default.fileExists(atPath: path), hasPathChangedSinceLastEvaluation(path) else { return }
         settling[path] = SettlingState(fingerprint: FileReadiness.snapshot(path)?.fingerprint)
         scheduleSettleCheck(path)
     }
 
-    private func scheduleSettleCheck(_ path: String) {
-        processingQueue.asyncAfter(deadline: .now() + settleInterval) { [weak self] in
+    private func settlingAncestor(of path: String) -> String? {
+        var parent = (path as NSString).deletingLastPathComponent
+        while parent.count > 1 {
+            if settling[parent] != nil { return parent }
+            parent = (parent as NSString).deletingLastPathComponent
+        }
+        return nil
+    }
+
+    private func scheduleSettleCheck(_ path: String, after delay: TimeInterval? = nil) {
+        processingQueue.asyncAfter(deadline: .now() + (delay ?? settleInterval)) { [weak self] in
             self?.checkSettled(path)
         }
     }
@@ -157,22 +177,24 @@ public final class WatcherCoordinator: @unchecked Sendable {
             return
         }
         if snapshot.fingerprint != state.fingerprint {
-            settling[path] = SettlingState(fingerprint: snapshot.fingerprint)
-            scheduleSettleCheck(path)
-            return
-        }
-        if snapshot.isMarkedBusy {
-            guard state.stalledChecks < maxStalledChecks else {
-                settling[path] = nil
-                return
-            }
-            state.stalledChecks += 1
+            state.fingerprint = snapshot.fingerprint
+            state.stalledChecks = 0
             settling[path] = state
             scheduleSettleCheck(path)
             return
         }
+        if snapshot.isMarkedBusy {
+            state.stalledChecks += 1
+            settling[path] = state
+            let backoff = settleInterval * pow(2, Double(min(state.stalledChecks, 16)))
+            scheduleSettleCheck(path, after: min(backoff, maxStalledInterval))
+            return
+        }
         settling[path] = nil
         handle(path: path)
+        if state.hasDeferredDescendants {
+            handleRescanSubtree(root: path, waitsForSettledFiles: false)
+        }
     }
 
     public func isProcessing(in root: String) -> Bool {

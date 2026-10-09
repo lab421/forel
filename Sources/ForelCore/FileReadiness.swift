@@ -37,8 +37,34 @@ enum FileReadiness {
     static func isMarkedBusy(_ path: String) -> Bool {
         var st = stat()
         guard stat(path, &st) == 0 else { return false }
+        return isBusy(st)
+    }
+
+    private static func isBusy(_ st: stat) -> Bool {
         let created = TimeInterval(st.st_birthtimespec.tv_sec)
         return abs(created - busyCreationDate.timeIntervalSince1970) <= busyTolerance
+    }
+
+    /// Whether `path` or, for a folder, anything inside it is marked busy.
+    /// Walks the whole folder, so callers use it only for a folder they are
+    /// about to act on, never for every entry of a scan.
+    static func containsBusyItem(_ path: String) -> Bool {
+        if isMarkedBusy(path) { return true }
+        guard let contents = descendants(of: path) else { return false }
+        for case let child as String in contents {
+            var st = stat()
+            if lstat((path as NSString).appendingPathComponent(child), &st) == 0, isBusy(st) { return true }
+        }
+        return false
+    }
+
+    /// Enumerates a real folder's contents. A symbolic link to a folder is
+    /// treated as a single item: what it points to is not part of the
+    /// transfer and may be an entire volume.
+    private static func descendants(of path: String) -> FileManager.DirectoryEnumerator? {
+        var st = stat()
+        guard lstat(path, &st) == 0, st.st_mode & S_IFMT == S_IFDIR else { return nil }
+        return FileManager.default.enumerator(atPath: path)
     }
 
     /// What the watcher compares between two checks to decide an arriving
@@ -55,9 +81,7 @@ enum FileReadiness {
         guard let own = FileFingerprint.current(path) else { return nil }
         var isBusy = isMarkedBusy(path)
 
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue,
-              let contents = FileManager.default.enumerator(atPath: path) else {
+        guard let contents = descendants(of: path) else {
             return Snapshot(fingerprint: own, isMarkedBusy: isBusy)
         }
 
@@ -73,8 +97,7 @@ enum FileReadiness {
             if (modified.tv_sec, modified.tv_nsec) > (latestModification.tv_sec, latestModification.tv_nsec) {
                 latestModification = modified
             }
-            let created = TimeInterval(st.st_birthtimespec.tv_sec)
-            if abs(created - busyCreationDate.timeIntervalSince1970) <= busyTolerance {
+            if Self.isBusy(st) {
                 isBusy = true
             }
         }

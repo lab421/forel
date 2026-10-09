@@ -110,7 +110,7 @@ public enum RuleEngine {
     /// first, then acting on it — so Dry Run, Run Now, and the watcher can
     /// never see a different outcome for the same file and rules.
     public static func run(path: String, depth: Int, rules: [Rule], batchId: String, root: String? = nil) -> (matched: [String], history: [HistoryEntry]) {
-        guard !SystemFileFilter.isExcluded((path as NSString).lastPathComponent), FileReadiness.snapshot(path)?.isMarkedBusy != true else {
+        guard !SystemFileFilter.isExcluded((path as NSString).lastPathComponent), !FileReadiness.isMarkedBusy(path) else {
             return ([], [])
         }
 
@@ -124,6 +124,10 @@ public enum RuleEngine {
         var matched: [String] = []
         var history: [HistoryEntry] = []
         var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0, blockedRuleIds: [])]
+        // A folder is only walked for busy items once a rule actually wants
+        // to act on it; doing so for every scanned entry would read the whole
+        // tree under each one.
+        var checkedBusyContents = false
 
         while !pending.isEmpty {
             let target = pending.removeFirst()
@@ -135,6 +139,10 @@ public enum RuleEngine {
                 let rule = rules[ruleIndex]
                 guard !blockedRuleIds.contains(rule.id) else { continue }
                 guard rule.enabled, ruleMatches(rule, path: currentPath, depth: currentDepth) else { continue }
+                if !checkedBusyContents {
+                    checkedBusyContents = true
+                    if FileReadiness.containsBusyItem(path) { return ([], []) }
+                }
 
                 let result = runActions(rule, path: currentPath, batchId: batchId)
                 history.append(contentsOf: result.history)
@@ -181,7 +189,7 @@ public enum RuleEngine {
     }
 
     public static func previewFile(path: String, depth: Int, rules: [Rule]) -> FilePreview? {
-        guard !SystemFileFilter.isExcluded((path as NSString).lastPathComponent), FileReadiness.snapshot(path)?.isMarkedBusy != true else {
+        guard !SystemFileFilter.isExcluded((path as NSString).lastPathComponent), !FileReadiness.isMarkedBusy(path) else {
             return nil
         }
 
@@ -194,6 +202,7 @@ public enum RuleEngine {
 
         var matchedRules: [RulePreview] = []
         var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0, blockedRuleIds: [])]
+        var checkedBusyContents = false
 
         while !pending.isEmpty {
             let target = pending.removeFirst()
@@ -207,6 +216,10 @@ public enum RuleEngine {
                 guard rule.enabled, ruleInScope(rule, depth: currentDepth) else { continue }
                 let conditions = conditionPreviews(rule, path: currentPath)
                 guard conditionResultsMatch(conditions.map(\.matched), rule.conditionMatch) else { continue }
+                if !checkedBusyContents {
+                    checkedBusyContents = true
+                    if FileReadiness.containsBusyItem(path) { return nil }
+                }
 
                 let result = previewActions(rule, path: currentPath)
                 matchedRules.append(

@@ -130,4 +130,41 @@ import Testing
         #expect(RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch").matched == ["pdfs"])
         #expect(!FileManager.default.fileExists(atPath: file))
     }
+
+    @Test func symbolicLinkToAFolderIsNotWalked() throws {
+        let dir = TempDir()
+        let target = dir.dir("Volume")
+        let busy = (target as NSString).appendingPathComponent("copying.bin")
+        try "partial".write(toFile: busy, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.creationDate: FileReadiness.busyCreationDate], ofItemAtPath: busy)
+        let watched = dir.dir("Watched")
+        let link = (watched as NSString).appendingPathComponent("nas")
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: target)
+
+        #expect(FileReadiness.containsBusyItem(target))
+        #expect(!FileReadiness.containsBusyItem(link))
+        #expect(FileReadiness.snapshot(link)?.isMarkedBusy == false)
+        #expect(FileReadiness.snapshot(link)?.fingerprint == FileFingerprint.current(link))
+    }
+
+    @Test func busyItemInsideAFolderDoesNotHideItFromRulesThatDoNotMatchIt() throws {
+        let dir = TempDir()
+        let projects = dir.dir("Projects")
+        let leftover = (projects as NSString).appendingPathComponent("leftover.bin")
+        try "partial".write(toFile: leftover, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.creationDate: FileReadiness.busyCreationDate], ofItemAtPath: leftover)
+        let report = dir.file("report.pdf", contents: "done")
+        let destination = dir.dir("Documents")
+        let rule = makeRule(
+            name: "pdfs",
+            conditions: [makeCondition(.extension_, .is, "pdf")],
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(destination)]))]
+        )
+
+        // No rule wants the folder, so it is simply not a match; its busy
+        // leftover has no effect on the other entries of the scan.
+        #expect(RuleEngine.previewFile(path: projects, depth: 0, rules: [rule]) == nil)
+        #expect(RuleEngine.previewFile(path: report, depth: 0, rules: [rule]) != nil)
+        #expect(RuleEngine.run(path: report, depth: 0, rules: [rule], batchId: "batch").matched == ["pdfs"])
+    }
 }
