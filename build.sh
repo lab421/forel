@@ -34,7 +34,6 @@ EOF
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$script_dir"
-build_root="$repo_root/.build"
 dist_dir="$repo_root/dist/release"
 bundle_root="${TMPDIR:-/tmp}/Forel.app"
 dev_bundle="${TMPDIR:-/tmp}/Forel-dev.app"
@@ -67,19 +66,19 @@ generate_icns() {
   iconutil -c icns "$iconset_dir" -o "$icns_path" >/dev/null
 }
 
-# Copies the built binary (+ resource bundle, if any) for $config ("debug" or
-# "release") into a fresh "$dest_app/Contents/{MacOS,Resources}". Shared by
+# Copies the binary and resources from SwiftPM's exact product directory
+# into a fresh "$dest_app/Contents/{MacOS,Resources}". Shared by
 # `dev` and `package` so the two don't drift out of sync.
 assemble_app_bundle() {
-  local config="$1" dest_app="$2"
+  local products_dir="$1" dest_app="$2"
   local binary_path resource_bundle contents_dir macos_dir resources_dir
 
-  binary_path="$(find "$build_root" -type f -path "*/$config/ForelApp" -print -quit)"
-  if [[ -z "$binary_path" ]]; then
-    echo "Could not find ForelApp in .build after swift build" >&2
+  binary_path="$products_dir/ForelApp"
+  if [[ ! -f "$binary_path" ]]; then
+    echo "Could not find ForelApp in $products_dir after swift build" >&2
     exit 1
   fi
-  resource_bundle="$(find "$build_root" -type d -path "*/$config/*_ForelApp.bundle" -print -quit)"
+  resource_bundle="$products_dir/Forel_ForelApp.bundle"
 
   contents_dir="$dest_app/Contents"
   macos_dir="$contents_dir/MacOS"
@@ -89,7 +88,7 @@ assemble_app_bundle() {
 
   cp "$binary_path" "$macos_dir/ForelApp"
   chmod +x "$macos_dir/ForelApp"
-  if [[ -n "$resource_bundle" ]]; then
+  if [[ -d "$resource_bundle" ]]; then
     cp -R "$resource_bundle" "$resources_dir/"
   fi
 }
@@ -162,12 +161,15 @@ notarize_and_staple() {
 
 swift_release_build() {
   local build_arch="$1"
+  local build_args=(-c release)
 
   if [[ "$build_arch" == "universal" ]]; then
-    swift build -c release --arch arm64 --arch x86_64
+    build_args+=(--arch arm64 --arch x86_64)
   else
-    swift build -c release --arch "$build_arch"
+    build_args+=(--arch "$build_arch")
   fi
+  swift build "${build_args[@]}"
+  build_products_dir="$(swift build "${build_args[@]}" --show-bin-path)"
 }
 
 command="${1:-release}"
@@ -265,7 +267,8 @@ case "$command" in
     # terminal you're using) instead of Forel, making them unreliable to test.
     swift build
 
-    assemble_app_bundle "debug" "$dev_bundle"
+    build_products_dir="$(swift build --show-bin-path)"
+    assemble_app_bundle "$build_products_dir" "$dev_bundle"
     contents_dir="$dev_bundle/Contents"
     macos_dir="$contents_dir/MacOS"
 
@@ -329,15 +332,12 @@ case "$command" in
       generate_icns
     fi
 
-    build_config_dir="release"
-    if [[ "$arch" == "universal" ]]; then
-      build_config_dir="Release"
-    fi
-    assemble_app_bundle "$build_config_dir" "$bundle_root"
+    assemble_app_bundle "$build_products_dir" "$bundle_root"
     contents_dir="$bundle_root/Contents"
 
     if [[ "$arch" == "universal" ]]; then
-      lipo "$bundle_root/Contents/MacOS/ForelApp" -verify_arch arm64 x86_64
+      lipo "$bundle_root/Contents/MacOS/ForelApp" -verify_arch arm64
+      lipo "$bundle_root/Contents/MacOS/ForelApp" -verify_arch x86_64
     fi
 
     write_info_plist "$contents_dir" "$version_number" '  <key>CFBundleIconFile</key>
