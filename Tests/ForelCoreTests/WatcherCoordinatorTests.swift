@@ -511,4 +511,65 @@ import Foundation
 
         #expect(FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("busy.pdf")))
     }
+
+    @Test func stoppingAFolderDropsItsFilesStillWaitingToSettle() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let destination = try makePDFSortingFolder(db: db, dir: dir)
+        let file = dir.file("incoming.pdf", contents: "complete")
+        try FileManager.default.setAttributes([.creationDate: FileReadiness.busyCreationDate], ofItemAtPath: file)
+
+        let coordinator = WatcherCoordinator(db: db, settleInterval: 0.05)
+        coordinator.enqueue(event: .pathArrived(file))
+        Thread.sleep(forTimeInterval: 0.2)
+
+        // Pausing (or disabling/removing the folder) while the transfer is
+        // still in progress: the rule must not run once it completes.
+        coordinator.remove(dir.path)
+        try FileManager.default.setAttributes([.creationDate: Date()], ofItemAtPath: file)
+        coordinator.waitForPendingEvents()
+        Thread.sleep(forTimeInterval: 0.2)
+
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(!FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("incoming.pdf")))
+        #expect(try db.listHistory().isEmpty)
+    }
+
+    @Test func arrivingFolderIsNotMovedWhileAFileInsideIsStillBeingWritten() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let destination = dir.dir("Archive")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "archive exports")
+        rule.conditions = [makeCondition(.name, .is, "Export", ruleId: rule.id)]
+        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let incoming = dir.dir("Export")
+        let inner = (incoming as NSString).appendingPathComponent("data.bin")
+        FileManager.default.createFile(atPath: inner, contents: nil)
+        let movedPath = (destination as NSString).appendingPathComponent("Export")
+
+        let coordinator = WatcherCoordinator(db: db, settleInterval: 0.3)
+        coordinator.enqueue(event: .pathArrived(incoming))
+
+        // The folder's own size and modification time don't change while a
+        // file inside it grows.
+        let handle = try #require(FileHandle(forWritingAtPath: inner))
+        for _ in 0..<12 {
+            Thread.sleep(forTimeInterval: 0.08)
+            handle.seekToEndOfFile()
+            handle.write(Data("chunk".utf8))
+            #expect(FileManager.default.fileExists(atPath: incoming))
+            #expect(!FileManager.default.fileExists(atPath: movedPath))
+        }
+        try handle.close()
+
+        coordinator.waitForPendingEvents()
+
+        #expect(!FileManager.default.fileExists(atPath: incoming))
+        let movedInner = (movedPath as NSString).appendingPathComponent("data.bin")
+        #expect(try String(contentsOfFile: movedInner, encoding: .utf8) == String(repeating: "chunk", count: 12))
+    }
 }

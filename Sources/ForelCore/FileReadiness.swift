@@ -40,4 +40,47 @@ enum FileReadiness {
         let created = TimeInterval(st.st_birthtimespec.tv_sec)
         return abs(created - busyCreationDate.timeIntervalSince1970) <= busyTolerance
     }
+
+    /// What the watcher compares between two checks to decide an arriving
+    /// item has stopped changing. A folder's own size and modification time
+    /// only move when a direct child is added or removed, not while a file
+    /// inside it is still growing, so a folder is summarised by everything
+    /// it contains.
+    struct Snapshot: Equatable {
+        let fingerprint: String
+        let isMarkedBusy: Bool
+    }
+
+    static func snapshot(_ path: String) -> Snapshot? {
+        guard let own = FileFingerprint.current(path) else { return nil }
+        var isBusy = isMarkedBusy(path)
+
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue,
+              let contents = FileManager.default.enumerator(atPath: path) else {
+            return Snapshot(fingerprint: own, isMarkedBusy: isBusy)
+        }
+
+        var count = 0
+        var totalSize: Int64 = 0
+        var latestModification = timespec()
+        for case let child as String in contents {
+            var st = stat()
+            guard lstat((path as NSString).appendingPathComponent(child), &st) == 0 else { continue }
+            count += 1
+            totalSize &+= Int64(truncatingIfNeeded: st.st_size)
+            let modified = st.st_mtimespec
+            if (modified.tv_sec, modified.tv_nsec) > (latestModification.tv_sec, latestModification.tv_nsec) {
+                latestModification = modified
+            }
+            let created = TimeInterval(st.st_birthtimespec.tv_sec)
+            if abs(created - busyCreationDate.timeIntervalSince1970) <= busyTolerance {
+                isBusy = true
+            }
+        }
+        return Snapshot(
+            fingerprint: "\(own)|\(count)-\(totalSize)-\(latestModification.tv_sec)-\(latestModification.tv_nsec)",
+            isMarkedBusy: isBusy
+        )
+    }
 }

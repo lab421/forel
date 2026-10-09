@@ -43,6 +43,8 @@ public final class WatcherCoordinator: @unchecked Sendable {
     private let settleInterval: TimeInterval
     /// Paths waiting to settle. Only touched on `processingQueue`.
     private var settling: [String: SettlingState] = [:]
+    /// Folders currently watched. Only touched on `processingQueue`.
+    private var watchedRoots: Set<String> = []
     /// A file that stays marked busy without changing is a stalled or
     /// abandoned transfer; stop polling it after this many checks. A later
     /// event for the same path starts the wait again.
@@ -66,8 +68,37 @@ public final class WatcherCoordinator: @unchecked Sendable {
         }
     }
 
-    public func add(_ path: String) { watcher.add(path) }
-    public func remove(_ path: String) { watcher.remove(path) }
+    public func add(_ path: String) {
+        watcher.add(path)
+        processingQueue.async { [weak self] in
+            self?.watchedRoots.insert(path)
+        }
+    }
+
+    public func remove(_ path: String) {
+        watcher.remove(path)
+        processingQueue.async { [weak self] in
+            self?.stopSettling(under: path)
+        }
+    }
+
+    /// Stopping a folder's watcher (pause, disable, removal) must also drop
+    /// the files still waiting to settle under it; otherwise their rules
+    /// would run once the transfer completes, long after watching stopped.
+    /// Files that a still-watched nested folder covers keep waiting.
+    private func stopSettling(under root: String) {
+        watchedRoots.remove(root)
+        settling = settling.filter { path, _ in
+            !Self.isPath(path, under: root) || watchedRoots.contains { Self.isPath(path, under: $0) }
+        }
+    }
+
+    private static func isPath(_ path: String, under root: String) -> Bool {
+        let rootComponents = (root as NSString).pathComponents
+        let pathComponents = (path as NSString).pathComponents
+        return pathComponents.count >= rootComponents.count
+            && Array(pathComponents.prefix(rootComponents.count)) == rootComponents
+    }
 
     func enqueue(event: FileWatcherEvent) {
         processingQueue.async { [weak self] in
@@ -109,7 +140,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
         // A check is already scheduled; it will see the file's latest state.
         guard settling[path] == nil else { return }
         guard FileManager.default.fileExists(atPath: path), hasPathChangedSinceLastEvaluation(path) else { return }
-        settling[path] = SettlingState(fingerprint: FileFingerprint.current(path))
+        settling[path] = SettlingState(fingerprint: FileReadiness.snapshot(path)?.fingerprint)
         scheduleSettleCheck(path)
     }
 
@@ -121,16 +152,16 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
     private func checkSettled(_ path: String) {
         guard var state = settling[path] else { return }
-        guard let fingerprint = FileFingerprint.current(path) else {
+        guard let snapshot = FileReadiness.snapshot(path) else {
             settling[path] = nil
             return
         }
-        if fingerprint != state.fingerprint {
-            settling[path] = SettlingState(fingerprint: fingerprint)
+        if snapshot.fingerprint != state.fingerprint {
+            settling[path] = SettlingState(fingerprint: snapshot.fingerprint)
             scheduleSettleCheck(path)
             return
         }
-        if FileReadiness.isMarkedBusy(path) {
+        if snapshot.isMarkedBusy {
             guard state.stalledChecks < maxStalledChecks else {
                 settling[path] = nil
                 return
