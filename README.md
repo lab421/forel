@@ -130,6 +130,20 @@ To build and package the app, use the Swift package tooling and the existing rel
 6. Use **Dry Run** to preview matches and planned actions without changing files. Use **Run Now** to process existing files manually.
 7. Keep the rule enabled and **Watching** on for automatic processing — even when the window is closed. Review results in the history and use **Undo** for supported actions.
 
+### Example: lowercase filenames and replace spaces with underscores
+
+Add a watched folder and create an enabled rule with a **Kind → is → File** condition. Choose **Run script** and paste this Bash command:
+
+```bash
+file="$FOREL_FILE"; dir="${file%/*}"; name="${file##*/}"; new_name=$(printf '%s' "$name" | LC_ALL=C tr '[:upper:] ' '[:lower:]_'); target="$dir/$new_name"; if [ "$file" != "$target" ]; then if { [ -e "$target" ] || [ -L "$target" ]; } && ! [ "$file" -ef "$target" ]; then printf 'Cannot rename: destination exists: %s\n' "$target" >&2; exit 1; fi; mv "$file" "$target"; fi
+```
+
+For example, `My Report.PDF` becomes `my_report.pdf`. This example lowercases ASCII letters (including the extension), replaces each space with an underscore, and leaves the parent folder unchanged. It refuses to replace a different existing file and supports changes to letter case on a case-insensitive Mac volume. Already-normalized names are left alone.
+
+Forel runs `/bin/bash -c` **once per matching file**, with its **full path** in the `FOREL_FILE` environment variable. Always quote `"$FOREL_FILE"` to handle spaces and shell characters. No filenames are passed as positional arguments, and the script's working directory is not set to the watched folder. Do not use `for f in *`: Forel already iterates over matching files.
+
+Use **Dry Run** to check which files match, then **Run Now** to rename existing files. With **Watching** on, the same script runs automatically for arriving files. Dry Run does not execute scripts or predict their resulting names. Script actions cannot be undone by Forel, and Forel cannot track a path changed by a script, so keep this rename script as the last action in the rule. The native **Rename** action supports previews and Undo; its **Clean file name** option produces hyphens instead of underscores.
+
 ---
 
 ## Architecture
