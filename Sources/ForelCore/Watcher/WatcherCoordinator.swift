@@ -36,11 +36,28 @@ public final class WatcherCoordinator: @unchecked Sendable {
     private let processingQueue = DispatchQueue(label: "app.forel.watcher-processing")
     private let activeProcessingLock = NSLock()
     private var activeProcessingRoots: [String: Int] = [:]
+    /// How long a newly arrived file's size and modification time must stay
+    /// unchanged before rules run on it. FSEvents reports a file as soon as
+    /// it is created, which for an in-place transfer (AirDrop, a Finder copy,
+    /// a network download) is long before its contents are complete.
+    private let settleInterval: TimeInterval
+    /// Paths waiting to settle. Only touched on `processingQueue`.
+    private var settling: [String: SettlingState] = [:]
+    /// A file that stays marked busy without changing is a stalled or
+    /// abandoned transfer; stop polling it after this many checks. A later
+    /// event for the same path starts the wait again.
+    private let maxStalledChecks = 600
     public var onRuleMatched: (@Sendable (String, String) -> Void)?
     public var onActivity: (@Sendable (WatcherActivitySummary) -> Void)?
 
-    public init(db: Database) {
+    private struct SettlingState {
+        var fingerprint: String?
+        var stalledChecks = 0
+    }
+
+    public init(db: Database, settleInterval: TimeInterval = 1.0) {
         self.db = db
+        self.settleInterval = settleInterval
         var watcherRef: FileWatcher!
         watcherRef = FileWatcher(onEvent: { _ in })
         self.watcher = watcherRef
@@ -54,22 +71,77 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
     func enqueue(event: FileWatcherEvent) {
         processingQueue.async { [weak self] in
-            self?.handle(event: event)
+            self?.handle(event: event, waitsForSettledFiles: true)
         }
     }
 
-    /// Test synchronization point for events already accepted by `enqueue`.
+    /// Test synchronization point for events already accepted by `enqueue`,
+    /// including files still waiting to settle.
     func waitForPendingEvents() {
+        while processingQueue.sync(execute: { !settling.isEmpty }) {
+            Thread.sleep(forTimeInterval: max(settleInterval / 4, 0.01))
+        }
         processingQueue.sync {}
     }
 
-    func handle(event: FileWatcherEvent) {
+    /// Processes `event`. Live watcher events wait for each file to settle
+    /// first; passing `false` evaluates the files as they are right now.
+    func handle(event: FileWatcherEvent, waitsForSettledFiles: Bool = false) {
         switch event {
         case .pathArrived(let path):
-            handle(path: path)
+            if waitsForSettledFiles {
+                awaitSettled(path)
+            } else {
+                handle(path: path)
+            }
         case .rescanSubtree(let path):
-            handleRescanSubtree(root: path)
+            handleRescanSubtree(root: path, waitsForSettledFiles: waitsForSettledFiles)
         }
+    }
+
+    /// Runs rules on `path` once its fingerprint has stayed the same for a
+    /// full `settleInterval` and nothing marks it as still being written.
+    private func awaitSettled(_ path: String) {
+        guard settleInterval > 0 else {
+            handle(path: path)
+            return
+        }
+        // A check is already scheduled; it will see the file's latest state.
+        guard settling[path] == nil else { return }
+        guard FileManager.default.fileExists(atPath: path), hasPathChangedSinceLastEvaluation(path) else { return }
+        settling[path] = SettlingState(fingerprint: FileFingerprint.current(path))
+        scheduleSettleCheck(path)
+    }
+
+    private func scheduleSettleCheck(_ path: String) {
+        processingQueue.asyncAfter(deadline: .now() + settleInterval) { [weak self] in
+            self?.checkSettled(path)
+        }
+    }
+
+    private func checkSettled(_ path: String) {
+        guard var state = settling[path] else { return }
+        guard let fingerprint = FileFingerprint.current(path) else {
+            settling[path] = nil
+            return
+        }
+        if fingerprint != state.fingerprint {
+            settling[path] = SettlingState(fingerprint: fingerprint)
+            scheduleSettleCheck(path)
+            return
+        }
+        if FileReadiness.isMarkedBusy(path) {
+            guard state.stalledChecks < maxStalledChecks else {
+                settling[path] = nil
+                return
+            }
+            state.stalledChecks += 1
+            settling[path] = state
+            scheduleSettleCheck(path)
+            return
+        }
+        settling[path] = nil
+        handle(path: path)
     }
 
     public func isProcessing(in root: String) -> Bool {
@@ -176,11 +248,11 @@ public final class WatcherCoordinator: @unchecked Sendable {
         }
     }
 
-    private func handleRescanSubtree(root: String) {
+    private func handleRescanSubtree(root: String, waitsForSettledFiles: Bool) {
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir) else { return }
         guard isDir.boolValue else {
-            handle(path: root)
+            handle(event: .pathArrived(root), waitsForSettledFiles: waitsForSettledFiles)
             return
         }
 
@@ -194,9 +266,19 @@ public final class WatcherCoordinator: @unchecked Sendable {
         beginProcessing(root: folder.path)
         defer { endProcessing(root: folder.path) }
 
+        // A rescan can find files that are still being written just like a
+        // live arrival can, so each one goes through the same wait.
+        let process: (String, Int) -> Void = { [self] path, depth in
+            if waitsForSettledFiles {
+                awaitSettled(path)
+            } else {
+                handle(path: path, depth: depth, rules: rules, watchedRoot: folder.path)
+            }
+        }
+
         let maxDepth = RuleEngine.maxRuleDepth(rules)
         if root != folder.path, !SystemFileFilter.isExcluded((root as NSString).lastPathComponent) {
-            handle(path: root, depth: rootDepth, rules: rules, watchedRoot: folder.path)
+            process(root, rootDepth)
         }
 
         let remainingDepth: Int?
@@ -210,7 +292,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
         RuleEngine.forEachEntry(root: root, maxDepth: remainingDepth) { entry in
             guard let depth = RuleEngine.pathDepth(root: folder.path, path: entry.path) else { return }
-            handle(path: entry.path, depth: depth, rules: rules, watchedRoot: folder.path)
+            process(entry.path, depth)
         }
     }
 

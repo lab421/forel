@@ -17,6 +17,7 @@ All notable changes to Forel are documented here. Format loosely follows
 - The menu bar icon now appears when Forel starts at login, without having to reopen the app.
 - Rules with a Size condition no longer crash when the entered size is an extremely large number.
 - Rules no longer move or change macOS system files such as a folder's custom icon file, so folders keep their custom icons. iCloud placeholders, volume system folders, and Windows `Thumbs.db` / `desktop.ini` files are ignored too.
+- Automatic rules now wait until an arriving file has finished being written before acting on it, so AirDrop transfers, Finder copies, and other in-progress files are no longer moved while incomplete or left behind as empty duplicates. Files still being copied by Finder are also skipped by Dry Run and Run Now.
 
 ## [1.0.9] - 2026-10-02
 
