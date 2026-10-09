@@ -25,6 +25,24 @@ import Testing
         #expect(SystemFileFilter.isExcluded("~$budget.docx")) // Office lock file
     }
 
+    @Test func excludesSystemMetadataFiles() {
+        #expect(SystemFileFilter.isExcluded("Icon\r")) // custom folder icon
+        #expect(SystemFileFilter.isExcluded(".localized"))
+        #expect(SystemFileFilter.isExcluded(".VolumeIcon.icns"))
+        #expect(SystemFileFilter.isExcluded(".Spotlight-V100"))
+        #expect(SystemFileFilter.isExcluded(".fseventsd"))
+        #expect(SystemFileFilter.isExcluded(".Trashes"))
+        #expect(SystemFileFilter.isExcluded(".TemporaryItems"))
+        #expect(SystemFileFilter.isExcluded(".DocumentRevisions-V100"))
+        #expect(SystemFileFilter.isExcluded(".apdisk"))
+        #expect(SystemFileFilter.isExcluded(".AppleDouble"))
+        #expect(SystemFileFilter.isExcluded("Network Trash Folder"))
+        #expect(SystemFileFilter.isExcluded("Temporary Items"))
+        #expect(SystemFileFilter.isExcluded("Thumbs.db"))
+        #expect(SystemFileFilter.isExcluded("desktop.ini"))
+        #expect(SystemFileFilter.isExcluded(".report.pdf.icloud")) // iCloud placeholder
+    }
+
     @Test func excludesIncompleteBrowserDownloads() {
         #expect(SystemFileFilter.isExcluded("report.pdf.crdownload"))
         #expect(SystemFileFilter.isExcluded("Unconfirmed 123456.crdownload"))
@@ -46,5 +64,9 @@ import Testing
         #expect(!SystemFileFilter.isExcluded("budget.docx"))
         #expect(!SystemFileFilter.isExcluded("invoice_march_2026.pdf"))
         #expect(!SystemFileFilter.isExcluded("downloaded-report.pdf"))
+        #expect(!SystemFileFilter.isExcluded("Icon"))
+        #expect(!SystemFileFilter.isExcluded("Icon.png"))
+        #expect(!SystemFileFilter.isExcluded("backup.icloud"))
+        #expect(!SystemFileFilter.isExcluded(".env"))
     }
 }

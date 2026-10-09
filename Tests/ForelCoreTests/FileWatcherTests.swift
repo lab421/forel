@@ -46,4 +46,11 @@ import Testing
         #expect(!FileWatcher.shouldReportEvent(path: "/tmp/report.pdf.crdownload", flags: UInt32(kFSEventStreamEventFlagItemRenamed)))
         #expect(FileWatcher.reportedEvent(path: "/tmp/report.pdf.download", flags: UInt32(kFSEventStreamEventFlagMustScanSubDirs)) == nil)
     }
+
+    @Test func doesNotReportSystemMetadataArrivals() {
+        #expect(!FileWatcher.shouldReportEvent(path: "/tmp/Projects/Icon\r", flags: UInt32(kFSEventStreamEventFlagItemCreated)))
+        #expect(!FileWatcher.shouldReportEvent(path: "/tmp/Projects/Icon\r", flags: UInt32(kFSEventStreamEventFlagItemRenamed)))
+        #expect(FileWatcher.reportedEvent(path: "/tmp/Projects/.localized", flags: UInt32(kFSEventStreamEventFlagItemCreated)) == nil)
+        #expect(FileWatcher.reportedEvent(path: "/tmp/Projects/Icon.png", flags: UInt32(kFSEventStreamEventFlagItemCreated)) == .pathArrived("/tmp/Projects/Icon.png"))
+    }
 }
