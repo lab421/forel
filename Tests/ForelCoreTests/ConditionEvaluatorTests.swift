@@ -33,6 +33,22 @@ import Darwin
         #expect(!ConditionEvaluator.evaluate(makeCondition(.sizeBytes, .greaterThan, "1 KB"), path: file))
     }
 
+    @Test func sizeConditionSaturatesOversizedThresholds() throws {
+        let dir = TempDir()
+        let file = dir.file("data.bin", contents: "1234567890")
+
+        let oversized = [
+            "99999999999999999999999999",
+            "99999999999999999999 GB",
+            String(repeating: "9", count: 400),
+            String(repeating: "9", count: 400) + " GB",
+        ]
+        for value in oversized {
+            #expect(ConditionEvaluator.evaluate(makeCondition(.sizeBytes, .lessThan, value), path: file))
+            #expect(!ConditionEvaluator.evaluate(makeCondition(.sizeBytes, .greaterThan, value), path: file))
+        }
+    }
+
     @Test func stringOperatorsWorkAcrossNameExtensionAndContents() throws {
         let dir = TempDir()
         let file = dir.file("invoice-2026.PDF", contents: "paid in full")

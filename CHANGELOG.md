@@ -15,6 +15,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Fixed
 - The menu bar icon now appears when Forel starts at login, without having to reopen the app.
+- Rules with a Size condition no longer crash when the entered size is an extremely large number.
 
 ## [1.0.9] - 2026-10-02
 
