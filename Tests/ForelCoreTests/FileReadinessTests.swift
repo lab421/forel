@@ -86,12 +86,9 @@ import Testing
         let db = try Database(path: ":memory:")
         let folder = WatchedFolder(path: dir.path)
         try db.insertFolder(folder)
-        let rule = makeRule(
-            folderId: folder.id,
-            name: "archive exports",
-            conditions: [makeCondition(.name, .is, "Export")],
-            actions: [makeAction(.moveToFolder, .object(["destination": .string(destination)]))]
-        )
+        var rule = makeRule(folderId: folder.id, name: "archive exports")
+        rule.conditions = [makeCondition(.name, .is, "Export", ruleId: rule.id)]
+        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 0, ruleId: rule.id)]
         try db.insertRule(rule)
         let coordinator = WatcherCoordinator(db: db, settleInterval: 0.05)
         coordinator.enqueue(event: .pathArrived(incoming))
