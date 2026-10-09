@@ -848,7 +848,13 @@ private struct ActionRow: View {
         case .setColorLabel:
             ColorLabelPicker(selection: paramBinding(ActionParam.color), allowNone: true)
         case .runScript:
-            GlassField(placeholder: "Bash script (file path in $FOREL_FILE)", text: paramBinding(ActionParam.script))
+            VStack(alignment: .leading, spacing: 6) {
+                GlassField(placeholder: "Bash script (file path in $FOREL_FILE)", text: paramBinding(ActionParam.script))
+                Text("Runs once per matching file. Use \"$FOREL_FILE\" for its full path. Dry Run does not execute scripts; script changes cannot be undone.")
+                    .font(.caption)
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .textSelection(.enabled)
+            }
         case .runShortcut:
             ShortcutPicker(selection: paramBinding(ActionParam.shortcutName))
         case .openApplication:
