@@ -41,6 +41,74 @@ import Testing
         #expect(!FileReadiness.isMarkedBusy("/nonexistent/forel/incoming.pdf"))
     }
 
+    @Test(arguments: [ActionKind.moveToFolder, .copyToFolder])
+    func folderWithBusyDescendantIsIgnoredByRunAndPreview(action: ActionKind) throws {
+        let dir = TempDir()
+        let incoming = dir.dir("Export")
+        let nested = dir.dir("Export/Nested")
+        let child = (nested as NSString).appendingPathComponent("data.bin")
+        try "partial".write(toFile: child, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.creationDate: FileReadiness.busyCreationDate], ofItemAtPath: child)
+        let destination = dir.dir("Archive")
+        let resultPath = (destination as NSString).appendingPathComponent("Export")
+        let rule = makeRule(
+            name: "archive exports",
+            conditions: [makeCondition(.name, .is, "Export")],
+            actions: [makeAction(action, .object(["destination": .string(destination)]))]
+        )
+
+        #expect(!FileReadiness.isMarkedBusy(incoming))
+        #expect(FileReadiness.snapshot(incoming)?.isMarkedBusy == true)
+        #expect(RuleEngine.previewFile(path: incoming, depth: 0, rules: [rule]) == nil)
+        let (matched, history) = RuleEngine.run(path: incoming, depth: 0, rules: [rule], batchId: "batch")
+        #expect(matched.isEmpty)
+        #expect(history.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: child))
+        #expect(!FileManager.default.fileExists(atPath: resultPath))
+
+        try "complete".write(toFile: child, atomically: false, encoding: .utf8)
+        try FileManager.default.setAttributes([.creationDate: Date()], ofItemAtPath: child)
+        #expect(RuleEngine.previewFile(path: incoming, depth: 0, rules: [rule]) != nil)
+        #expect(RuleEngine.run(path: incoming, depth: 0, rules: [rule], batchId: "batch").matched == ["archive exports"])
+        let resultChild = (resultPath as NSString).appendingPathComponent("Nested/data.bin")
+        #expect(try String(contentsOfFile: resultChild, encoding: .utf8) == "complete")
+    }
+
+    @Test func watcherWaitsForBusyDescendantOfArrivingFolder() throws {
+        let dir = TempDir()
+        let incoming = dir.dir("Export")
+        let nested = dir.dir("Export/Nested")
+        let child = (nested as NSString).appendingPathComponent("data.bin")
+        try "partial".write(toFile: child, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.creationDate: FileReadiness.busyCreationDate], ofItemAtPath: child)
+        let destination = dir.dir("Archive")
+        let resultPath = (destination as NSString).appendingPathComponent("Export")
+        let db = try Database(path: ":memory:")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        let rule = makeRule(
+            folderId: folder.id,
+            name: "archive exports",
+            conditions: [makeCondition(.name, .is, "Export")],
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(destination)]))]
+        )
+        try db.insertRule(rule)
+        let coordinator = WatcherCoordinator(db: db, settleInterval: 0.05)
+        coordinator.enqueue(event: .pathArrived(incoming))
+        Thread.sleep(forTimeInterval: 0.3)
+        #expect(FileManager.default.fileExists(atPath: child))
+        #expect(!FileManager.default.fileExists(atPath: resultPath))
+        #expect(try db.listHistory().isEmpty)
+
+        try "complete".write(toFile: child, atomically: false, encoding: .utf8)
+        try FileManager.default.setAttributes([.creationDate: Date()], ofItemAtPath: child)
+        coordinator.waitForPendingEvents()
+        #expect(!FileManager.default.fileExists(atPath: incoming))
+        let resultChild = (resultPath as NSString).appendingPathComponent("Nested/data.bin")
+        #expect(try String(contentsOfFile: resultChild, encoding: .utf8) == "complete")
+        #expect(try db.listHistory().count == 1)
+    }
+
     @Test func busyFileIsIgnoredByRunPreviewAndStaysInPlace() throws {
         let dir = TempDir()
         let file = dir.file("incoming.pdf")
