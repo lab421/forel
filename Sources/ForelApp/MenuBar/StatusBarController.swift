@@ -29,7 +29,7 @@ final class StatusBarController: NSObject {
     private let model: AppModel
     private let updater: UpdaterManager
     private let license: ForelLicenseManager
-    private weak var window: NSWindow?
+    private let onOpenMainWindow: () -> Void
     private var popover: NSPopover?
     private var localDismissMonitor: Any?
     private var globalDismissMonitor: Any?
@@ -38,12 +38,12 @@ final class StatusBarController: NSObject {
     private var licenseSubscription: AnyCancellable?
     private var onOpenLicense: (() -> Void)?
 
-    init(model: AppModel, updater: UpdaterManager, license: ForelLicenseManager, window: NSWindow?, onOpenLicense: (() -> Void)? = nil) {
+    init(model: AppModel, updater: UpdaterManager, license: ForelLicenseManager, onOpenMainWindow: @escaping () -> Void, onOpenLicense: (() -> Void)? = nil) {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         self.model = model
         self.updater = updater
         self.license = license
-        self.window = window
+        self.onOpenMainWindow = onOpenMainWindow
         self.onOpenLicense = onOpenLicense
         super.init()
 
@@ -80,7 +80,7 @@ final class StatusBarController: NSObject {
         var panel = QuickPanelView(
             onOpenMainWindow: { [weak self] in
                 self?.popover?.performClose(nil)
-                self?.openForel()
+                self?.onOpenMainWindow()
             },
             onQuit: { NSApp.terminate(nil) }
         )
@@ -147,11 +147,6 @@ final class StatusBarController: NSObject {
     private func closePopover() {
         guard let popover, popover.isShown else { return }
         popover.performClose(nil)
-    }
-
-    private func openForel() {
-        let targetWindow = window ?? NSApp.windows.first { !($0 is NSPanel) }
-        WindowActivation.activateSoon(targetWindow, showsDockIcon: model.showDockIcon)
     }
 
     /// Menu bar glyph: a crisp vector `leaf.fill` SF Symbol, with a colour dot

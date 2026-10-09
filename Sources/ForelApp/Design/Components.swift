@@ -193,28 +193,6 @@ struct ForelSwitch: View {
     }
 }
 
-/// Small stat tile, e.g. "Rules — 4", used for the activity summary row.
-struct StatTile: View {
-    let icon: String
-    let label: String
-    let value: String
-    var tint: Color = ForelTheme.primaryText
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 10)).foregroundStyle(ForelTheme.secondaryText)
-                Text(label).font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
-            }
-            Text(value).font(.system(size: 18, weight: .bold)).foregroundStyle(tint)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ForelTheme.surface))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
-    }
-}
-
 /// A watched-folder row: icon, name, enabled switch — laid out like the
 /// volume-mixer rows in the reference design.
 struct QuickFolderRow: View {

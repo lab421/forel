@@ -35,4 +35,18 @@ public enum HistoryTimestampFormatter {
             )
         )
     }
+
+    /// Short relative label ("2 min. ago") for compact surfaces like the
+    /// menu-bar quick panel, following the Mac's current locale.
+    public static func relative(
+        _ timestamp: String,
+        relativeTo now: Date = Date(),
+        locale: Locale = .autoupdatingCurrent
+    ) -> String? {
+        guard let date = ISO8601DateFormatter().date(from: timestamp) else { return nil }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = locale
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: now)
+    }
 }

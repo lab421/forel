@@ -316,7 +316,7 @@ public enum ConditionEvaluator {
     private static func parseSize(_ value: String) -> UInt64 {
         let s = value.trimmingCharacters(in: .whitespaces)
         guard let splitIndex = s.firstIndex(where: { !$0.isNumber && $0 != "." }) else {
-            return UInt64(Double(s) ?? 0)
+            return clampedBytes(Double(s) ?? 0)
         }
         let numPart = String(s[s.startIndex..<splitIndex]).trimmingCharacters(in: .whitespaces)
         let unitPart = String(s[splitIndex...]).trimmingCharacters(in: .whitespaces).lowercased()
@@ -328,7 +328,16 @@ public enum ConditionEvaluator {
         case "gb": multiplier = 1024 * 1024 * 1024
         default: multiplier = 1
         }
-        return UInt64(n * multiplier)
+        return clampedBytes(n * multiplier)
+    }
+
+    /// A checked `UInt64(...)` conversion traps on values that don't fit
+    /// (a very long digit string parses to a huge or infinite `Double`), so
+    /// an oversized threshold saturates instead of crashing the rule run.
+    private static func clampedBytes(_ value: Double) -> UInt64 {
+        guard value > 0 else { return 0 }
+        guard value < Double(UInt64.max) else { return .max }
+        return UInt64(value)
     }
 
     private static func tagName(_ tag: String) -> String {

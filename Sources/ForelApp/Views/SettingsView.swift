@@ -179,15 +179,45 @@ struct SettingsView: View {
             GlassCard {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Forel").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
-                        Text("Open-source file automation for macOS").font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
+                        Text(AppInfo.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
+                        Text(AppInfo.tagline).font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
                     }
                     Spacer()
                 }
                 .padding(.vertical, 10)
                 .padding(.horizontal, 14)
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                aboutRow(title: "Version", value: AppInfo.version)
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                aboutRow(title: "Build", value: AppInfo.build)
+                if let copyright = AppInfo.copyright {
+                    Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                    aboutRow(title: "Copyright", value: copyright)
+                }
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                HStack {
+                    Text("GitHub Repository").font(.system(size: 13)).foregroundStyle(ForelTheme.primaryText)
+                    Spacer()
+                    Link("lab421/forel", destination: AppInfo.repositoryURL)
+                        .font(.system(size: 12))
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
             }
         }
+    }
+
+    private func aboutRow(title: String, value: String) -> some View {
+        HStack {
+            Text(title).font(.system(size: 13)).foregroundStyle(ForelTheme.primaryText)
+            Spacer()
+            Text(value)
+                .font(.system(size: 12))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .textSelection(.enabled)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
     }
 
     private var accentBinding: Binding<AccentPreset> {
@@ -234,7 +264,7 @@ struct SettingsView: View {
     }
 
     private var versionSubtitle: String {
-        let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "alpha"
+        let current = AppInfo.version
         if updater.isChecking { return "\(current) — Checking…" }
         return current
     }

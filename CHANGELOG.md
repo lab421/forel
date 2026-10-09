@@ -3,6 +3,20 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- The menu bar quick panel now shows recent activity across all folders, showing the 10 latest actions first and loading more as you scroll.
+
+### Changed
+- The menu bar quick panel no longer shows the Last 30 Days success and failure counters, and its folder, rule, and history counts now appear in a simpler Overview row.
+- The menu bar quick panel now counts the rules of all folders instead of only the folder selected in the main window.
+- Settings → About now shows the version, build, copyright, and repository link, matching the About Forel window.
+
+### Fixed
+- The menu bar icon now appears when Forel starts at login, without having to reopen the app.
+- Rules with a Size condition no longer crash when the entered size is an extremely large number.
+
 ## [1.0.9] - 2026-10-02
 
 ### Changed
