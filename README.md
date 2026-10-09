@@ -209,6 +209,7 @@ History / Undo (SQLite)
 - [ ] Copy rules accros watching folders
 - [ ] Compress actions
 - [ ] Sync actions
+- [ ] Dynamic destination folders with date tokens (e.g. `~/Screenshots/{year}/{month}`)
 - [ ] Upload actions
 - [ ] AI features
 
