@@ -185,7 +185,7 @@ public enum ActionExecutor {
     public static func execute(_ action: Action, path: String) throws -> Applied {
         switch action.kind {
         case .moveToFolder:
-            let destDir = try stringParam(action, ActionParam.destination, "MoveToFolder")
+            let destDir = try expandedDestination(action, path: path, "MoveToFolder")
             return try moveIntoDir(path: path, destDir: destDir, resolution: conflictResolution(action))
         case .copyToFolder:
             return try copyToFolder(action, path: path)
@@ -222,6 +222,15 @@ public enum ActionExecutor {
         return value
     }
 
+    /// Resolves a Move/Copy action's destination folder, substituting any
+    /// `{year}`/`{month}`/`{day}`/etc. tokens against `path` via
+    /// `TokenExpander` — e.g. `.../Backup/{year}-{month}` becomes
+    /// `.../Backup/2026-07`.
+    private static func expandedDestination(_ action: Action, path: String, _ kind: String) throws -> String {
+        let raw = try stringParam(action, ActionParam.destination, kind)
+        return try TokenExpander.expand(raw, path: path)
+    }
+
     /// Moves `path` into `destDir` (created if needed). `resolution` decides
     /// what happens if a file with the same name is already there (see
     /// `resolveDestination`). Trash/delete have no user-facing conflict
@@ -236,7 +245,7 @@ public enum ActionExecutor {
     }
 
     private static func copyToFolder(_ action: Action, path: String) throws -> Applied {
-        let destDir = try stringParam(action, ActionParam.destination, "CopyToFolder")
+        let destDir = try expandedDestination(action, path: path, "CopyToFolder")
         try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
         let fileName = (path as NSString).lastPathComponent
         let naiveDest = (destDir as NSString).appendingPathComponent(fileName)
@@ -871,7 +880,8 @@ public enum ActionExecutor {
 
         switch action.kind {
         case .moveToFolder:
-            let destDir = action.params[ActionParam.destination]?.stringValue ?? ""
+            let rawDestDir = action.params[ActionParam.destination]?.stringValue ?? ""
+            let destDir = try TokenExpander.expand(rawDestDir, path: path)
 
             // A file already directly in its destination folder is a no-op,
             // never a rename-to-avoid-itself collision — and since nothing
@@ -922,7 +932,8 @@ public enum ActionExecutor {
                 isTerminal: true
             )
         case .copyToFolder:
-            let destDir = action.params[ActionParam.destination]?.stringValue ?? ""
+            let rawDestDir = action.params[ActionParam.destination]?.stringValue ?? ""
+            let destDir = try TokenExpander.expand(rawDestDir, path: path)
             let naiveTarget = (destDir as NSString).appendingPathComponent(fileName)
             let resolution = conflictResolution(action)
             let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
@@ -1312,44 +1323,12 @@ public enum ActionExecutor {
         (path as NSString).standardizingPath
     }
 
-    private static func formatFileSize(_ bytes: UInt64) -> String {
-        let kb: Double = 1024
-        let mb = 1024 * kb
-        let gb = 1024 * mb
-        let value = Double(bytes)
-        if value >= gb { return String(format: "%.1fGB", value / gb) }
-        if value >= mb { return String(format: "%.1fMB", value / mb) }
-        if value >= kb { return String(format: "%.1fKB", value / kb) }
-        return "\(bytes)B"
-    }
-
-    /// Substitutes tokens in rename patterns. Supported tokens: `{name}`,
-    /// `{extension}`, `{date_created}`, `{date_modified}`, `{current_date}`, `{size}`.
+    /// Substitutes tokens in rename patterns via `TokenExpander`. Supported
+    /// tokens: `{name}`, `{extension}`, `{current_date}`, `{year}`,
+    /// `{month}`, `{day}`, `{date_created}`, `{date_modified}`, `{size}`.
     private static func applyRenamePattern(_ pattern: String, path: String) throws -> String {
-        let url = URL(fileURLWithPath: path)
-        let stem = url.deletingPathExtension().lastPathComponent
-        let ext = url.pathExtension
-        let today = Date()
-
-        let dayFormatter = DateFormatter()
-        dayFormatter.dateFormat = "yyyy-MM-dd"
-        dayFormatter.timeZone = .current
-
-        var result = pattern
-            .replacingOccurrences(of: "{name}", with: stem)
-            .replacingOccurrences(of: "{extension}", with: ext)
-            .replacingOccurrences(of: "{current_date}", with: dayFormatter.string(from: today))
-
-        if result.contains("{date_modified}") || result.contains("{date_created}") || result.contains("{size}") {
-            let attrs = try FileManager.default.attributesOfItem(atPath: path)
-            let modified = (attrs[.modificationDate] as? Date) ?? Date()
-            let created = (attrs[.creationDate] as? Date) ?? Date()
-            let size = (attrs[.size] as? UInt64) ?? 0
-            result = result
-                .replacingOccurrences(of: "{date_modified}", with: dayFormatter.string(from: modified))
-                .replacingOccurrences(of: "{date_created}", with: dayFormatter.string(from: created))
-                .replacingOccurrences(of: "{size}", with: formatFileSize(size))
-        }
+        let ext = URL(fileURLWithPath: path).pathExtension
+        var result = try TokenExpander.expand(pattern, path: path)
 
         if result.isEmpty {
             throw ActionError("rename pattern produced empty filename")
