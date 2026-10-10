@@ -25,6 +25,8 @@ enum ForelTheme {
                                   dark: NSColor(red: 0.07, green: 0.07, blue: 0.10, alpha: 1))
     /// Mutable so the user can change it from Settings; defaults to the same
     static var accent: Color = AccentPreset.blue.color
+    static let pro = Color(light: NSColor(red: 0.40, green: 0.20, blue: 0.72, alpha: 1),
+                           dark: NSColor(red: 0.75, green: 0.62, blue: 1.0, alpha: 1))
     static let success = Color(red: 0.20, green: 0.78, blue: 0.35)
     static let danger = Color(red: 1.0, green: 0.27, blue: 0.23)
     static let primaryText = Color(light: NSColor(red: 0.10, green: 0.11, blue: 0.14, alpha: 1),

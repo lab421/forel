@@ -14,6 +14,46 @@ import Testing
         #expect(await client.calls == 0)
     }
 
+    @Test func freeRestartSkipsKeychainAndProStillRestoresOffline() async throws {
+        let suite = "com.lab421.forel.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let backing = Store()
+        var startupReadsDenied = false
+        func secureStore() -> ForelKeychainLicenseStore {
+            ForelKeychainLicenseStore(service: "test", defaults: defaults, secureStore: backing) {
+                if startupReadsDenied { throw URLError(.userAuthenticationRequired) }
+                return try backing.load()
+            }
+        }
+        let key = Curve25519.Signing.PrivateKey()
+        let client = PaidClient(token: try token(key: key))
+        let free = manager(store: secureStore(), client: client, publicKey: key.publicKey.rawRepresentation)
+        #expect(free.state == .free)
+        #expect(backing.loads == 1)
+        let restartedFree = manager(store: secureStore(), client: client, publicKey: key.publicKey.rawRepresentation)
+        restartedFree.start()
+        await Task.yield()
+        #expect(restartedFree.state == .free)
+        #expect(backing.loads == 1)
+        #expect(await client.calls == 0)
+        await restartedFree.activate(licenseKey: "PRO-KEY")
+        #expect(restartedFree.state == .pro)
+        // A new local signature cannot read silently, but a previously
+        // activated license must still restore with authorization, offline.
+        startupReadsDenied = true
+        await client.setUnavailable()
+        let restartedPro = manager(store: secureStore(), client: client, publicKey: key.publicKey.rawRepresentation)
+        #expect(restartedPro.state == .pro)
+        #expect(restartedPro.lastError == nil)
+        #expect(backing.loads == 2)
+        await client.setValid()
+        await restartedPro.deactivate()
+        let reads = backing.loads
+        #expect(manager(store: secureStore(), client: client).state == .free)
+        #expect(backing.loads == reads)
+    }
+
     @Test func activationOfflineUseRevocationAndDeactivation() async throws {
         let key = Curve25519.Signing.PrivateKey()
         let store = Store()
@@ -48,7 +88,7 @@ import Testing
         #expect(manager.lastError != nil)
     }
 
-    private func manager(store: Store, client: PaidClient, publicKey: Data = Curve25519.Signing.PrivateKey().publicKey.rawRepresentation) -> ForelLicenseManager {
+    private func manager(store: any LicenseSecureStoring, client: PaidClient, publicKey: Data = Curve25519.Signing.PrivateKey().publicKey.rawRepresentation) -> ForelLicenseManager {
         ForelLicenseManager(isEnabled: true, productID: "forel", appName: "Forel", deviceNameFallback: "Mac", secureStore: store,
                             deviceIdentifierProvider: Device(), offlineTokenPublicKeyRaw: publicKey,
                             baseURL: URL(string: "http://localhost:8787/api/v1/license")!, client: client)
@@ -66,7 +106,8 @@ import Testing
 
 @MainActor private final class Store: LicenseSecureStoring {
     var record: LicenseRecord?
-    func load() throws -> LicenseRecord? { record }
+    var loads = 0
+    func load() throws -> LicenseRecord? { loads += 1; return record }
     func save(_ record: LicenseRecord) throws { self.record = record }
 }
 private struct Device: DeviceIdentifierProviding { let deviceID = "device" }

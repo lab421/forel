@@ -37,7 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         productID: ForelLicensing.productID,
         appName: ForelLicensing.appName,
         deviceNameFallback: "This Mac",
-        secureStore: KeychainLicenseStore(service: ForelLicensing.keychainService),
+        secureStore: ForelKeychainLicenseStore(
+            service: ForelLicensing.keychainService,
+            userDefaultsSuiteName: ForelLicensing.userDefaultsSuite
+        ),
         deviceIdentifierProvider: HardwareDeviceIdentifierProvider(userDefaultsSuiteName: ForelLicensing.userDefaultsSuite),
         offlineTokenPublicKeyRaw: ForelLicensing.productionPublicKeyRaw,
         baseURL: ForelLicensing.baseURL
