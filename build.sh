@@ -39,11 +39,12 @@ EOF
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$script_dir"
 dist_dir="$repo_root/dist/release"
-bundle_root="${TMPDIR:-/tmp}/Forel.app"
-dev_bundle="${TMPDIR:-/tmp}/Forel-dev.app"
-staging_root="${TMPDIR:-/tmp}/Forel-dmg"
+temp_root="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
+bundle_root="$temp_root/Forel.app"
+dev_bundle="$temp_root/Forel-dev.app"
+staging_root="$temp_root/Forel-dmg"
 icon_source="$repo_root/Sources/ForelApp/Resources/AppIcon.png"
-iconset_dir="${TMPDIR:-/tmp}/Forel.iconset"
+iconset_dir="$temp_root/Forel.iconset"
 icns_path="$repo_root/dist/Forel.icns"
 entitlements_path="$repo_root/Forel.entitlements"
 code_sign_identity="${CODE_SIGN_IDENTITY:--}"
@@ -297,7 +298,7 @@ if [[ "$notarize_requested" == true ]]; then
     echo "Notarization requires NOTARY_API_KEY_P8, NOTARY_KEY_ID, and NOTARY_ISSUER_ID" >&2
     exit 1
   fi
-  notary_work="$(mktemp -d "${TMPDIR:-/tmp}/Forel-notary.XXXXXX")"
+  notary_work="$(mktemp -d "$temp_root/Forel-notary.XXXXXX")"
   printf '%s' "$NOTARY_API_KEY_P8" | base64 --decode > "$notary_work/AuthKey.p8"
   chmod 600 "$notary_work/AuthKey.p8"
 fi

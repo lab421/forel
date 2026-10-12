@@ -39,6 +39,10 @@ struct SidebarView: View {
 
             HStack {
                 SectionLabel(title: "Watched Folders")
+                Text(model.isPro ? "\(model.folders.count)" : "\(model.folders.count)/\(FreePlan.folderLimit)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .help(model.isPro ? "Unlimited watched folders" : "Saved folders, including disabled folders")
                 Spacer()
                 Button(action: addFolder) {
                     Image(systemName: "plus")
@@ -92,6 +96,10 @@ struct SidebarView: View {
             Spacer(minLength: 0)
 
             HStack {
+                if !model.isPro {
+                    Button("Discover Pro") { model.proUpgrade = .folders }
+                        .buttonStyle(.link)
+                }
                 if #available(macOS 14.0, *) {
                     SettingsFooterLink()
                 } else {
@@ -227,7 +235,7 @@ struct SidebarView: View {
 
     private func addFolder() {
         guard model.canAddFolder else {
-            model.showNotice(title: "Free folder limit", message: "Forel Free supports 2 watched folders. Remove a folder or activate Pro to add another.")
+            model.proUpgrade = .folders
             return
         }
         if let path = FolderPicker.choose() {

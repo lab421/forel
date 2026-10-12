@@ -31,8 +31,7 @@ struct RuleListView: View {
             content
                 .sheet(item: $editingRule) { rule in
                     RuleEditorView(rule: rule, preferredHeight: editorHeight(for: proxy.size.height)) { saved in
-                        model.saveRule(saved)
-                        editingRule = nil
+                        if model.saveRule(saved) { editingRule = nil }
                     } onCancel: {
                         editingRule = nil
                     }
@@ -47,10 +46,15 @@ struct RuleListView: View {
         VStack(alignment: .leading, spacing: 14) {
             header
             if let notice = model.planNotice {
-                Text(notice)
+                HStack {
+                    Text(notice)
                     .font(.caption)
                     .foregroundStyle(ForelTheme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Discover Pro") { model.proUpgrade = .folders }
+                        .buttonStyle(.link)
+                }
             }
             if model.paused, model.selectedFolderId != nil {
                 pausedBanner
@@ -82,8 +86,15 @@ struct RuleListView: View {
                 List {
                     ForEach(Array(model.rules.enumerated()), id: \.element.id) { index, rule in
                         VStack(alignment: .leading, spacing: 4) {
-                            if !model.selectedFolderIsAllowed || (!model.isPro && index >= FreePlan.ruleLimit) {
-                                Text("Kept for Pro — not running")
+                            if !model.selectedFolderIsAllowed || (!model.isPro && FreePlan.requiredFeature(for: rule) != nil) {
+                                Button("Kept for Pro — not running") {
+                                    if let feature = FreePlan.requiredFeature(for: rule) {
+                                        model.proUpgrade = .feature(feature)
+                                    } else {
+                                        model.proUpgrade = .folders
+                                    }
+                                }
+                                    .buttonStyle(.link)
                                     .font(.caption)
                                     .foregroundStyle(ForelTheme.secondaryText)
                             }
@@ -127,7 +138,7 @@ struct RuleListView: View {
             title: selectedFolder.map { ($0.path as NSString).lastPathComponent } ?? "Rules",
             subtitle: model.selectedFolderId == nil
                 ? "Select a folder to manage its rules"
-                : "\(model.rules.count) rule\(model.rules.count == 1 ? "" : "s") · drag to reorder",
+                : "\(model.rules.count) rules · drag to reorder",
             systemImage: selectedFolder == nil ? nil : "folder.fill"
         ) {
             Button {
@@ -145,12 +156,16 @@ struct RuleListView: View {
         HStack(spacing: 8) {
             Button {
                 guard let folderId = model.selectedFolderId else { return }
+                guard model.canAddRule else {
+                    model.proUpgrade = .folders
+                    return
+                }
                 editingRule = Rule(folderId: folderId, name: "New Rule")
             } label: {
                 Label("New Rule", systemImage: "plus")
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(!model.canAddRule)
+            .disabled(model.selectedFolderId == nil)
 
             Button {
                 model.runNow()
@@ -244,13 +259,17 @@ struct RuleListView: View {
                     .multilineTextAlignment(.center)
                 Button {
                     guard let folderId = model.selectedFolderId else { return }
+                    guard model.canAddRule else {
+                        model.proUpgrade = .folders
+                        return
+                    }
                     editingRule = Rule(folderId: folderId, name: "New Rule")
                 } label: {
                     Label("New Rule", systemImage: "plus")
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.top, 8)
-                .disabled(!model.canAddRule)
+                .disabled(model.selectedFolderId == nil)
             }
         }
         .frame(maxWidth: .infinity)

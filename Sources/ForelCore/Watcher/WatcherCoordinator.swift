@@ -225,11 +225,11 @@ public final class WatcherCoordinator: @unchecked Sendable {
         guard FileManager.default.fileExists(atPath: path) else { return }
         guard hasPathChangedSinceLastEvaluation(path) else { return }
 
-        guard let (folder, rules) = db.withLock({ db -> (WatchedFolder, [Rule])? in
+        guard let (folder, rules, isPro) = db.withLock({ db -> (WatchedFolder, [Rule], Bool)? in
             guard let folder = try? db.folderForPath(path) else { return nil }
-            let rules = (try? db.executionRules(folderID: folder.id, isPro: isPro)) ?? []
+            let rules = (try? db.executionRules(folderID: folder.id, isPro: self.isPro)) ?? []
             guard !rules.isEmpty else { return nil }
-            return (folder, rules)
+            return (folder, rules, self.isPro)
         }) else { return }
 
         beginProcessing(root: folder.path)
@@ -237,7 +237,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
         guard let depth = RuleEngine.pathDepth(root: folder.path, path: path) else { return }
         let batchId = UUID().uuidString
-        let (matched, history) = RuleEngine.run(path: path, depth: depth, rules: rules, batchId: batchId, root: folder.path)
+        let (matched, history) = RuleEngine.run(path: path, depth: depth, rules: rules, batchId: batchId, root: folder.path, isPro: isPro)
         for ruleName in matched {
             onRuleMatched?(ruleName, path)
         }
@@ -323,11 +323,11 @@ public final class WatcherCoordinator: @unchecked Sendable {
             return
         }
 
-        guard let (folder, rules) = db.withLock({ db -> (WatchedFolder, [Rule])? in
+        guard let (folder, rules, isPro) = db.withLock({ db -> (WatchedFolder, [Rule], Bool)? in
             guard let folder = try? db.folderForPath(root) else { return nil }
-            let rules = (try? db.executionRules(folderID: folder.id, isPro: isPro)) ?? []
+            let rules = (try? db.executionRules(folderID: folder.id, isPro: self.isPro)) ?? []
             guard !rules.isEmpty else { return nil }
-            return (folder, rules)
+            return (folder, rules, self.isPro)
         }) else { return }
         guard let rootDepth = RuleEngine.pathDepth(root: folder.path, path: root) else { return }
 
@@ -340,7 +340,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
             if waitsForSettledFiles {
                 awaitSettled(path, includingContents: false)
             } else {
-                handle(path: path, depth: depth, rules: rules, watchedRoot: folder.path)
+                handle(path: path, depth: depth, rules: rules, watchedRoot: folder.path, isPro: isPro)
             }
         }
 
@@ -364,12 +364,12 @@ public final class WatcherCoordinator: @unchecked Sendable {
         }
     }
 
-    private func handle(path: String, depth: Int, rules: [Rule], watchedRoot: String) {
+    private func handle(path: String, depth: Int, rules: [Rule], watchedRoot: String, isPro: Bool) {
         guard FileManager.default.fileExists(atPath: path) else { return }
         guard hasPathChangedSinceLastEvaluation(path) else { return }
 
         let batchId = UUID().uuidString
-        let (matched, history) = RuleEngine.run(path: path, depth: depth, rules: rules, batchId: batchId, root: watchedRoot)
+        let (matched, history) = RuleEngine.run(path: path, depth: depth, rules: rules, batchId: batchId, root: watchedRoot, isPro: isPro)
         for ruleName in matched {
             onRuleMatched?(ruleName, path)
         }

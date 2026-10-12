@@ -25,6 +25,7 @@ struct RuleEditorView: View {
     @State private var rule: Rule
     @State private var showValidationErrors = false
     @State private var errorDismissTask: Task<Void, Never>?
+    @State private var upgradeContext: ProUpgradeContext?
     @EnvironmentObject private var model: AppModel
     private let preferredHeight: CGFloat
     let onSave: (Rule) -> Void
@@ -82,7 +83,7 @@ struct RuleEditorView: View {
                                 placeholder("No conditions — this rule matches every file in scope.")
                             }
                             ForEach($rule.conditions, id: \.id) { $condition in
-                                ConditionRow(condition: $condition) {
+                                ConditionRow(condition: $condition, onRequestUpgrade: { upgradeContext = .feature($0) }) {
                                     rule.conditions.removeAll { $0.id == condition.id }
                                 }
                             }
@@ -92,6 +93,9 @@ struct RuleEditorView: View {
 
                     HStack {
                         SectionLabel(title: "Actions")
+                        Text("\(rule.actions.count)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(ForelTheme.secondaryText)
                         Spacer()
                         Button {
                             rule.actions.append(Action(ruleId: rule.id, kind: .moveToFolder, params: .object(["destination": .string("")]), position: Int64(rule.actions.count)))
@@ -106,7 +110,7 @@ struct RuleEditorView: View {
                                 placeholder("No actions yet — add at least one to make this rule do something.")
                             }
                             ForEach($rule.actions, id: \.id) { $action in
-                                ActionRow(action: $action) {
+                                ActionRow(action: $action, onRequestUpgrade: { upgradeContext = .feature($0) }) {
                                     rule.actions.removeAll { $0.id == action.id }
                                 }
                             }
@@ -137,6 +141,10 @@ struct RuleEditorView: View {
                             showValidationErrors = false
                         }
                     } else {
+                        if !model.isPro, rule.enabled, let feature = FreePlan.requiredFeature(for: rule) {
+                            upgradeContext = .feature(feature)
+                            return
+                        }
                         showValidationErrors = false
                         errorDismissTask?.cancel()
                         onSave(rule)
@@ -151,6 +159,7 @@ struct RuleEditorView: View {
         .frame(width: 880, height: preferredHeight)
         .background(ForelTheme.background)
         .background(WindowActivationBridge(showsDockIcon: model.showDockIcon))
+        .sheet(item: $upgradeContext) { context in ProUpgradeView(context: context) }
     }
 
     private var conditionIssues: [RuleValidator.Issue] {
@@ -320,6 +329,8 @@ private struct ScopeEditor: View {
 
 private struct ConditionRow: View {
     @Binding var condition: Condition
+    @EnvironmentObject private var model: AppModel
+    let onRequestUpgrade: (ProFeature) -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -348,6 +359,15 @@ private struct ConditionRow: View {
                     .font(.system(size: 10))
                     .foregroundStyle(ForelTheme.secondaryText)
                     .padding(.leading, 2)
+            }
+            if condition.kind == .contents, !model.isPro {
+                HStack {
+                    Text("Document text is included in Free. Images and scanned PDFs require Pro OCR.")
+                        .font(.caption)
+                        .foregroundStyle(ForelTheme.secondaryText)
+                    Button("Unlock OCR") { onRequestUpgrade(.ocr) }
+                        .buttonStyle(.link)
+                }
             }
         }
     }
@@ -476,6 +496,8 @@ private struct ConditionOperatorMenu: View {
 
 private struct ActionKindMenu: View {
     @Binding var selection: ActionKind
+    @EnvironmentObject private var model: AppModel
+    let onRequestUpgrade: (ProFeature) -> Void
 
     var body: some View {
         RuleSelectMenu(title: selection.label) {
@@ -484,12 +506,15 @@ private struct ActionKindMenu: View {
                     Section(title) {
                         ForEach(group.kinds, id: \.self) { kind in
                             Button {
-                                selection = kind
+                                select(kind)
                             } label: {
                                 HStack {
                                     Image(systemName: kind.iconSystemName)
                                         .frame(width: 16)
                                     Text(kind.label)
+                                    if !model.isPro, FreePlan.requiredFeature(for: kind) != nil {
+                                        Label("Pro", systemImage: "lock.fill")
+                                    }
                                 }
                             }
                         }
@@ -497,17 +522,28 @@ private struct ActionKindMenu: View {
                 } else {
                     ForEach(group.kinds, id: \.self) { kind in
                         Button {
-                            selection = kind
+                            select(kind)
                         } label: {
                             HStack {
                                 Image(systemName: kind.iconSystemName)
                                     .frame(width: 16)
                                 Text(kind.label)
+                                if !model.isPro, FreePlan.requiredFeature(for: kind) != nil {
+                                    Label("Pro", systemImage: "lock.fill")
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+
+    private func select(_ kind: ActionKind) {
+        if !model.isPro, let feature = FreePlan.requiredFeature(for: kind) {
+            onRequestUpgrade(feature)
+        } else {
+            selection = kind
         }
     }
 }
@@ -795,15 +831,24 @@ private struct KindValuePicker: View {
 
 private struct ActionRow: View {
     @Binding var action: Action
+    @EnvironmentObject private var model: AppModel
+    let onRequestUpgrade: (ProFeature) -> Void
     let onDelete: () -> Void
     @State private var showingOptions = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            ActionKindMenu(selection: kindBinding)
+            ActionKindMenu(selection: kindBinding, onRequestUpgrade: onRequestUpgrade)
             .frame(minWidth: 160, alignment: .leading)
 
-            actionParams
+            Group {
+                if !model.isPro, let feature = FreePlan.requiredFeature(for: action.kind) {
+                    Button("Unlock \(feature.title)") { onRequestUpgrade(feature) }
+                        .buttonStyle(.link)
+                } else {
+                    actionParams
+                }
+            }
                 .frame(minWidth: 200, alignment: .leading)
                 .frame(minHeight: 32)
                 .layoutPriority(1)

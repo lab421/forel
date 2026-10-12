@@ -37,6 +37,7 @@ struct ForelMacApp: App {
                 .environmentObject(model)
                 .environmentObject(updater)
                 .environmentObject(appDelegate.license)
+                .environmentObject(appDelegate.settingsNavigation)
                 .frame(minWidth: 960, minHeight: 520)
                 .background(WindowAccessor { appDelegate.mainWindowDidAttach($0) })
                 .onAppear {

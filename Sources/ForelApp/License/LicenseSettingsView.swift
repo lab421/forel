@@ -42,6 +42,8 @@ struct LicenseSettingsView: View {
                     )
                 }
             } else {
+                SectionLabel(title: "Automate more with Pro")
+                ProBenefitsView()
                 SectionLabel(title: "Activate License")
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
@@ -50,9 +52,7 @@ struct LicenseSettingsView: View {
 
                         HStack {
                             Button("Buy Forel Pro") {
-                                if let url = URL(string: "https://forel.app") {
-                                    openURL(url)
-                                }
+                                openURL(ForelLicensing.purchaseURL)
                             }
                             .buttonStyle(.link)
 
@@ -85,7 +85,7 @@ struct LicenseSettingsView: View {
         }
         .frame(maxWidth: 460)
         .confirmationDialog(
-            "Deactivate Forel Pro? Free mode allows 2 watched folders and 5 rules per folder. Extra folders and rules will be kept but will not run.",
+            "Deactivate Forel Pro? Free allows 2 folders with unlimited rules and actions. OCR, scripts, Shortcuts, and media imports require Pro. Your configuration will be kept; rules requiring Pro will stop running.",
             isPresented: $showingDeactivationConfirmation
         ) {
             Button("Deactivate", role: .destructive) {
@@ -109,7 +109,7 @@ struct LicenseSettingsView: View {
     private var statusTitle: String { license.hasAccess ? "Forel Pro" : "Forel Free" }
     private var statusSubtitle: String {
         license.hasAccess
-            ? "Unlimited watched folders and rules."
-            : "Free forever: up to 2 watched folders and 5 rules per folder. Activate a license to unlock Pro."
+            ? "Unlimited folders, with OCR and advanced workflows."
+            : "Free forever: 2 folders with unlimited rules and actions. No trial."
     }
 }

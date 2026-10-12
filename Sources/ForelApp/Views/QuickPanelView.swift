@@ -121,7 +121,8 @@ struct QuickPanelView: View {
                     Text("Forel")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(ForelTheme.primaryText)
-                    Text(license.hasAccess ? "Pro" : "Free")
+                    Button { onOpenLicense?() } label: {
+                      Text(license.hasAccess ? "Pro" : "Free")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(license.hasAccess ? ForelTheme.pro : ForelTheme.primaryText)
                         .padding(.horizontal, 7)
@@ -129,8 +130,16 @@ struct QuickPanelView: View {
                         .background(Capsule().fill(license.hasAccess ? ForelTheme.pro.opacity(0.16) : ForelTheme.surface))
                         .overlay(Capsule().strokeBorder(license.hasAccess ? ForelTheme.pro.opacity(0.35) : ForelTheme.surfaceBorder, lineWidth: 1))
                         .accessibilityLabel(license.hasAccess ? "Forel Pro" : "Forel Free")
+                    }
+                    .buttonStyle(.plain)
+                    .help(license.hasAccess ? "Manage your Pro license" : "Discover Forel Pro")
                 }
                 StatusBadge(active: !model.paused)
+                if !license.hasAccess {
+                    Text("\(model.folders.count)/\(FreePlan.folderLimit) folders")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(ForelTheme.secondaryText)
+                }
             }
             Spacer(minLength: 0)
         }

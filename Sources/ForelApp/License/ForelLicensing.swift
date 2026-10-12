@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import Foundation
+import ForelCore
 
 /// Wires the shared Lab421Licensing package to Forel's own identifiers: its
 /// `product_id` on the license server, its Keychain service, its
@@ -25,7 +26,12 @@ enum ForelLicensing {
     static let productID = "forel"
     static let appName = "Forel"
     static let keychainService = "com.lab421.forel.license"
-    static let userDefaultsSuite = "com.lab421.forel"
+    static let userDefaultsSuite: String = {
+        let suite = "com.lab421.forel.licensing"
+        ForelLicensePreferences.migrate(to: suite, from: "com.lab421.forel", service: keychainService)
+        return suite
+    }()
+    static let purchaseURL = URL(string: "https://forel.app")!
 
     /// Local license server endpoint used during development.
     static let baseURL = URL(string: "http://localhost:8787/api/v1/license")!

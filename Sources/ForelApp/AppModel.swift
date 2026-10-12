@@ -59,11 +59,12 @@ final class AppModel: ObservableObject {
     private var runNowMessageId: UUID?
     @Published private(set) var isPreviewing = false
     @Published var previewResult: PreviewResult?
+    @Published var proUpgrade: ProUpgradeContext?
     @Published private var ruleExpansionPreferences = RuleExpansionPreferences()
     @Published private(set) var licenseAccessIsLimited = true
     var isPro: Bool { !licenseAccessIsLimited }
     var canAddFolder: Bool { FreePlan.canAddFolder(count: folders.count, isPro: isPro) }
-    var canAddRule: Bool { selectedFolderId != nil && FreePlan.canAddRule(count: rules.count, isPro: isPro) && selectedFolderIsAllowed }
+    var canAddRule: Bool { selectedFolderId != nil && selectedFolderIsAllowed }
     var selectedFolderIsAllowed: Bool {
         guard let selectedFolderId else { return false }
         return FreePlan.allows(folderID: selectedFolderId, folders: folders, isPro: isPro)
@@ -71,8 +72,6 @@ final class AppModel: ObservableObject {
     var planNotice: String? {
         guard !isPro, selectedFolderId != nil else { return nil }
         if !selectedFolderIsAllowed { return "This folder is kept for Pro. Free supports the first 2 watched folders; reorder folders or activate Pro to use it." }
-        if rules.count > FreePlan.ruleLimit { return "Free runs the first 5 rules in this folder. Extra rules are kept for Pro; reorder rules or activate Pro to use them." }
-        if rules.count == FreePlan.ruleLimit { return "Free supports 5 rules per folder, including disabled rules. Delete a rule or activate Pro to add another." }
         return nil
     }
     private func executionRules(for folder: WatchedFolder) -> [Rule] {
@@ -390,7 +389,7 @@ final class AppModel: ObservableObject {
         }
 
         guard canAddFolder else {
-            showNotice(title: "Free folder limit", message: "Forel Free supports 2 watched folders. Remove a folder or activate Pro to add another.")
+            proUpgrade = .folders
             return
         }
         let folder = WatchedFolder(path: normalizedPath)
@@ -458,6 +457,10 @@ final class AppModel: ObservableObject {
     }
 
     func toggleFolder(_ folder: WatchedFolder, enabled: Bool) {
+        if enabled, !FreePlan.allows(folderID: folder.id, folders: folders, isPro: isPro) {
+            proUpgrade = .folders
+            return
+        }
         db.withLock { db in try? db.toggleFolder(folder.id, enabled: enabled) }
         reloadFolders()
     }
@@ -467,26 +470,29 @@ final class AppModel: ObservableObject {
         reloadFolders()
     }
 
-    func saveRule(_ rule: Rule) {
+    @discardableResult
+    func saveRule(_ rule: Rule) -> Bool {
+        if !isPro, rule.enabled, let feature = FreePlan.requiredFeature(for: rule) {
+            proUpgrade = .feature(feature)
+            return false
+        }
+        let exists = rules.contains { $0.id == rule.id }
+        if !exists, !canAddRule {
+            proUpgrade = .folders
+            return false
+        }
         do {
             try db.withLock { db in
                 let existing = try db.listRules(folderId: rule.folderId)
                 if existing.contains(where: { $0.id == rule.id }) {
-                    try db.updateRule(rule)
+                    try db.updateRule(rule, isPro: isPro)
                 } else {
-                    guard isPro || existing.count < FreePlan.ruleLimit else {
-                        showNotice(title: "Free rule limit", message: "Forel Free supports 5 rules per watched folder, including disabled rules. Delete a rule or activate Pro to add another.")
-                        return
-                    }
-                    guard FreePlan.allows(folderID: rule.folderId, folders: folders, isPro: isPro) else {
-                        showNotice(title: "Pro folder", message: "Activate Pro or move this folder into the first 2 watched folders before adding rules.")
-                        return
-                    }
                     try db.insertRule(rule, isPro: isPro)
                 }
             }
             reloadRules()
-        } catch { showError(error) }
+            return true
+        } catch { showError(error); return false }
     }
 
     func deleteRule(_ rule: Rule) {
@@ -496,6 +502,16 @@ final class AppModel: ObservableObject {
     }
 
     func toggleRule(_ rule: Rule, enabled: Bool) {
+        if enabled, !isPro {
+            guard FreePlan.allows(folderID: rule.folderId, folders: folders, isPro: false) else {
+                proUpgrade = .folders
+                return
+            }
+        }
+        if enabled, !isPro, let feature = FreePlan.requiredFeature(for: rule) {
+            proUpgrade = .feature(feature)
+            return
+        }
         do { try db.withLock { db in try db.toggleRule(rule.id, enabled: enabled) } }
         catch { showError(error) }
         reloadRules()
@@ -518,6 +534,7 @@ final class AppModel: ObservableObject {
             return
         }
         isRunningNow = true
+        let isPro = self.isPro
         Task {
             defer { isRunningNow = false }
             let allHistory = await Task.detached(priority: .userInitiated) {
@@ -526,7 +543,7 @@ final class AppModel: ObservableObject {
                 let batchId = UUID().uuidString
                 var allHistory: [HistoryEntry] = []
                 for entry in entries {
-                    let (_, history) = RuleEngine.run(path: entry.path, depth: entry.depth, rules: folderRules, batchId: batchId, root: folder.path)
+                    let (_, history) = RuleEngine.run(path: entry.path, depth: entry.depth, rules: folderRules, batchId: batchId, root: folder.path, isPro: isPro)
                     allHistory.append(contentsOf: history)
                 }
                 return allHistory
@@ -572,6 +589,7 @@ final class AppModel: ObservableObject {
         }
         let matchLimit = previewMatchLimit
         isPreviewing = true
+        let isPro = self.isPro
         Task {
             defer { isPreviewing = false }
             previewResult = await Task.detached(priority: .userInitiated) {
@@ -581,7 +599,7 @@ final class AppModel: ObservableObject {
                 var reachedMatchLimit = false
                 RuleEngine.forEachEntry(root: folder.path, maxDepth: maxDepth) { entry in
                     filesScanned += 1
-                    guard let match = RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: folderRules) else {
+                    guard let match = RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: folderRules, isPro: isPro) else {
                         return
                     }
                     if matches.count < matchLimit {
@@ -620,7 +638,7 @@ final class AppModel: ObservableObject {
     func undo(_ entry: HistoryEntry) {
         guard entry.status == .applied else { return }
         let context = activeRules(coveringRestorePath: entry.originalPath)
-        switch UndoChecker.evaluate(entry, activeRules: context.rules, watchedRoot: context.watchedRoot) {
+        switch UndoChecker.evaluate(entry, activeRules: context.rules, watchedRoot: context.watchedRoot, isPro: isPro) {
         case .unsafe(let reason):
             showNotice(title: "Can't undo this action", message: reason)
         case .safe:
@@ -652,7 +670,7 @@ final class AppModel: ObservableObject {
                 continue
             }
             let context = activeRules(coveringRestorePath: entry.originalPath)
-            switch UndoChecker.evaluate(entry, activeRules: context.rules, watchedRoot: context.watchedRoot) {
+            switch UndoChecker.evaluate(entry, activeRules: context.rules, watchedRoot: context.watchedRoot, isPro: isPro) {
             case .unsafe(let reason):
                 failures.append("\((entry.originalPath as NSString).lastPathComponent): \(reason)")
             case .safe:

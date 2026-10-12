@@ -113,7 +113,7 @@ public enum ContentExtractor {
     /// Runs the ordered extraction pipeline for `path`, dispatching on the file
     /// extension. Always returns a result; unsupported or empty files yield
     /// `text: nil` with `strategy: .none`.
-    public static func extract(path: String) -> ContentExtraction {
+    public static func extract(path: String, allowOCR: Bool = true) -> ContentExtraction {
         let ext = (path as NSString).pathExtension.lowercased()
         let size = fileSize(path)
 
@@ -122,7 +122,7 @@ public enum ContentExtractor {
         }
         switch ext {
         case "pdf":
-            return extractPDF(path: path, size: size)
+            return extractPDF(path: path, size: size, allowOCR: allowOCR)
         case "rtf":
             return extractAttributed(path: path, documentType: .rtf, strategy: .rtf)
         case "rtfd":
@@ -140,6 +140,9 @@ public enum ContentExtractor {
             return extractIWork(path: path, size: size)
         default:
             if imageExtensions.contains(ext) {
+                guard allowOCR else {
+                    return ContentExtraction(text: nil, strategy: .imageOCR, message: "Text recognition in images requires Forel Pro.")
+                }
                 return extractImageOCR(path: path, size: size)
             }
             if spotlightFallbackExtensions.contains(ext) {
@@ -245,7 +248,7 @@ public enum ContentExtractor {
 
     // MARK: - PDF
 
-    private static func extractPDF(path: String, size: UInt64) -> ContentExtraction {
+    private static func extractPDF(path: String, size: UInt64, allowOCR: Bool) -> ContentExtraction {
         if size > pdfMaxBytes {
             return ContentExtraction(text: nil, strategy: .none, message: "PDF exceeds the 100 MB limit.")
         }
@@ -257,6 +260,9 @@ public enum ContentExtractor {
             return ContentExtraction(text: text, strategy: .pdfText)
         }
         // No text layer — likely a scanned PDF. OCR the rendered pages.
+        guard allowOCR else {
+            return ContentExtraction(text: nil, strategy: .pdfOCR, message: "Text recognition in scanned PDFs requires Forel Pro.")
+        }
         let ocr = pdfOCRText(from: doc)
         if !ocr.isEmpty {
             return ContentExtraction(text: ocr, strategy: .pdfOCR)

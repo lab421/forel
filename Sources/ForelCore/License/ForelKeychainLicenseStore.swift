@@ -81,6 +81,9 @@ public final class ForelKeychainLicenseStore: LicenseSecureStoring {
         ]
     }
 
+    #if compiler(>=6.4)
+    @diagnose(DeprecatedDeclaration, as: ignored, reason: "The file-based login Keychain still requires this API to suppress prompts (FB16959400).")
+    #endif
     static func withoutUserInteraction<T>(_ operation: () throws -> T) throws -> T {
         // LAContext only suppresses authentication for the data-protection
         // Keychain. The file-based login Keychain used by KeychainLicenseStore

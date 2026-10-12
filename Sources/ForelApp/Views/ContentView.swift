@@ -40,6 +40,9 @@ struct ContentView: View {
             Text(model.errorMessage ?? "")
         }
         .tint(ForelTheme.accent)
+        .sheet(item: $model.proUpgrade) { context in
+            ProUpgradeView(context: context)
+        }
         // ForelTheme.accent is a plain static var, not observable; bumping the
         // identity here forces every descendant to rebuild and re-read it.
         .id(model.accentVersion)

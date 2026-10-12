@@ -69,6 +69,87 @@ import AppKit
         }
     }
 
+    @Test(arguments: [false, true])
+    func textPDFRunsInBothPlansAcrossPreviewManualAndWatcher(isPro: Bool) throws {
+        let dir = TempDir()
+        let file = dir.path + "/invoice.pdf"
+        makeTextPDF(at: file, text: "Invoice total 1234 EUR")
+        #expect(ContentExtractor.extract(path: file, allowOCR: isPro).strategy == .pdfText)
+        let db = try Database(path: ":memory:")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "Invoice")
+        rule.conditions = [makeCondition(.contents, .contains, "1234", ruleId: rule.id)]
+        rule.actions = [makeAction(.rename, .object(["pattern": .string("sorted.pdf")]), ruleId: rule.id)]
+        try db.insertRule(rule, isPro: isPro)
+        #expect(RuleEngine.previewFile(path: file, depth: 0, rules: [rule], isPro: isPro) != nil)
+        #expect(RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "manual", isPro: isPro).history.first?.status == .applied)
+        makeTextPDF(at: file, text: "Invoice total 1234 EUR")
+        try FileManager.default.removeItem(atPath: dir.path + "/sorted.pdf")
+        let watcher = WatcherCoordinator(db: db)
+        watcher.setProAccess(isPro)
+        watcher.handle(path: file)
+        #expect(try db.listHistory().first?.status == .applied)
+    }
+
+    @Test(arguments: ["image", "scan"])
+    func freeNeverRunsOCROrMatchesNegativeContentsAcrossAllPaths(kind: String) throws {
+        let dir = TempDir()
+        let file = dir.path + (kind == "image" ? "/invoice.png" : "/invoice.pdf")
+        if kind == "image" { makeTextImage(at: file, text: "INVOICE 2026") }
+        else { makeScannedPDF(at: file, text: "INVOICE 2026") }
+        let extraction = ContentExtractor.extract(path: file, allowOCR: false)
+        #expect(extraction.text == nil)
+        #expect(extraction.message?.contains("Pro") == true)
+        let db = try Database(path: ":memory:")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "Contents")
+        rule.actions = [makeAction(.rename, .object(["pattern": .string("sorted.dat")]), ruleId: rule.id)]
+        for op in [Operator.contains, .doesNotContain, .isNot] {
+            rule.conditions = [makeCondition(.contents, op, "INVOICE", ruleId: rule.id)]
+            #expect(!ConditionEvaluator.evaluate(rule.conditions[0], path: file, allowOCR: false))
+            #expect(RuleEngine.previewFile(path: file, depth: 0, rules: [rule], isPro: false) == nil)
+            #expect(RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "free", isPro: false).history.isEmpty)
+        }
+        try db.insertRule(rule, isPro: false)
+        let watcher = WatcherCoordinator(db: db)
+        watcher.setProAccess(false)
+        watcher.handle(path: file)
+        watcher.handle(event: .rescanSubtree(dir.path))
+        #expect(try db.listHistory().isEmpty)
+        #expect(FileManager.default.fileExists(atPath: file))
+    }
+
+    @Test(arguments: ["image", "scan"])
+    func proOCRIsConsistentAcrossPreviewManualRunAndWatcher(kind: String) throws {
+        let dir = TempDir()
+        let ext = kind == "image" ? "png" : "pdf"
+        let file = dir.path + "/invoice.\(ext)"
+        func createFile() {
+            if kind == "image" { makeTextImage(at: file, text: "INVOICE 2026") }
+            else { makeScannedPDF(at: file, text: "INVOICE 2026") }
+        }
+        createFile()
+        // Some CI hosts cannot run Vision. When available, verify all paths.
+        guard ContentExtractor.extract(path: file).text != nil else { return }
+        let db = try Database(path: ":memory:")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "OCR invoice")
+        rule.conditions = [makeCondition(.contents, .contains, "INVOICE", ruleId: rule.id)]
+        rule.actions = [makeAction(.rename, .object(["pattern": .string("sorted.\(ext)")]), ruleId: rule.id)]
+        try db.insertRule(rule, isPro: true)
+        #expect(RuleEngine.previewFile(path: file, depth: 0, rules: [rule], isPro: true) != nil)
+        #expect(RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "manual", isPro: true).history.first?.status == .applied)
+        try FileManager.default.removeItem(atPath: dir.path + "/sorted.\(ext)")
+        createFile()
+        let watcher = WatcherCoordinator(db: db)
+        watcher.setProAccess(true)
+        watcher.handle(event: .rescanSubtree(dir.path))
+        #expect(try db.listHistory().first?.status == .applied)
+    }
+
     @Test func rtfDocumentIsExtracted() throws {
         let dir = TempDir()
         let rtf = (dir.path as NSString).appendingPathComponent("memo.rtf")

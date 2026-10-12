@@ -85,9 +85,30 @@ File matching and processing happen **locally on your Mac**. Forel does not uplo
 
 ## Installation
 
-Forel Free is available indefinitely without a license. It supports **2 watched folders** and **5 saved rules per folder**, including disabled rules. A **Forel Pro license** unlocks unlimited folders and rules.
+Forel Free is available indefinitely without a license. Pro is a paid license; there is no trial.
 
-If you return to Free with a larger configuration, extra folders and rules are kept. Only the first 2 folders and the first 5 rules per folder can run; reorder them to choose which ones remain available in Free.
+### Free and Pro
+
+| Feature | Free | Pro |
+|---|---|---|
+| Watched folders | 2, including disabled folders | Unlimited |
+| Rules per folder and actions per rule | Unlimited | Unlimited |
+| Background watching and Run Now | Included | Included |
+| Move, copy, rename, tags, labels, trash, delete, uncompress, open app | Included | Included |
+| Filename, type, size, dates, tags, and download metadata conditions | Included | Included |
+| Text matching in documents and PDFs with a text layer | Included | Included |
+| On-device OCR for images and scanned PDFs | — | Included |
+| Custom scripts and Apple Shortcuts | — | Included |
+| Imports into Photos, Music, and TV | — | Included |
+| Dry Run preview, history, and supported Undo | Included | Included |
+| Files processed | Unlimited | Unlimited |
+| File processing on your Mac | Included | Included |
+
+**Free:** organize your everyday folders automatically. **Pro:** automate all your folders, recognize scanned documents, and connect your own workflows.
+
+[View pricing and buy Forel Pro](https://forel.app), then activate your license in **Settings → License**. The Free badge in the quick panel also opens License settings. The folder quota is shown in the app; attempting a Pro action or exceeding the folder quota explains the benefit and offers a purchase or activation link.
+
+If you return to Free, your entire configuration is kept. Only the first 2 folders are eligible; reorder them to choose which ones remain available. Rules and actions are unlimited in both plans, but rules with Pro actions do not run in Free. Contents conditions still read document text, but images and scanned PDFs require Pro OCR and never match unreadable content, including negative operators.
 
 ### Homebrew
 
@@ -134,7 +155,7 @@ To build and package the app, use the Swift package tooling and the existing rel
 6. Use **Dry Run** to preview matches and planned actions without changing files. Use **Run Now** to process existing files manually.
 7. Keep the rule enabled and **Watching** on for automatic processing — even when the window is closed. Review results in the history and use **Undo** for supported actions.
 
-### Example: lowercase filenames and replace spaces with underscores
+### Example: lowercase filenames and replace spaces with underscores (Pro)
 
 Add a watched folder and create an enabled rule with a **Kind → is → File** condition. Choose **Run script** and paste this Bash command:
 
@@ -236,6 +257,8 @@ History / Undo (SQLite)
 The **Contents** condition matches text found *inside* files. Everything is read
 locally — no cloud, OCR runs on-device. When a file's text can't be read, the Dry
 Run tells you why.
+
+Document text matching is available in Free and Pro. Vision OCR for images and scanned PDFs requires Pro; Free never runs OCR. The technical extraction limits below apply to both plans where the feature is available.
 
 ```
 File path
