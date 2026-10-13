@@ -6,6 +6,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- Rules can now be imported and exported as `.forelrules` files named after their watched folder, and Hazel exports can be migrated with unsupported parts clearly flagged for review.
 - Added a getting-started example for lowercasing filenames and replacing spaces with underscores, with guidance on how scripts receive files.
 - The menu bar quick panel now shows recent activity across all folders, showing the 10 latest actions first and loading more as you scroll.
 
