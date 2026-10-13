@@ -106,7 +106,7 @@ Forel Free is available indefinitely without a license. Pro is a paid license; t
 
 **Free:** organize your everyday folders automatically. **Pro:** automate all your folders, recognize scanned documents, and connect your own workflows.
 
-[View pricing and buy Forel Pro](https://forel.app), then activate your license in **Settings → License**. The Free badge in the quick panel also opens License settings. The folder quota is shown in the app; attempting a Pro action or exceeding the folder quota explains the benefit and offers a purchase or activation link.
+[View pricing and buy Forel Pro](https://forel.app), then activate your license in **Settings → License**. The Free badge in the quick panel also opens License settings. Attempting a Pro action or exceeding the folder quota explains the benefit and offers a purchase or activation link.
 
 If you return to Free, your entire configuration is kept. Only the first 2 folders are eligible; reorder them to choose which ones remain available. Rules and actions are unlimited in both plans, but rules with Pro actions do not run in Free. Contents conditions still read document text, but images and scanned PDFs require Pro OCR and never match unreadable content, including negative operators.
 

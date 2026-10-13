@@ -135,11 +135,6 @@ struct QuickPanelView: View {
                     .help(license.hasAccess ? "Manage your Pro license" : "Discover Forel Pro")
                 }
                 StatusBadge(active: !model.paused)
-                if !license.hasAccess {
-                    Text("\(model.folders.count)/\(FreePlan.folderLimit) folders")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(ForelTheme.secondaryText)
-                }
             }
             Spacer(minLength: 0)
         }

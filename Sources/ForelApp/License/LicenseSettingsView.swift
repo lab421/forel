@@ -110,6 +110,6 @@ struct LicenseSettingsView: View {
     private var statusSubtitle: String {
         license.hasAccess
             ? "Unlimited folders, with OCR and advanced workflows."
-            : "Free forever: 2 folders with unlimited rules and actions. No trial."
+            : "Free forever, with unlimited rules and actions. No trial."
     }
 }

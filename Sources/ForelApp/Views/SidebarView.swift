@@ -39,16 +39,12 @@ struct SidebarView: View {
 
             HStack {
                 SectionLabel(title: "Watched Folders")
-                Text(model.isPro ? "\(model.folders.count)" : "\(model.folders.count)/\(FreePlan.folderLimit)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(ForelTheme.secondaryText)
-                    .help(model.isPro ? "Unlimited watched folders" : "Saved folders, including disabled folders")
                 Spacer()
                 Button(action: addFolder) {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(IconButtonStyle())
-                .help(model.canAddFolder ? "Add a folder to watch" : "Free supports 2 watched folders. Remove a folder or activate Pro.")
+                .help("Add a folder to watch")
             }
 
             if model.folders.isEmpty {
