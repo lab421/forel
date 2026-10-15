@@ -17,6 +17,9 @@
 import Foundation
 import UniformTypeIdentifiers
 import ZIPFoundation
+#if canImport(UserNotifications)
+import UserNotifications
+#endif
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -213,13 +216,36 @@ public enum ActionExecutor {
             return try runScript(action, path: path)
         case .runShortcut:
             return try runShortcut(action, path: path)
+        case .runAppleScript:
+            return try runAppleScriptAction(action, path: path)
+        case .runJavaScript:
+            return try runJavaScript(action, path: path)
+        case .runAutomatorWorkflow:
+            return try runAutomatorWorkflow(action, path: path)
         case .openApplication:
             return try openApplication(action, path: path)
         case .importToLibrary:
             return try importToLibrary(action, path: path)
         case .uncompress:
             return try uncompress(action, path: path)
+        case .pause:
+            let seconds = try pauseDuration(action)
+            if seconds > 0 {
+                Thread.sleep(forTimeInterval: seconds)
+            }
+            return Applied(newPath: path, undo: .none)
+        case .displayNotification:
+            displayNotification(action, path: path)
+            return Applied(newPath: path, undo: .none)
         }
+    }
+
+    private static func pauseDuration(_ action: Action) throws -> TimeInterval {
+        guard case .number(let seconds) = action.params[ActionParam.pauseSeconds],
+              seconds.isFinite, seconds >= 0 else {
+            throw ActionError("Pause requires a non-negative number of seconds")
+        }
+        return seconds
     }
 
     private static func stringParam(_ action: Action, _ key: String, _ kind: String) throws -> String {
@@ -389,10 +415,23 @@ public enum ActionExecutor {
     private static let scriptDefaultTimeout: TimeInterval = 60
 
     private static func runScript(_ action: Action, path: String) throws -> Applied {
-        let script = try stringParam(action, ActionParam.script, "RunScript")
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-c", script]
+        if ScriptSource.of(action) == .file {
+            // A script file also gets the matched file as $1. An executable
+            // file runs directly so its shebang (python, zsh…) is honoured.
+            let scriptPath = try scriptFilePath(action, "RunScript")
+            if FileManager.default.isExecutableFile(atPath: scriptPath) {
+                process.executableURL = URL(fileURLWithPath: scriptPath)
+                process.arguments = [path]
+            } else {
+                process.executableURL = URL(fileURLWithPath: "/bin/bash")
+                process.arguments = [scriptPath, path]
+            }
+        } else {
+            let script = try stringParam(action, ActionParam.script, "RunScript")
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = ["-c", script]
+        }
         var env = ProcessInfo.processInfo.environment
         env["FOREL_FILE"] = path
         process.environment = env
@@ -423,6 +462,76 @@ public enum ActionExecutor {
         let inputMode = shortcutInputMode(action)
         try ShortcutRunner.run(name: name, input: shortcutInput(mode: inputMode, path: path))
         return Applied(newPath: path, undo: .none)
+    }
+
+    private static func runAppleScriptAction(_ action: Action, path: String) throws -> Applied {
+        if ScriptSource.of(action) == .file {
+            // A script file gets the matched file's full path as its first
+            // argument: `on run argv` … `item 1 of argv`.
+            try runOSA(arguments: [try scriptFilePath(action, "RunAppleScript"), path], timeout: scriptDefaultTimeout)
+            return Applied(newPath: path, undo: .none)
+        }
+        let script = try stringParam(action, ActionParam.script, "RunAppleScript")
+        let file = appleScriptEscapePath(path)
+        // Same name and value as the shell script's FOREL_FILE: the full path.
+        try runOSA(script: "set FOREL_FILE to \"\(file)\"\n\(script)", timeout: scriptDefaultTimeout)
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func runJavaScript(_ action: Action, path: String) throws -> Applied {
+        if ScriptSource.of(action) == .file {
+            // A script file gets the matched file's full path as its first
+            // argument: `function run(argv)` … `argv[0]`.
+            try runOSA(arguments: ["-l", "JavaScript", try scriptFilePath(action, "RunJavaScript"), path], timeout: scriptDefaultTimeout)
+            return Applied(newPath: path, undo: .none)
+        }
+        let script = try stringParam(action, ActionParam.script, "RunJavaScript")
+        let data = try JSONEncoder().encode(path)
+        let literal = String(data: data, encoding: .utf8) ?? "\"\""
+        try runOSA(script: "const FOREL_FILE = \(literal);\n\(script)", language: "JavaScript", timeout: scriptDefaultTimeout)
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func scriptFilePath(_ action: Action, _ kind: String) throws -> String {
+        let scriptPath = try stringParam(action, ActionParam.scriptPath, kind)
+        guard FileManager.default.fileExists(atPath: scriptPath) else {
+            throw ActionError("Script file not found: \(scriptPath)")
+        }
+        return scriptPath
+    }
+
+    private static func runAutomatorWorkflow(_ action: Action, path: String) throws -> Applied {
+        let workflow = try stringParam(action, ActionParam.workflowPath, "RunAutomatorWorkflow")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/automator")
+        process.arguments = ["-i", path, workflow]
+        let result = try runCapturingOutput(process, timeout: scriptDefaultTimeout)
+        guard result.status == 0 else {
+            throw ActionError(result.errors.isEmpty ? "Automator workflow failed" : result.errors)
+        }
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func displayNotification(_ action: Action, path: String) {
+        #if canImport(UserNotifications)
+        let title = action.params[ActionParam.notificationTitle]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = action.params[ActionParam.notificationBody]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+            if settings.authorizationStatus == .notDetermined {
+                guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
+            } else if settings.authorizationStatus == .denied {
+                return
+            }
+            let content = UNMutableNotificationContent()
+            content.title = title?.isEmpty == false ? title! : "Forel"
+            content.body = body?.isEmpty == false ? body! : (path as NSString).lastPathComponent
+            content.sound = .default
+            let request = UNNotificationRequest(identifier: "forel-action-\(UUID().uuidString)", content: content, trigger: nil)
+            try? await center.add(request)
+        }
+        #endif
     }
 
     private static func openApplication(_ action: Action, path: String) throws -> Applied {
@@ -563,22 +672,74 @@ public enum ActionExecutor {
 
     @discardableResult
     static func runAppleScript(_ script: String) throws -> String {
+        try runOSA(script: script)
+    }
+
+    @discardableResult
+    private static func runOSA(script: String, language: String? = nil, timeout: TimeInterval? = nil) throws -> String {
+        var arguments: [String] = []
+        if let language { arguments += ["-l", language] }
+        arguments += ["-e", script]
+        return try runOSA(arguments: arguments, timeout: timeout)
+    }
+
+    @discardableResult
+    private static func runOSA(arguments: [String], timeout: TimeInterval? = nil) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
+        process.arguments = arguments
+        let result = try runCapturingOutput(process, timeout: timeout)
+        guard result.status == 0 else {
+            throw ActionError("AppleScript failed: \(result.errors)")
+        }
+        return result.output
+    }
+
+    /// Runs `process` while reading its output and errors as they come: a
+    /// process that fills an unread pipe (~64 KB) blocks forever, and with
+    /// it every file waiting to be processed. With a `timeout`, a process
+    /// still running after it is stopped and reported as timed out.
+    private static func runCapturingOutput(_ process: Process, timeout: TimeInterval? = nil) throws -> (status: Int32, output: String, errors: String) {
         let outputPipe = Pipe()
         let errorPipe = Pipe()
         process.standardOutput = outputPipe
         process.standardError = errorPipe
         try process.run()
-        process.waitUntilExit()
-        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorMsg = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard process.terminationStatus == 0 else {
-            throw ActionError("AppleScript failed: \(errorMsg)")
+        let output = PipeReader(outputPipe)
+        let errors = PipeReader(errorPipe)
+
+        if let timeout {
+            let startTime = Date()
+            while process.isRunning && Date().timeIntervalSince(startTime) < timeout {
+                Thread.sleep(forTimeInterval: 0.01)
+            }
+            if process.isRunning {
+                process.terminate()
+                throw ActionError("script timed out after \(Int(timeout))s")
+            }
         }
-        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        process.waitUntilExit()
+        return (process.terminationStatus, output.text(), errors.text())
+    }
+
+    /// Reads a pipe to its end on a background thread.
+    private final class PipeReader: @unchecked Sendable {
+        private var data = Data()
+        private let done = DispatchSemaphore(value: 0)
+
+        init(_ pipe: Pipe) {
+            let handle = pipe.fileHandleForReading
+            DispatchQueue.global(qos: .utility).async {
+                self.data = handle.readDataToEndOfFile()
+                self.done.signal()
+            }
+        }
+
+        /// Waits for the pipe to close, then returns what was read, trimmed.
+        func text() -> String {
+            done.wait()
+            return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        }
     }
 
     static func appleScriptEscapePath(_ path: String) -> String {
@@ -985,6 +1146,13 @@ public enum ActionExecutor {
                 isTerminal: false,
                 warning: destinationWarning(destDir)
             )
+        case .runAppleScript, .runJavaScript:
+            if let filePlan = scriptFilePlan(action, path: path) { return filePlan }
+            let script = action.params[ActionParam.script]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: action.kind.label, sourcePath: path, targetPath: nil, status: script.isEmpty ? .wouldSkip : .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
+        case .runAutomatorWorkflow:
+            let workflow = action.params[ActionParam.workflowPath]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: workflow.isEmpty ? "Run Automator workflow" : "Run \((workflow as NSString).lastPathComponent)", sourcePath: path, targetPath: nil, status: workflow.isEmpty ? .wouldSkip : .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
         case .rename:
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             var newName = try applyRenamePattern(pattern, path: path)
@@ -1070,6 +1238,7 @@ public enum ActionExecutor {
                 isTerminal: false
             )
         case .runScript:
+            if let filePlan = scriptFilePlan(action, path: path) { return filePlan }
             let script = action.params[ActionParam.script]?.stringValue ?? ""
             let firstLine = script.split(separator: "\n").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
             return ActionPlan(
@@ -1190,6 +1359,21 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .pause:
+            let seconds = try pauseDuration(action)
+            return ActionPlan(
+                kind: action.kind,
+                description: "Pause for \(seconds.formatted()) second\(seconds == 1 ? "" : "s")",
+                sourcePath: path,
+                targetPath: nil,
+                status: .wouldRun,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: false
+            )
+        case .displayNotification:
+            let title = action.params[ActionParam.notificationTitle]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionPlan(kind: action.kind, description: title.isEmpty ? "Display notification" : "Display notification: \(title)", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
         }
     }
 
@@ -1208,7 +1392,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .runAppleScript, .runJavaScript, .runAutomatorWorkflow, .openApplication, .importToLibrary, .uncompress, .pause, .displayNotification:
             return true
         }
     }
@@ -1344,6 +1528,20 @@ public enum ActionExecutor {
     /// existing ancestor. A network share that isn't mounted or that Forel
     /// isn't allowed to access shows up here as a missing folder under a
     /// location that can't be written to.
+    /// Plan for a script action that runs a script file, or nil when the
+    /// script is embedded. A missing file is flagged, as execution would fail.
+    private static func scriptFilePlan(_ action: Action, path: String) -> ActionPlan? {
+        guard ScriptSource.of(action) == .file else { return nil }
+        let scriptPath = action.params[ActionParam.scriptPath]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !scriptPath.isEmpty else {
+            return ActionPlan(kind: action.kind, description: "Skip — choose a script file", sourcePath: path, targetPath: nil, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
+        }
+        let warning = FileManager.default.fileExists(atPath: scriptPath)
+            ? nil
+            : "The script file can't be found. It may have been moved, renamed, or deleted."
+        return ActionPlan(kind: action.kind, description: "Run \((scriptPath as NSString).lastPathComponent)", sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false, warning: warning)
+    }
+
     private static func destinationWarning(_ destDir: String) -> String? {
         guard !destDir.isEmpty else { return nil }
         var candidate = normalizedPath(destDir)

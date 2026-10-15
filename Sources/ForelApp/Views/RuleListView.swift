@@ -488,6 +488,13 @@ private struct RuleDetails: View {
         .padding(.vertical, 2)
     }
 
+    /// The script file a script action runs, or nil when its script is embedded.
+    private func scriptFile(_ action: Action) -> String? {
+        guard ScriptSource.of(action) == .file else { return nil }
+        let path = action.params[ActionParam.scriptPath]?.stringValue ?? ""
+        return path.isEmpty ? nil : path
+    }
+
     private func actionSummary(_ action: Action) -> (title: String, detail: String?) {
         switch action.kind {
         case .moveToFolder:
@@ -508,12 +515,20 @@ private struct RuleDetails: View {
             let color = action.params[ActionParam.color]?.stringValue ?? ""
             return (color.isEmpty ? "clear color label" : "set to \(color)", nil)
         case .runScript:
+            if let file = scriptFile(action) { return ((file as NSString).lastPathComponent, file) }
             let script = action.params[ActionParam.script]?.stringValue ?? ""
             let firstLine = script.split(separator: "\n").first.map(String.init) ?? ""
             return (firstLine.isEmpty ? "run script" : firstLine, nil)
         case .runShortcut:
             let name = action.params[ActionParam.shortcutName]?.stringValue ?? ""
             return (name.isEmpty ? "run shortcut" : name, ActionExecutor.shortcutInputMode(action).label)
+        case .runAppleScript, .runJavaScript:
+            if let file = scriptFile(action) { return ((file as NSString).lastPathComponent, file) }
+            let script = action.params[ActionParam.script]?.stringValue ?? ""
+            let firstLine = script.split(separator: "\n").first.map(String.init) ?? ""
+            return (firstLine.isEmpty ? action.kind.label : firstLine, nil)
+        case .runAutomatorWorkflow:
+            return ("run Automator workflow", action.params[ActionParam.workflowPath]?.stringValue)
         case .openApplication:
             let path = action.params[ActionParam.applicationPath]?.stringValue ?? ""
             let appName = path.isEmpty ? "open application" : ((path as NSString).lastPathComponent as NSString).deletingPathExtension
@@ -525,6 +540,19 @@ private struct RuleDetails: View {
             return ("import to \(library)", playlist.isEmpty ? nil : playlist)
         case .uncompress:
             return ("uncompress ZIP", MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
+        case .pause:
+            let seconds: String
+            let isSingular: Bool
+            if case .number(let value) = action.params[ActionParam.pauseSeconds] {
+                seconds = value.formatted()
+                isSingular = value == 1
+            } else {
+                seconds = "invalid duration"
+                isSingular = false
+            }
+            return ("pause for \(seconds) second\(isSingular ? "" : "s")", nil)
+        case .displayNotification:
+            return ("display notification", action.params[ActionParam.notificationTitle]?.stringValue)
         }
     }
 

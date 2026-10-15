@@ -6,6 +6,8 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- Rules can now run AppleScript, JavaScript, and Automator workflows, pause between actions, and display notifications.
+- Shell, AppleScript, and JavaScript actions can now run a script file instead of a script typed into Forel.
 - Right-clicking a watched folder in the sidebar now offers Show in Finder.
 - Activity can now be opened from the bottom of the sidebar, next to Settings.
 - When Run Now has failed actions, its result now stays on screen with a Show in Activity link to see what went wrong.

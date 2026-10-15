@@ -771,6 +771,83 @@ private struct ApplicationPathPickerField: View {
     }
 }
 
+/// A read-only file path field with a "Choose…" button limited to
+/// `contentTypes`, plus a button that opens the chosen file in `editor`
+/// (name, bundle identifier) — or shows it in Finder when there is none.
+private struct FilePickerField: View {
+    let placeholder: String
+    @Binding var path: String
+    let contentTypes: [UTType]
+    let systemImage: String
+    var editor: (name: String, bundleId: String)?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                iconView
+                Text(path.isEmpty ? placeholder : (path as NSString).lastPathComponent)
+                    .font(.system(size: 12))
+                    .foregroundStyle(path.isEmpty ? ForelTheme.secondaryText : ForelTheme.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(path)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
+
+            Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+
+            if FileManager.default.fileExists(atPath: path) {
+                Button(action: open) {
+                    Image(systemName: editor == nil ? "folder" : "arrow.up.forward.app")
+                }
+                .buttonStyle(IconButtonStyle())
+                .help(editor.map { "Open in \($0.name)" } ?? "Show in Finder")
+            }
+        }
+    }
+
+    @ViewBuilder private var iconView: some View {
+        if FileManager.default.fileExists(atPath: path) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: path))
+                .resizable()
+                .frame(width: 16, height: 16)
+        } else {
+            Image(systemName: systemImage)
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .frame(width: 16, height: 16)
+        }
+    }
+
+    private func choose() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        panel.allowedContentTypes = contentTypes
+        if !path.isEmpty {
+            panel.directoryURL = URL(fileURLWithPath: (path as NSString).deletingLastPathComponent)
+        }
+        if panel.runModal() == .OK, let url = panel.url {
+            path = url.path
+        }
+    }
+
+    private func open() {
+        let file = URL(fileURLWithPath: path)
+        guard let editor, let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: editor.bundleId) else {
+            NSWorkspace.shared.activateFileViewerSelecting([file])
+            return
+        }
+        NSWorkspace.shared.open([file], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+}
+
 private struct KindValuePicker: View {
     @Binding var value: String
 
@@ -848,15 +925,39 @@ private struct ActionRow: View {
         case .setColorLabel:
             ColorLabelPicker(selection: paramBinding(ActionParam.color), allowNone: true)
         case .runScript:
-            VStack(alignment: .leading, spacing: 6) {
-                GlassField(placeholder: "Bash script (file path in $FOREL_FILE)", text: paramBinding(ActionParam.script))
-                Text("Runs once per matching file. Use \"$FOREL_FILE\" for its full path. Dry Run does not execute scripts; script changes cannot be undone.")
-                    .font(.caption)
-                    .foregroundStyle(ForelTheme.secondaryText)
-                    .textSelection(.enabled)
-            }
+            scriptEditor(
+                placeholder: "echo \"$FOREL_FILE\"",
+                help: "The variable $FOREL_FILE contains its full path, e.g. /Users/you/Downloads/report.pdf. Always quote it: \"$FOREL_FILE\".",
+                fileHelp: "The script gets its full path in $FOREL_FILE and as its first argument ($1). An executable script runs with the interpreter in its #! line; otherwise it runs with bash.",
+                fileTypes: [.shellScript, .script, .unixExecutable],
+                editor: nil
+            )
         case .runShortcut:
             ShortcutPicker(selection: paramBinding(ActionParam.shortcutName))
+        case .runAppleScript:
+            scriptEditor(
+                placeholder: "tell application \"Finder\" to reveal (POSIX file FOREL_FILE)",
+                help: "The variable FOREL_FILE contains its full path as text, e.g. \"/Users/you/Downloads/report.pdf\". Use POSIX file FOREL_FILE when an app expects a file.",
+                fileHelp: "The script gets its full path as text in its first argument: start it with on run argv, then set FOREL_FILE to item 1 of argv.",
+                fileTypes: [.appleScript, .osaScript, .osaScriptBundle],
+                editor: ("Script Editor", "com.apple.ScriptEditor2")
+            )
+        case .runJavaScript:
+            scriptEditor(
+                placeholder: "Application(\"Finder\").reveal(Path(FOREL_FILE));",
+                help: "The variable FOREL_FILE contains its full path as a string, e.g. \"/Users/you/Downloads/report.pdf\". Use Path(FOREL_FILE) when an app expects a file.",
+                fileHelp: "The script gets its full path as a string in its first argument: function run(argv) { const FOREL_FILE = argv[0]; … }",
+                fileTypes: [.javaScript, .osaScript, .osaScriptBundle],
+                editor: ("Script Editor", "com.apple.ScriptEditor2")
+            )
+        case .runAutomatorWorkflow:
+            FilePickerField(
+                placeholder: "Automator workflow",
+                path: paramBinding(ActionParam.workflowPath),
+                contentTypes: [UTType(filenameExtension: "workflow") ?? .package],
+                systemImage: "gearshape.2",
+                editor: ("Automator", "com.apple.Automator")
+            )
         case .openApplication:
             ApplicationPathPickerField(path: paramBinding(ActionParam.applicationPath))
         case .importToLibrary:
@@ -895,6 +996,19 @@ private struct ActionRow: View {
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
+        case .pause:
+            HStack(spacing: 8) {
+                GlassField(placeholder: "1", text: pauseSecondsBinding)
+                    .frame(width: 72)
+                Text("seconds")
+                    .font(.system(size: 12))
+                    .foregroundStyle(ForelTheme.secondaryText)
+            }
+        case .displayNotification:
+            VStack(alignment: .leading, spacing: 6) {
+                GlassField(placeholder: "Notification title (optional)", text: paramBinding(ActionParam.notificationTitle))
+                GlassField(placeholder: "Notification message (optional)", text: paramBinding(ActionParam.notificationBody))
+            }
         case .moveToTrash, .delete:
             Text("No parameters")
                 .font(.system(size: 11))
@@ -912,6 +1026,12 @@ private struct ActionRow: View {
                     params[ActionParam.libraryType] = .string(LibraryType.music.rawValue)
                 } else if newKind == .openApplication {
                     params[ActionParam.passFileToApplication] = .bool(true)
+                } else if newKind == .pause {
+                    params[ActionParam.pauseSeconds] = .number(1)
+                } else if [.runScript, .runAppleScript, .runJavaScript].contains(newKind) {
+                    // New script actions start on a script file; rules saved
+                    // without this param keep their embedded script.
+                    params[ActionParam.scriptSource] = .string(ScriptSource.file.rawValue)
                 }
                 action = Action(id: action.id, ruleId: action.ruleId, kind: newKind, params: .object(params), position: action.position)
             }
@@ -950,6 +1070,74 @@ private struct ActionRow: View {
                 let normalized = newTags.map { JSONValue.string($0) }
                 dict[ActionParam.tags] = .array(normalized)
                 dict.removeValue(forKey: "tag")
+                action.params = .object(dict)
+            }
+        )
+    }
+
+    /// Script input shared by the shell, AppleScript, and JavaScript actions:
+    /// an embedded script, or a script file. The placeholder is an example
+    /// script using FOREL_FILE, and the help text states how the script gets
+    /// the matched file, with the same name in every language.
+    private func scriptEditor(
+        placeholder: String,
+        help: String,
+        fileHelp: String,
+        fileTypes: [UTType],
+        editor: (name: String, bundleId: String)?
+    ) -> some View {
+        let source = ScriptSource.of(action)
+        return VStack(alignment: .leading, spacing: 6) {
+            Picker("Script", selection: scriptSourceBinding) {
+                Text("Script File").tag(ScriptSource.file)
+                Text("Embedded Script").tag(ScriptSource.embedded)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+
+            if source == .file {
+                FilePickerField(
+                    placeholder: "Script file",
+                    path: paramBinding(ActionParam.scriptPath),
+                    contentTypes: fileTypes,
+                    systemImage: "doc.text",
+                    editor: editor
+                )
+            } else {
+                ScriptEditor(placeholder: placeholder, text: paramBinding(ActionParam.script))
+            }
+            Text("Runs once per matching file. \(source == .file ? fileHelp : help) Dry Run doesn't run scripts, and changes made by a script can't be undone.")
+                .font(.caption)
+                .foregroundStyle(ForelTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+    }
+
+    /// Both the embedded script and the file path are kept, so switching
+    /// back and forth doesn't lose either.
+    private var scriptSourceBinding: Binding<ScriptSource> {
+        Binding(
+            get: { ScriptSource.of(action) },
+            set: { paramBinding(ActionParam.scriptSource).wrappedValue = $0.rawValue }
+        )
+    }
+
+    private var pauseSecondsBinding: Binding<String> {
+        Binding(
+            get: {
+                guard case .number(let seconds) = action.params[ActionParam.pauseSeconds] else { return "" }
+                return seconds.formatted()
+            },
+            set: { newValue in
+                var dict: [String: JSONValue] = [:]
+                if case .object(let existing) = action.params { dict = existing }
+                if let seconds = Double(newValue), seconds.isFinite, seconds >= 0 {
+                    dict[ActionParam.pauseSeconds] = .number(seconds)
+                } else {
+                    dict.removeValue(forKey: ActionParam.pauseSeconds)
+                }
                 action.params = .object(dict)
             }
         )

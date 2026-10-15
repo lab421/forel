@@ -129,9 +129,14 @@ public enum ActionKind: String, Codable, Equatable, Sendable {
     case setColorLabel = "set_color_label"
     case runScript = "run_script"
     case runShortcut = "run_shortcut"
+    case runAppleScript = "run_applescript"
+    case runJavaScript = "run_javascript"
+    case runAutomatorWorkflow = "run_automator_workflow"
     case openApplication = "open_application"
     case importToLibrary = "import_to_library"
     case uncompress
+    case pause
+    case displayNotification = "display_notification"
 
     public init(dbValue: String) {
         self = ActionKind(rawValue: dbValue) ?? .moveToFolder

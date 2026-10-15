@@ -487,6 +487,82 @@ struct GlassField: View {
     }
 }
 
+/// Multi-line, monospaced editor for embedded scripts. Smart quotes, dashes,
+/// and other automatic substitutions are off: they would silently turn `"`
+/// into `“` and break the script.
+struct ScriptEditor: View {
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        ScriptTextView(text: $text)
+            .frame(height: 120)
+            .overlay(alignment: .topLeading) {
+                if text.isEmpty {
+                    Text(placeholder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(ForelTheme.secondaryText)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 8)
+                        .allowsHitTesting(false)
+                }
+            }
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
+    }
+}
+
+private struct ScriptTextView: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        scrollView.drawsBackground = false
+        scrollView.autohidesScrollers = true
+        guard let textView = scrollView.documentView as? NSTextView else { return scrollView }
+        textView.delegate = context.coordinator
+        textView.string = text
+        textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.textColor = .labelColor
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.allowsUndo = true
+        textView.textContainerInset = NSSize(width: 6, height: 8)
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.isGrammarCheckingEnabled = false
+        textView.smartInsertDeleteEnabled = false
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.text = $text
+        guard let textView = scrollView.documentView as? NSTextView, textView.string != text else { return }
+        textView.string = text
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var text: Binding<String>
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            text.wrappedValue = textView.string
+        }
+    }
+}
+
 /// A read-only folder path field with a "Choose…" button opening the native
 /// macOS Finder directory picker. Used everywhere a folder is selected.
 struct FolderField: View {
