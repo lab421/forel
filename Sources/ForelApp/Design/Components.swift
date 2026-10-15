@@ -531,7 +531,10 @@ enum FolderPicker {
         if let path, !path.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: path)
         }
-        return panel.runModal() == .OK ? panel.url?.path : nil
+        guard panel.runModal() == .OK, let path = panel.url?.path else { return nil }
+        // A share picked through "Network" while already connected comes back
+        // as its temporary second mount (/Volumes/<name>-1): keep the first.
+        return VolumePaths.canonical(path)
     }
 }
 

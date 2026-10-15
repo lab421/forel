@@ -89,9 +89,10 @@ struct QuickActivityFeed: View {
             }
         }
         .onAppear { feed.reload() }
-        // New actions (watcher, Run Now, undo) change the total — pick them up
-        // while the panel is open.
+        // Pick up new actions while the panel is open: Run Now and undo change
+        // the History total, automatic runs bump the watcher revision.
         .onReceive(model.$historyTotalCount.dropFirst()) { _ in feed.reload() }
+        .onReceive(model.$watcherHistoryRevision.dropFirst()) { _ in feed.reload() }
     }
 }
 

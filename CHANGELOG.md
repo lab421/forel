@@ -6,6 +6,10 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- Right-clicking a watched folder in the sidebar now offers Show in Finder.
+- Activity can now be opened from the bottom of the sidebar, next to Settings.
+- When Run Now has failed actions, its result now stays on screen with a Show in Activity link to see what went wrong.
+- Automatic rules now notify you once when a disk or network share they move or copy to isn't connected, and run again on the waiting files as soon as it's back.
 - Added a getting-started example for lowercasing filenames and replacing spaces with underscores, with guidance on how scripts receive files.
 - The menu bar quick panel now shows recent activity across all folders, showing the 10 latest actions first and loading more as you scroll.
 
@@ -16,9 +20,14 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Fixed
 - The menu bar icon now appears when Forel starts at login, without having to reopen the app.
+- Run Now no longer reports failed actions as applied: its result now counts applied, failed, skipped, and pending actions separately.
+- Dry Run now warns when a Move or Copy destination can't be reached or written to, such as a disconnected disk or network share.
+- Folders on a network share chosen through Network in the folder picker no longer stop working later.
+- When a Move or Copy fails because a disk or network share isn't connected, Activity and Dry Run now name it.
 - Rules with a Size condition no longer crash when the entered size is an extremely large number.
 - Rules no longer move or change macOS system files such as a folder's custom icon file, so folders keep their custom icons. iCloud placeholders, volume system folders, and Windows `Thumbs.db` / `desktop.ini` files are ignored too.
 - Automatic rules now wait until an arriving file or folder has finished being written before acting on it, so AirDrop transfers, Finder copies, and other in-progress files are no longer moved while incomplete or left behind as empty duplicates. Pausing automatic watching during a transfer also keeps rules from running when it completes. Files still being copied by Finder are also skipped by Dry Run and Run Now.
+- Files downloaded with Firefox are no longer moved before the download finishes, which left an empty file at the destination and the real download renamed with " (1)".
 
 ## [1.0.9] - 2026-10-02
 

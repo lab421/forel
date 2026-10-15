@@ -26,6 +26,11 @@ import Foundation
 /// should touch a file in that state: moving it mid-transfer leaves an empty
 /// or truncated file behind. Checked by `RuleEngine` so Dry Run, Run Now, and
 /// the watcher all leave such a file alone.
+///
+/// Firefox does the same with its own convention: it reserves the final name
+/// with an empty file, downloads into `<name>.part` next to it, then renames
+/// the `.part` over the empty file. Moving the empty file early would leave
+/// it at the destination and push the real download to "<name> (1)".
 enum FileReadiness {
     /// 14 February 1946 08:34:56 UTC, Finder's "busy" creation date.
     static let busyCreationDate = Date(timeIntervalSince1970: -753_549_904)
@@ -37,7 +42,15 @@ enum FileReadiness {
     static func isMarkedBusy(_ path: String) -> Bool {
         var st = stat()
         guard stat(path, &st) == 0 else { return false }
-        return isBusy(st)
+        return isBusy(st) || isDownloadPlaceholder(path, st)
+    }
+
+    /// An empty file with a `<name>.part` beside it: Firefox's placeholder
+    /// for a download still in progress.
+    private static func isDownloadPlaceholder(_ path: String, _ st: stat) -> Bool {
+        st.st_size == 0
+            && st.st_mode & S_IFMT == S_IFREG
+            && FileManager.default.fileExists(atPath: path + ".part")
     }
 
     private static func isBusy(_ st: stat) -> Bool {

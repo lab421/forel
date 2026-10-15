@@ -157,6 +157,11 @@ public struct ActionPlan: Equatable, Sendable {
     public let finalPath: String
     public let copiedPath: String?
     public let isTerminal: Bool
+    /// Why the action is expected to fail when it runs, if a problem is
+    /// already visible while planning (e.g. an unreachable destination).
+    /// Only informs the preview: execution still attempts the action, so a
+    /// wrong guess here can never block a run that would have worked.
+    public let warning: String?
 
     public init(
         kind: ActionKind,
@@ -166,7 +171,8 @@ public struct ActionPlan: Equatable, Sendable {
         status: DryRunStatus,
         finalPath: String,
         copiedPath: String?,
-        isTerminal: Bool
+        isTerminal: Bool,
+        warning: String? = nil
     ) {
         self.kind = kind
         self.description = description
@@ -176,6 +182,7 @@ public struct ActionPlan: Equatable, Sendable {
         self.finalPath = finalPath
         self.copiedPath = copiedPath
         self.isTerminal = isTerminal
+        self.warning = warning
     }
 }
 
@@ -227,22 +234,44 @@ public enum ActionExecutor {
     /// `resolveDestination`). Trash/delete have no user-facing conflict
     /// choice and always use the `.rename` default.
     private static func moveIntoDir(path: String, destDir: String, resolution: MoveConflictResolution = .rename) throws -> Applied {
-        try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
-        let fileName = (path as NSString).lastPathComponent
-        let naiveDest = (destDir as NSString).appendingPathComponent(fileName)
-        let dest = try resolveDestination(naiveDest: naiveDest, dir: destDir, fileName: fileName, resolution: resolution)
-        try FileManager.default.moveItem(atPath: path, toPath: dest)
-        return Applied(newPath: dest, undo: .move(from: path, to: dest))
+        try explainingDisconnectedVolume(destDir) {
+            try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
+            let fileName = (path as NSString).lastPathComponent
+            let naiveDest = (destDir as NSString).appendingPathComponent(fileName)
+            let dest = try resolveDestination(naiveDest: naiveDest, dir: destDir, fileName: fileName, resolution: resolution)
+            try FileManager.default.moveItem(atPath: path, toPath: dest)
+            return Applied(newPath: dest, undo: .move(from: path, to: dest))
+        }
+    }
+
+    /// Runs `body` as is. Only when it fails and the destination is on a disk
+    /// or share that isn't mounted, the error says so by name instead of the
+    /// file system's message, which can blame the startup disk.
+    private static func explainingDisconnectedVolume<T>(_ destDir: String, _ body: () throws -> T) throws -> T {
+        do {
+            return try body()
+        } catch {
+            if let volume = VolumePaths.unmountedVolume(of: destDir) {
+                throw ActionError(volumeNotConnectedMessage(volume))
+            }
+            throw error
+        }
+    }
+
+    private static func volumeNotConnectedMessage(_ volume: String) -> String {
+        "“\(volume)” isn't connected. Connect the disk or network share, or choose the destination folder again."
     }
 
     private static func copyToFolder(_ action: Action, path: String) throws -> Applied {
         let destDir = try stringParam(action, ActionParam.destination, "CopyToFolder")
-        try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
-        let fileName = (path as NSString).lastPathComponent
-        let naiveDest = (destDir as NSString).appendingPathComponent(fileName)
-        let dest = try resolveDestination(naiveDest: naiveDest, dir: destDir, fileName: fileName, resolution: conflictResolution(action))
-        try FileManager.default.copyItem(atPath: path, toPath: dest)
-        return Applied(newPath: path, undo: .none, copiedPath: dest)
+        return try explainingDisconnectedVolume(destDir) {
+            try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
+            let fileName = (path as NSString).lastPathComponent
+            let naiveDest = (destDir as NSString).appendingPathComponent(fileName)
+            let dest = try resolveDestination(naiveDest: naiveDest, dir: destDir, fileName: fileName, resolution: conflictResolution(action))
+            try FileManager.default.copyItem(atPath: path, toPath: dest)
+            return Applied(newPath: path, undo: .none, copiedPath: dest)
+        }
     }
 
     private struct ZipExtractionPlan {
@@ -919,7 +948,8 @@ public enum ActionExecutor {
                 status: .wouldRun,
                 finalPath: target,
                 copiedPath: nil,
-                isTerminal: true
+                isTerminal: true,
+                warning: destinationWarning(destDir)
             )
         case .copyToFolder:
             let destDir = action.params[ActionParam.destination]?.stringValue ?? ""
@@ -952,7 +982,8 @@ public enum ActionExecutor {
                 status: .wouldRun,
                 finalPath: path,
                 copiedPath: target,
-                isTerminal: false
+                isTerminal: false,
+                warning: destinationWarning(destDir)
             )
         case .rename:
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
@@ -1306,6 +1337,26 @@ public enum ActionExecutor {
             // separately by the caller), so this behaves like a plain move/copy.
             return (naiveTarget, "\(verb) to \(naiveTarget)")
         }
+    }
+
+    /// A move/copy creates its destination folder on demand, so what has to
+    /// be writable is that folder or, when it doesn't exist yet, its nearest
+    /// existing ancestor. A network share that isn't mounted or that Forel
+    /// isn't allowed to access shows up here as a missing folder under a
+    /// location that can't be written to.
+    private static func destinationWarning(_ destDir: String) -> String? {
+        guard !destDir.isEmpty else { return nil }
+        var candidate = normalizedPath(destDir)
+        while !FileManager.default.fileExists(atPath: candidate) {
+            let parent = (candidate as NSString).deletingLastPathComponent
+            guard parent != candidate, !parent.isEmpty else { break }
+            candidate = parent
+        }
+        guard !FileManager.default.isWritableFile(atPath: candidate) else { return nil }
+        if let volume = VolumePaths.unmountedVolume(of: destDir) {
+            return volumeNotConnectedMessage(volume)
+        }
+        return "The destination folder can't be reached or written to right now. Check that the disk or network share is connected and that Forel is allowed to access it."
     }
 
     private static func normalizedPath(_ path: String) -> String {

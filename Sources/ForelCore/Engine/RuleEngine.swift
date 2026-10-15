@@ -64,13 +64,16 @@ public struct ActionPreview: Hashable, Sendable {
     public let sourcePath: String
     public let targetPath: String?
     public let status: DryRunStatus
+    /// Why the action is expected to fail when it runs, if already known.
+    public let warning: String?
 
-    public init(kind: ActionKind, description: String, sourcePath: String, targetPath: String?, status: DryRunStatus) {
+    public init(kind: ActionKind, description: String, sourcePath: String, targetPath: String?, status: DryRunStatus, warning: String? = nil) {
         self.kind = kind
         self.description = description
         self.sourcePath = sourcePath
         self.targetPath = targetPath
         self.status = status
+        self.warning = warning
     }
 }
 
@@ -521,7 +524,8 @@ public enum RuleEngine {
                         description: plan.description,
                         sourcePath: plan.sourcePath,
                         targetPath: plan.targetPath,
-                        status: plan.status
+                        status: plan.status,
+                        warning: plan.warning
                     )
                 )
 

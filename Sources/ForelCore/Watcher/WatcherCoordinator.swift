@@ -38,7 +38,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
     /// arbitrary amount of time, especially when moving across volumes or to
     /// a network share, so process their immutable event snapshots here
     /// instead of blocking the native stream's delivery queue.
-    private let processingQueue = DispatchQueue(label: "app.forel.watcher-processing")
+    let processingQueue = DispatchQueue(label: "app.forel.watcher-processing")
     private let activeProcessingLock = NSLock()
     private var activeProcessingRoots: [String: Int] = [:]
     /// How long a newly arrived file's size and modification time must stay
@@ -56,6 +56,12 @@ public final class WatcherCoordinator: @unchecked Sendable {
     private let maxStalledInterval: TimeInterval = 60
     public var onRuleMatched: (@Sendable (String, String) -> Void)?
     public var onActivity: (@Sendable (WatcherActivitySummary) -> Void)?
+    public var onVolumeUnavailable: (@Sendable (VolumeUnavailableEvent) -> Void)?
+    /// Called whenever an automatic run records history, failures included.
+    public var onHistoryRecorded: (@Sendable () -> Void)?
+    /// Files to run the rules on again, by the /Volumes name of the disk or
+    /// share they wait for. Only touched on `processingQueue`; not persisted.
+    var waitingForVolume: [String: Set<String>] = [:]
 
     private struct SettlingState {
         var fingerprint: String?
@@ -100,9 +106,12 @@ public final class WatcherCoordinator: @unchecked Sendable {
     /// Files that a still-watched nested folder covers keep waiting.
     private func stopSettling(under root: String) {
         watchedRoots.remove(root)
-        settling = settling.filter { path, _ in
+        let isStillWatched: (String) -> Bool = { [watchedRoots] path in
             !Self.isPath(path, under: root) || watchedRoots.contains { Self.isPath(path, under: $0) }
         }
+        settling = settling.filter { path, _ in isStillWatched(path) }
+        // Nor may they run once their disk or share comes back.
+        keepWaiting(where: isStillWatched)
     }
 
     private static func isPath(_ path: String, under root: String) -> Bool {
@@ -216,14 +225,15 @@ public final class WatcherCoordinator: @unchecked Sendable {
         return activeProcessingRoots[root, default: 0] > 0
     }
 
-    func handle(path: String) {
+    /// `retrying` runs the rules even though the file hasn't changed.
+    func handle(path: String, retrying: Bool = false) {
         // A duplicate/coalesced FSEvent for a path a prior call already
         // moved away — common with FSEvents — would otherwise be replanned
         // (name/extension conditions don't require the file to exist) and
         // then fail at execution with a noisy "doesn't exist" entry.
         // Nothing meaningful can be evaluated against a path that's gone.
         guard FileManager.default.fileExists(atPath: path) else { return }
-        guard hasPathChangedSinceLastEvaluation(path) else { return }
+        guard retrying || hasPathChangedSinceLastEvaluation(path) else { return }
 
         guard let (folder, rules, isPro) = db.withLock({ db -> (WatchedFolder, [Rule], Bool)? in
             guard let folder = try? db.folderForPath(path) else { return nil }
@@ -238,17 +248,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
         guard let depth = RuleEngine.pathDepth(root: folder.path, path: path) else { return }
         let batchId = UUID().uuidString
         let (matched, history) = RuleEngine.run(path: path, depth: depth, rules: rules, batchId: batchId, root: folder.path, isPro: isPro)
-        for ruleName in matched {
-            onRuleMatched?(ruleName, path)
-        }
-        if !history.isEmpty {
-            db.withLock { db in
-                try? db.insertHistoryEntries(history)
-            }
-            recordEvaluatedResultStates(history)
-            notifyActivity(from: history)
-        }
-        recordEvaluatedState(path)
+        record(matched: matched, history: history, path: path, rules: rules)
     }
 
     private func beginProcessing(root: String) {
@@ -370,6 +370,11 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
         let batchId = UUID().uuidString
         let (matched, history) = RuleEngine.run(path: path, depth: depth, rules: rules, batchId: batchId, root: watchedRoot, isPro: isPro)
+        record(matched: matched, history: history, path: path, rules: rules)
+    }
+
+    /// Persists what a run on `path` did and tells whoever listens.
+    private func record(matched: [String], history: [HistoryEntry], path: String, rules: [Rule]) {
         for ruleName in matched {
             onRuleMatched?(ruleName, path)
         }
@@ -379,6 +384,8 @@ public final class WatcherCoordinator: @unchecked Sendable {
             }
             recordEvaluatedResultStates(history)
             notifyActivity(from: history)
+            onHistoryRecorded?()
+            waitForDisconnectedVolumes(history, path: path, rules: rules)
         }
         recordEvaluatedState(path)
     }

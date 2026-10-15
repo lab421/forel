@@ -819,4 +819,50 @@ import Foundation
         #expect(RuleEngine.pathDepth(root: "/Users/x/Inbox", path: "/Users/x/Inbox/Sub/file.txt") == 1)
         #expect(RuleEngine.pathDepth(root: "/Users/x/Inbox", path: "/Users/x/Other/file.txt") == nil)
     }
+
+    @Test(arguments: [ActionKind.moveToFolder, .copyToFolder])
+    func unreachableDestinationIsFlaggedInPreviewAndFailsWhenRun(kind: ActionKind) throws {
+        let dir = TempDir()
+        let file = dir.file("report.pdf", contents: "done")
+        // Like a NAS share that isn't mounted: the folder is missing and
+        // nothing can be created under /Volumes.
+        let volume = "ForelMissingShare-\(UUID().uuidString)"
+        let destination = "/Volumes/\(volume)/Inbox"
+        let rule = makeRule(
+            name: "to nas",
+            conditions: [makeCondition(.extension_, .is, "pdf")],
+            actions: [makeAction(kind, .object(["destination": .string(destination)]))]
+        )
+
+        let preview = try #require(RuleEngine.previewFile(path: file, depth: 0, rules: [rule]))
+        let action = try #require(preview.rules.first?.actions.first)
+        #expect(action.status == .wouldRun)
+        #expect(action.warning?.contains("“\(volume)” isn't connected") == true)
+
+        // The warning only informs: the run still attempts the action, and
+        // records the real failure without touching the file. The failure
+        // names the missing share rather than a file system error.
+        let (_, history) = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+        #expect(history.map(\.status) == [.failed])
+        #expect(history.first?.message?.contains("“\(volume)” isn't connected") == true)
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(RunSummary.message(for: history) == "Run complete — 1 action failed")
+    }
+
+    @Test func reachableDestinationHasNoWarningEvenBeforeItExists() throws {
+        let dir = TempDir()
+        let file = dir.file("report.pdf", contents: "done")
+        let existing = dir.dir("Documents")
+        let notCreatedYet = (dir.path as NSString).appendingPathComponent("Archive/2026/10")
+
+        for destination in [existing, notCreatedYet] {
+            let rule = makeRule(
+                name: "sort",
+                conditions: [makeCondition(.extension_, .is, "pdf")],
+                actions: [makeAction(.moveToFolder, .object(["destination": .string(destination)]))]
+            )
+            let preview = try #require(RuleEngine.previewFile(path: file, depth: 0, rules: [rule]))
+            #expect(preview.rules.first?.actions.first?.warning == nil)
+        }
+    }
 }

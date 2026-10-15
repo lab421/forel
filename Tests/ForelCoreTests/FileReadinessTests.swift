@@ -37,6 +37,76 @@ import Testing
         #expect(!FileReadiness.isMarkedBusy(file))
     }
 
+    @Test func detectsFirefoxDownloadPlaceholder() throws {
+        let dir = TempDir()
+        let placeholder = dir.file("example.torrent")
+        #expect(!FileReadiness.isMarkedBusy(placeholder))
+
+        // Empty file with "<name>.part" beside it: still downloading.
+        let part = dir.file("example.torrent.part", contents: "partial")
+        #expect(FileReadiness.isMarkedBusy(placeholder))
+        #expect(FileReadiness.snapshot(placeholder)?.isMarkedBusy == true)
+
+        // A file with content is never a placeholder, even next to a ".part".
+        let complete = dir.file("report.pdf", contents: "complete")
+        _ = dir.file("report.pdf.part", contents: "stale")
+        #expect(!FileReadiness.isMarkedBusy(complete))
+
+        // Firefox renames the ".part" over the placeholder when done.
+        #expect(rename(part, placeholder) == 0)
+        #expect(!FileReadiness.isMarkedBusy(placeholder))
+    }
+
+    @Test func firefoxPlaceholderIsIgnoredByRunAndPreview() throws {
+        let dir = TempDir()
+        let placeholder = dir.file("example.torrent")
+        let part = dir.file("example.torrent.part", contents: "torrent")
+        let destination = dir.dir("torrents")
+        let rule = makeRule(
+            name: "torrents",
+            conditions: [makeCondition(.extension_, .is, "torrent")],
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(destination)]))]
+        )
+
+        #expect(RuleEngine.previewFile(path: placeholder, depth: 0, rules: [rule]) == nil)
+        #expect(RuleEngine.run(path: placeholder, depth: 0, rules: [rule], batchId: "batch").matched.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: placeholder))
+
+        #expect(rename(part, placeholder) == 0)
+        #expect(RuleEngine.previewFile(path: placeholder, depth: 0, rules: [rule]) != nil)
+        #expect(RuleEngine.run(path: placeholder, depth: 0, rules: [rule], batchId: "batch").matched == ["torrents"])
+    }
+
+    /// Firefox reserves the name with an empty file, downloads into ".part",
+    /// then renames it over the placeholder. A download outlasting the settle
+    /// wait used to move the empty file, then the real one as "<name> (1)".
+    @Test func watcherWaitsForFirefoxDownloadToFinish() throws {
+        let dir = TempDir()
+        let placeholder = dir.file("example.torrent")
+        let part = dir.file("example.torrent.part", contents: "torrent")
+        let destination = dir.dir("torrents")
+        let db = try Database(path: ":memory:")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "torrents")
+        rule.conditions = [makeCondition(.extension_, .is, "torrent", ruleId: rule.id)]
+        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let coordinator = WatcherCoordinator(db: db, settleInterval: 0.05)
+
+        coordinator.enqueue(event: .pathArrived(placeholder))
+        Thread.sleep(forTimeInterval: 0.3)
+        #expect(FileManager.default.fileExists(atPath: placeholder))
+        #expect(try db.listHistory().isEmpty)
+
+        #expect(rename(part, placeholder) == 0)
+        coordinator.enqueue(event: .pathArrived(placeholder))
+        coordinator.waitForPendingEvents()
+        #expect(try FileManager.default.contentsOfDirectory(atPath: destination) == ["example.torrent"])
+        #expect(try String(contentsOfFile: (destination as NSString).appendingPathComponent("example.torrent"), encoding: .utf8) == "torrent")
+        #expect(try db.listHistory().count == 1)
+    }
+
     @Test func missingFileIsNotBusy() {
         #expect(!FileReadiness.isMarkedBusy("/nonexistent/forel/incoming.pdf"))
     }

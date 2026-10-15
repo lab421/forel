@@ -105,6 +105,10 @@ struct SidebarView: View {
                     .help("Settings")
                 }
                 Spacer()
+                FooterLink(title: "Activity", systemImage: "clock.arrow.circlepath") {
+                    model.showActivity()
+                }
+                .help("Activity history")
             }
         }
         .padding(16)
@@ -192,6 +196,10 @@ struct SidebarView: View {
             model.reloadRules()
         }
         .contextMenu {
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: folder.path)])
+            }
+            Divider()
             Button("Change path of folder…") { changeFolder(folder) }
             Button("Remove", role: .destructive) { model.removeFolder(folder) }
         }
