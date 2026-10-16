@@ -185,18 +185,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             updater: updater,
             license: license,
             onOpenMainWindow: { [weak self] in self?.openMainWindow() },
-            onOpenLicense: { [weak self] in self?.openLicenseSettings() }
+            onOpenLicense: { [weak self] in self?.prepareLicenseSettings() }
         )
     }
 
-    /// Opens the `Settings` scene directly on the License tab — used both by
-    /// the quick panel's "Upgrade" button. `showSettingsWindow:` is the same
-    /// selector SwiftUI's own "Settings…" menu item sends; there's no public
-    /// API to open a SwiftUI `Settings` scene from AppKit code on macOS 13.
-    private func openLicenseSettings() {
+    /// Selects the License tab and activates Forel before the quick panel
+    /// opens the Settings scene using SwiftUI's openSettings action.
+    private func prepareLicenseSettings() {
         settingsNavigation.selectedCategory = .license
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     private func openMainWindow() {

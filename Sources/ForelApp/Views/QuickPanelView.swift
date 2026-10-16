@@ -27,6 +27,7 @@ struct QuickPanelView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var updater: UpdaterManager
     @EnvironmentObject var license: ForelLicenseManager
+    @Environment(\.openSettings) private var openSettings
     let onOpenMainWindow: () -> Void
     let onQuit: () -> Void
     var onOpenLicense: (() -> Void)?
@@ -121,7 +122,10 @@ struct QuickPanelView: View {
                     Text("Forel")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(ForelTheme.primaryText)
-                    Button { onOpenLicense?() } label: {
+                    Button {
+                        onOpenLicense?()
+                        openSettings()
+                    } label: {
                       Text(license.hasAccess ? "Pro" : "Free")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(license.hasAccess ? ForelTheme.pro : ForelTheme.primaryText)

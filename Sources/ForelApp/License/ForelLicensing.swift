@@ -33,8 +33,14 @@ enum ForelLicensing {
     }()
     static let purchaseURL = URL(string: "https://forel.app")!
 
-    /// Local license server endpoint used during development.
-    static let baseURL = URL(string: "http://localhost:8787/api/v1/license")!
+    static let baseURL: URL = {
+        switch BuildFlavor.current {
+        case .development:
+            URL(string: "http://localhost:8787/api/v1/license")!
+        case .adHoc, .appStore:
+            URL(string: "https://api.ombrelle.app/api/v1/license")!
+        }
+    }()
 
     /// Raw 32-byte Ed25519 public key matching the `LICENSE_SIGNING_PRIVATE_KEY`
     /// secret on the license server. Rotating that key invalidates every cached
