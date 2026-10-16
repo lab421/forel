@@ -103,6 +103,11 @@ Forel Free is available indefinitely without a license. Pro is a paid license; t
 | Dry Run preview, history, and supported Undo | Included | Included |
 | Files processed | Unlimited | Unlimited |
 | File processing on your Mac | Included | Included |
+| [Scheduler](#roadmap) | — | Coming soon |
+| [Sync actions](#roadmap) | — | Coming soon |
+| [AI features](#roadmap) | — | Coming soon |
+
+Scheduler, sync actions, and AI features are planned for Pro. Features marked **Coming soon** are not available in the current version.
 
 **Free:** organize your everyday folders automatically. **Pro:** automate all your folders, recognize scanned documents, and connect your own workflows.
 
@@ -244,13 +249,13 @@ History / Undo (SQLite)
 - [ ] Export / Import rules
 - [ ] Toggle extension hidden / visible
 - [ ] Move folder based on criteria
-- [ ] Scheduler
+- [ ] Scheduler — **Pro · Coming soon**
 - [ ] Copy rules accros watching folders
 - [ ] Compress actions
-- [ ] Sync actions
+- [ ] Sync actions — **Pro · Coming soon**
 - [ ] Dynamic destination folders with date tokens (e.g. `~/Screenshots/{year}/{month}`)
 - [ ] Upload actions
-- [ ] AI features
+- [ ] AI features — **Pro · Coming soon**
 
 ## Content matching
 
