@@ -42,6 +42,8 @@ struct LicenseSettingsView: View {
                     )
                 }
             } else {
+                SectionLabel(title: "Monthly usage")
+                MonthlyFileUsageView(onUpgrade: { openURL(ForelLicensing.purchaseURL) })
                 SectionLabel(title: "Automate more with Pro")
                 ProBenefitsView()
                 SectionLabel(title: "Activate License")
@@ -85,7 +87,7 @@ struct LicenseSettingsView: View {
         }
         .frame(maxWidth: 460)
         .confirmationDialog(
-            "Deactivate Forel Pro? Free allows 2 folders with unlimited rules and actions. OCR, scripts, Shortcuts, and media imports require Pro. Your configuration will be kept; rules requiring Pro will stop running.",
+            "Deactivate Forel Pro? Free allows 2 folders and 500 processed files per month, with unlimited rules and actions. OCR, scripts, Shortcuts, and media imports require Pro. Your configuration will be kept; rules requiring Pro will stop running.",
             isPresented: $showingDeactivationConfirmation
         ) {
             Button("Deactivate", role: .destructive) {
@@ -110,6 +112,6 @@ struct LicenseSettingsView: View {
     private var statusSubtitle: String {
         license.hasAccess
             ? "Unlimited folders, with OCR and advanced workflows."
-            : "Free forever, with unlimited rules and actions. No trial."
+            : "Free forever: 500 processed files per month, with unlimited rules and actions. No trial."
     }
 }

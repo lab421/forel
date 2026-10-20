@@ -31,7 +31,7 @@ enum ForelLicensing {
         ForelLicensePreferences.migrate(to: suite, from: "com.lab421.forel", service: keychainService)
         return suite
     }()
-    static let purchaseURL = URL(string: "https://forel.app")!
+    static let purchaseURL = URL(string: "https://forel-app.github.io/")!
 
     static let baseURL: URL = {
         switch BuildFlavor.current {

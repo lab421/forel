@@ -25,6 +25,7 @@ public enum ProFeature: String, CaseIterable, Identifiable, Sendable {
 /// Folder allowances use the persisted order, including disabled entries.
 public enum FreePlan {
     public static let folderLimit = 2
+    public static let monthlyFileLimit = 500
 
     public static func requiredFeature(for action: ActionKind) -> ProFeature? {
         switch action {
@@ -56,12 +57,13 @@ public enum FreePlan {
 }
 
 public enum FreePlanError: Error, LocalizedError, Equatable {
-    case folderLimit, proFolder
+    case folderLimit, proFolder, monthlyFileLimit
     case feature(ProFeature)
     public var errorDescription: String? {
         switch self {
         case .folderLimit: "Forel Free supports 2 watched folders. Remove a folder or activate Pro to add another."
         case .proFolder: "This folder is outside the Free allowance. Reorder folders or activate Pro to add rules."
+        case .monthlyFileLimit: "Forel Free has processed 500 files this month. Processing resumes next month, or activate Pro for unlimited files. Your remaining files stay in place."
         case .feature(let feature): "\(feature.title) requires Forel Pro. This rule is kept but cannot run in Free."
         }
     }

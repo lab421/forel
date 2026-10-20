@@ -3,22 +3,25 @@ import SwiftUI
 import ForelCore
 
 enum ProUpgradeContext: Identifiable {
-    case folders, feature(ProFeature)
+    case folders, monthlyFiles, feature(ProFeature)
     var id: String {
         switch self {
         case .folders: "folders"
+        case .monthlyFiles: "monthly-files"
         case .feature(let feature): feature.id
         }
     }
     var title: String {
         switch self {
         case .folders: "Automate more folders"
+        case .monthlyFiles: "Keep processing with Pro"
         case .feature(let feature): feature.title
         }
     }
     var message: String {
         switch self {
         case .folders: "Free includes 2 watched folders. With Pro, organize your projects, invoices, and downloads with unlimited folders."
+        case .monthlyFiles: "Free includes 500 processed files per calendar month, shared across all folders. Activate Pro for unlimited processing, or resume next month. Dry Run remains available and your remaining files stay in place."
         case .feature(let feature): feature.benefit
         }
     }
@@ -70,6 +73,7 @@ struct ProBenefitsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             Label("Unlimited watched folders", systemImage: "folder.badge.plus")
+            Label("Unlimited files processed", systemImage: "doc.on.doc")
             Label("OCR for images and scanned PDFs", systemImage: "text.viewfinder")
             Label("Custom scripts and Apple Shortcuts", systemImage: "terminal")
             Label("Photos, Music, and TV imports", systemImage: "photo.on.rectangle")

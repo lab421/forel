@@ -52,7 +52,9 @@ struct RuleListView: View {
                     .foregroundStyle(ForelTheme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     Spacer()
-                    Button("Discover Pro") { model.proUpgrade = .folders }
+                    Button("Discover Pro") {
+                        model.proUpgrade = model.selectedFolderIsAllowed ? .monthlyFiles : .folders
+                    }
                         .buttonStyle(.link)
                 }
             }

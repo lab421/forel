@@ -101,7 +101,7 @@ Forel Free is available indefinitely without a license. Pro is a paid license; t
 | Custom scripts and Apple Shortcuts | — | Included |
 | Imports into Photos, Music, and TV | — | Included |
 | Dry Run preview, history, and supported Undo | Included | Included |
-| Files processed | Unlimited | Unlimited |
+| Files processed | 500 per calendar month | Unlimited |
 | File processing on your Mac | Included | Included |
 | [Scheduler](#roadmap) | — | Coming soon |
 | [Sync actions](#roadmap) | — | Coming soon |
@@ -111,7 +111,9 @@ Scheduler, sync actions, and AI features are planned for Pro. Features marked **
 
 **Free:** organize your everyday folders automatically. **Pro:** automate all your folders, recognize scanned documents, and connect your own workflows.
 
-[View pricing and buy Forel Pro](https://forel.app), then activate your license in **Settings → License**. The Free badge in the quick panel also opens License settings. Attempting a Pro action or exceeding the folder quota explains the benefit and offers a purchase or activation link.
+[View pricing and buy Forel Pro](https://forel-app.github.io/), then activate your license in **Settings → License**. The Free badge in the quick panel also opens License settings. Monthly file usage is visible in the app; attempting a Pro action or reaching a quota explains the benefit and offers a purchase or activation link.
+
+Free includes **500 processed files per calendar month**, shared across all folders, Run Now, and automatic watching. A file or folder counts once per processing run when at least one action is applied, even when several rules or actions run on it. Dry Run, unmatched files, and runs with only skipped or failed actions do not count. Pro processing and Undo do not consume the Free allowance. Usage is stored independently of history, with a backup in local preferences; Forel keeps the higher count for the same month if the two differ. It survives restarts, history cleanup, and deletion of the database alone, and renews on the first day of each month in your Mac's time zone. At the limit, remaining files stay in place. Run Now can be run again after renewal; files blocked during automatic watching resume when the allowance renews or Pro is activated, provided their folder is still watched.
 
 If you return to Free, your entire configuration is kept. Only the first 2 folders are eligible; reorder them to choose which ones remain available. Rules and actions are unlimited in both plans, but rules with Pro actions do not run in Free. Contents conditions still read document text, but images and scanned PDFs require Pro OCR and never match unreadable content, including negative operators.
 

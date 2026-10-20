@@ -31,9 +31,6 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [1.0.9] - 2026-10-02
 
-### Changed
-- Forel remains usable after the trial ends in a limited mode with one active rule; activating another rule pauses the previous one.
-
 ### Fixed
 - About Forel now displays the app name, version, build number, copyright, and repository link.
 - Automatic rules now keep processing simultaneous file arrivals when an earlier file takes time to move to another disk or network folder.

@@ -73,6 +73,9 @@ final class AppModel: ObservableObject {
     var isPro: Bool { !licenseAccessIsLimited }
     var canAddFolder: Bool { FreePlan.canAddFolder(count: folders.count, isPro: isPro) }
     var canAddRule: Bool { selectedFolderId != nil && selectedFolderIsAllowed }
+    var monthlyFileUsage: MonthlyFileUsage? {
+        try? db.withLock { try $0.monthlyFileUsage() }
+    }
     var selectedFolderIsAllowed: Bool {
         guard let selectedFolderId else { return false }
         return FreePlan.allows(folderID: selectedFolderId, folders: folders, isPro: isPro)
@@ -80,6 +83,9 @@ final class AppModel: ObservableObject {
     var planNotice: String? {
         guard !isPro, selectedFolderId != nil else { return nil }
         if !selectedFolderIsAllowed { return "This folder is kept for Pro. Free supports the first 2 watched folders; reorder folders or activate Pro to use it." }
+        if monthlyFileUsage?.isExhausted == true {
+            return FreePlanError.monthlyFileLimit.localizedDescription
+        }
         return nil
     }
     private func executionRules(for folder: WatchedFolder) -> [Rule] {
@@ -110,7 +116,8 @@ final class AppModel: ObservableObject {
         try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         let dbPath = appSupport.appendingPathComponent("forel.db").path
 
-        let db = try Database(path: dbPath)
+        let usagePreferences = UserDefaults(suiteName: "com.lab421.forel.usage") ?? .standard
+        let db = try Database(path: dbPath, monthlyUsagePreferences: usagePreferences)
         self.db = db
         self.coordinator = WatcherCoordinator(db: db)
         self.coordinator.onActivity = { [weak self] summary in
@@ -127,6 +134,12 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 self?.bumpWatcherHistoryRevision()
             }
+        }
+        self.coordinator.onMonthlyQuotaReached = { [weak self] in
+            Task { @MainActor in self?.bumpWatcherHistoryRevision() }
+        }
+        self.coordinator.onProcessingError = { [weak self] message in
+            Task { @MainActor in self?.showNotice(title: "Could not process this file", message: message) }
         }
         // Default to paused (watching off) on a fresh install — a brand-new
         // user hasn't set up any rules yet, and starting to watch folders
@@ -611,28 +624,45 @@ final class AppModel: ObservableObject {
         }
         isRunningNow = true
         let isPro = self.isPro
+        let database = db
         Task {
             defer { isRunningNow = false }
-            let allHistory = await Task.detached(priority: .userInitiated) {
+            let result = await Task.detached(priority: .userInitiated) {
                 let maxDepth = RuleEngine.maxRuleDepth(folderRules)
                 let entries = RuleEngine.walkEntries(root: folder.path, maxDepth: maxDepth)
                 let batchId = UUID().uuidString
                 var allHistory: [HistoryEntry] = []
+                var limitReached = false
+                var errorMessage: String?
                 for entry in entries {
-                    let (_, history) = RuleEngine.run(path: entry.path, depth: entry.depth, rules: folderRules, batchId: batchId, root: folder.path, isPro: isPro)
-                    allHistory.append(contentsOf: history)
+                    do {
+                        let result = try database.runWithFreePlan(path: entry.path, depth: entry.depth, rules: folderRules,
+                                                                 batchId: batchId, root: folder.path, isPro: isPro)
+                        allHistory.append(contentsOf: result.history)
+                    } catch FreePlanError.monthlyFileLimit {
+                        limitReached = true
+                        break
+                    } catch {
+                        errorMessage = error.localizedDescription
+                        break
+                    }
                 }
-                return allHistory
+                return (history: allHistory, limitReached: limitReached, error: errorMessage)
             }.value
+            let allHistory = result.history
             if !allHistory.isEmpty {
                 db.withLock { db in try? db.insertHistoryEntries(allHistory) }
             }
             reloadHistory()
             showRunNowMessage(RunNowMessage(
-                text: RunSummary.message(for: allHistory),
-                hasFailures: allHistory.contains { $0.status == .failed },
+                text: result.limitReached
+                    ? "Run paused — monthly Free limit reached. Remaining files stay in place."
+                    : RunSummary.message(for: allHistory),
+                hasFailures: result.limitReached || result.error != nil || allHistory.contains { $0.status == .failed },
                 folderId: folder.id
             ))
+            if result.limitReached { proUpgrade = .monthlyFiles }
+            if let error = result.error { showNotice(title: "Could not complete Run Now", message: error) }
         }
     }
 

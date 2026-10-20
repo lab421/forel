@@ -91,6 +91,8 @@ struct SidebarView: View {
 
             Spacer(minLength: 0)
 
+            if !model.isPro { MonthlyFileUsageView() }
+
             HStack {
                 if #available(macOS 14.0, *) {
                     SettingsFooterLink()

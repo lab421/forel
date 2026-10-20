@@ -122,10 +122,7 @@ struct QuickPanelView: View {
                     Text("Forel")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(ForelTheme.primaryText)
-                    Button {
-                        onOpenLicense?()
-                        openSettings()
-                    } label: {
+                    Button(action: showLicenseSettings) {
                       Text(license.hasAccess ? "Pro" : "Free")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(license.hasAccess ? ForelTheme.pro : ForelTheme.primaryText)
@@ -139,6 +136,9 @@ struct QuickPanelView: View {
                     .help(license.hasAccess ? "Manage your Pro license" : "Discover Forel Pro")
                 }
                 StatusBadge(active: !model.paused)
+                if !license.hasAccess {
+                    MonthlyFileUsageView(onUpgrade: showLicenseSettings)
+                }
             }
             Spacer(minLength: 0)
         }
@@ -146,6 +146,11 @@ struct QuickPanelView: View {
 
     private func reloadTotalRuleCount() {
         totalRuleCount = model.db.withLock { db in (try? db.countRules()) ?? 0 }
+    }
+
+    private func showLicenseSettings() {
+        onOpenLicense?()
+        openSettings()
     }
 
     private var watchingBinding: Binding<Bool> {
