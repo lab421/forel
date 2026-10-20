@@ -92,10 +92,6 @@ struct SidebarView: View {
             Spacer(minLength: 0)
 
             HStack {
-                if !model.isPro {
-                    Button("Discover Pro") { model.proUpgrade = .folders }
-                        .buttonStyle(.link)
-                }
                 if #available(macOS 14.0, *) {
                     SettingsFooterLink()
                 } else {

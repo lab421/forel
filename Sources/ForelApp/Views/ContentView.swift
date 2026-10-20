@@ -26,11 +26,20 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 280, ideal: 270, max: 320)
                 .modifier(SidebarToggleRemovalModifier())
         } detail: {
-            switch model.detailRoute {
-            case .rules:
-                RuleListView()
-            case .history:
-                HistoryView()
+            Group {
+                switch model.detailRoute {
+                case .rules:
+                    RuleListView()
+                case .history:
+                    HistoryView()
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if !model.isPro {
+                    Button("Discover Pro") { model.proUpgrade = .folders }
+                        .buttonStyle(.link)
+                        .padding(16)
+                }
             }
         }
         .toolbarBackground(ForelTheme.background, for: .windowToolbar)
