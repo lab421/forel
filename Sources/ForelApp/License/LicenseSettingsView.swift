@@ -87,7 +87,7 @@ struct LicenseSettingsView: View {
         }
         .frame(maxWidth: 460)
         .confirmationDialog(
-            "Deactivate Forel Pro? Free allows 2 folders and 500 processed files per month, with unlimited rules and actions. OCR, scripts, Shortcuts, and media imports require Pro. Your configuration will be kept; rules requiring Pro will stop running.",
+            "Are you sure ?",
             isPresented: $showingDeactivationConfirmation
         ) {
             Button("Deactivate", role: .destructive) {
@@ -112,6 +112,6 @@ struct LicenseSettingsView: View {
     private var statusSubtitle: String {
         license.hasAccess
             ? "Unlimited folders, with OCR and advanced workflows."
-            : "Free forever: 500 processed files per month, with unlimited rules and actions. No trial."
+            : "Free forever: 2 watched folders and 500 processed files per month, with unlimited rules and actions. No trial."
     }
 }
