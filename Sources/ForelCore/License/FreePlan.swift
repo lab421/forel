@@ -1,21 +1,17 @@
 import Foundation
 
 public enum ProFeature: String, CaseIterable, Identifiable, Sendable {
-    case ocr, scripts, shortcuts, libraryImports
+    case ocr, libraryImports
     public var id: String { rawValue }
     public var title: String {
         switch self {
         case .ocr: "Text recognition (OCR)"
-        case .scripts: "Custom scripts"
-        case .shortcuts: "Apple Shortcuts"
         case .libraryImports: "Media library imports"
         }
     }
     public var benefit: String {
         switch self {
         case .ocr: "Organize scanned PDFs and images by the text they contain. Recognition runs locally on your Mac."
-        case .scripts: "Run your own scripts automatically for each matching file."
-        case .shortcuts: "Connect your files to your Apple Shortcuts workflows."
         case .libraryImports: "Import matching files directly into Photos, Music, and TV."
         }
     }
@@ -29,8 +25,6 @@ public enum FreePlan {
 
     public static func requiredFeature(for action: ActionKind) -> ProFeature? {
         switch action {
-        case .runScript: .scripts
-        case .runShortcut: .shortcuts
         case .importToLibrary: .libraryImports
         default: nil
         }

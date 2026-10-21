@@ -75,7 +75,6 @@ struct ProBenefitsView: View {
             Label("Unlimited watched folders", systemImage: "folder.badge.plus")
             Label("Unlimited files processed", systemImage: "doc.on.doc")
             Label("OCR for images and scanned PDFs", systemImage: "text.viewfinder")
-            Label("Custom scripts and Apple Shortcuts", systemImage: "terminal")
             Label("Photos, Music, and TV imports", systemImage: "photo.on.rectangle")
         }
         .font(.callout)

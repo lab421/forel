@@ -92,30 +92,28 @@ Forel Free is available indefinitely without a license. Pro is a paid license; t
 | Feature | Free | Pro |
 |---|---|---|
 | Watched folders | 2, including disabled folders | Unlimited |
+| Files processed | 500 per calendar month | Unlimited |
 | Rules per folder and actions per rule | Unlimited | Unlimited |
 | Background watching and Run Now | Included | Included |
 | Move, copy, rename, tags, labels, trash, delete, uncompress, open app | Included | Included |
 | Filename, type, size, dates, tags, and download metadata conditions | Included | Included |
 | Text matching in documents and PDFs with a text layer | Included | Included |
 | On-device OCR for images and scanned PDFs | — | Included |
-| Custom scripts and Apple Shortcuts | — | Included |
+| Custom scripts and Apple Shortcuts | Included | Included |
 | Imports into Photos, Music, and TV | — | Included |
 | Dry Run preview, history, and supported Undo | Included | Included |
-| Files processed | 500 per calendar month | Unlimited |
 | File processing on your Mac | Included | Included |
-| [Scheduler](#roadmap) | — | Coming soon |
-| [Sync actions](#roadmap) | — | Coming soon |
-| [AI features](#roadmap) | — | Coming soon |
+| [Scheduler](#roadmap) | — | Planned |
+| [Sync actions](#roadmap) | — | Planned |
+| [AI features](#roadmap) | — | Planned |
 
-Scheduler, sync actions, and AI features are planned for Pro. Features marked **Coming soon** are not available in the current version.
-
-**Free:** organize your everyday folders automatically. **Pro:** automate all your folders, recognize scanned documents, and connect your own workflows.
+**Free:** organize your everyday folders automatically with rules, custom scripts, and Apple Shortcuts. **Pro:** automate all your folders, process unlimited files, and recognize scanned documents.
 
 [View pricing and buy Forel Pro](https://forel-app.github.io/), then activate your license in **Settings → License**. The Free badge in the quick panel also opens License settings. Monthly file usage is visible in the app; attempting a Pro action or reaching a quota explains the benefit and offers a purchase or activation link.
 
-Free includes **500 processed files per calendar month**, shared across all folders, Run Now, and automatic watching. A file or folder counts once per processing run when at least one action is applied, even when several rules or actions run on it. Dry Run, unmatched files, and runs with only skipped or failed actions do not count. Pro processing and Undo do not consume the Free allowance. Usage and files waiting for the allowance to renew are saved in local preferences, independently of the database and history. Usage survives restarts, history cleanup, and deletion of the database alone, and renews on the first day of each month in your Mac's time zone. At the limit, remaining files stay in place. Run Now can be run again after renewal; files blocked during automatic watching resume when the allowance renews or Pro is activated, provided their folder is still watched.
+Free includes **2 watched folders and 500 processed files per calendar month**, with unlimited rules and actions. Each item counts once per run when an action is applied; Dry Run does not count. The allowance renews on the first day of each month. At the limit, files stay in place and automatic processing resumes after renewal or Pro activation.
 
-If you return to Free, your entire configuration is kept. Only the first 2 folders are eligible; reorder them to choose which ones remain available. Rules and actions are unlimited in both plans, but rules with Pro actions do not run in Free. Contents conditions still read document text, but images and scanned PDFs require Pro OCR and never match unreadable content, including negative operators.
+Switching back to Free keeps your configuration. Reorder folders to choose which 2 remain available. OCR for images and scanned PDFs, and media library imports, require Pro.
 
 ### Homebrew
 
@@ -162,7 +160,7 @@ To build and package the app, use the Swift package tooling and the existing rel
 6. Use **Dry Run** to preview matches and planned actions without changing files. Use **Run Now** to process existing files manually.
 7. Keep the rule enabled and **Watching** on for automatic processing — even when the window is closed. Review results in the history and use **Undo** for supported actions.
 
-### Example: lowercase filenames and replace spaces with underscores (Pro)
+### Example: lowercase filenames and replace spaces with underscores
 
 Add a watched folder and create an enabled rule with a **Kind → is → File** condition. Choose **Run script** and paste this Bash command:
 

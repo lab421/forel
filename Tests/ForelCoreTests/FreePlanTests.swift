@@ -99,7 +99,7 @@ import Testing
         #expect(try db.listFolders().count == 3)
     }
 
-    @Test(arguments: [ActionKind.runScript, .runShortcut, .importToLibrary])
+    @Test(arguments: [ActionKind.importToLibrary])
     func proActionsBlockTheWholeRuleAcrossAllPaths(kind: ActionKind) throws {
         let dir = TempDir()
         let file = dir.file("input.txt")
@@ -165,7 +165,7 @@ import Testing
     }
 
     @Test(arguments: [false, true])
-    func scriptActionRequiresProForPreviewManualRunAndWatcher(isPro: Bool) throws {
+    func scriptsRunInBothPlansAcrossPreviewManualRunAndWatcher(isPro: Bool) throws {
         let dir = TempDir()
         let db = try Database(path: ":memory:")
         let folder = WatchedFolder(path: dir.path)
@@ -173,20 +173,59 @@ import Testing
         var rule = makeRule(folderId: folder.id, name: "Script")
         rule.conditions = [makeCondition(.name, .is, "input.txt", ruleId: rule.id)]
         rule.actions = [makeAction(.runScript, .object(["script": .string("printf done > \"$FOREL_FILE.marker\"")]), ruleId: rule.id)]
-        try db.insertRule(rule, isPro: true)
+        try db.insertRule(rule, isPro: isPro)
+        rule.name = "Edited script"
+        try db.updateRule(rule, isPro: isPro)
+        #expect(FreePlan.requiredFeature(for: rule) == nil)
+        #expect(try db.executionRules(folderID: folder.id, isPro: isPro).first?.name == rule.name)
+        let usage = MonthlyFileUsageStore()
         let file = dir.file("input.txt")
         let marker = file + ".marker"
-        #expect((RuleEngine.previewFile(path: file, depth: 0, rules: [rule], isPro: isPro) != nil) == isPro)
+        #expect(RuleEngine.previewFile(path: file, depth: 0, rules: [rule], isPro: isPro) != nil)
         #expect(!FileManager.default.fileExists(atPath: marker))
+        #expect(usage.monthlyFileUsage().processed == 0)
+        let manual = try usage.runWithFreePlan(path: file, depth: 0, rules: [rule], batchId: "manual", isPro: isPro)
+        #expect(manual.history.first?.status == .applied)
+        #expect(FileManager.default.fileExists(atPath: marker))
+        #expect(usage.monthlyFileUsage().processed == (isPro ? 0 : 1))
+        try FileManager.default.removeItem(atPath: marker)
+        let watcher = WatcherCoordinator(db: db, monthlyUsage: usage)
+        watcher.setProAccess(isPro)
+        watcher.handle(path: file)
+        #expect(FileManager.default.fileExists(atPath: marker))
+        #expect(try db.listHistory().first?.status == .applied)
+        #expect(usage.monthlyFileUsage().processed == (isPro ? 0 : 2))
+    }
+
+    @Test(arguments: [false, true])
+    func shortcutsAreIncludedInBothPlansAcrossPersistencePreviewAndExecution(isPro: Bool) throws {
+        let dir = TempDir()
+        let db = try Database(path: ":memory:")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "Shortcut")
+        rule.actions = [makeAction(.runShortcut, .object([ActionParam.shortcutName: .string("Archive Invoice")]), ruleId: rule.id)]
+        try db.insertRule(rule, isPro: isPro)
+        #expect(FreePlan.requiredFeature(for: rule) == nil)
+        #expect(try db.executionRules(folderID: folder.id, isPro: isPro).first?.actions == rule.actions)
+        let file = dir.file("input.txt")
+        let preview = try #require(RuleEngine.previewFile(path: file, depth: 0, rules: [rule], isPro: isPro))
+        #expect(preview.rules.first?.actions.first?.status == .wouldRun)
+
+        // An unconfigured shortcut is skipped. Exercise execution without
+        // launching any of the user's installed Shortcuts.
+        rule.actions[0].params = .object([ActionParam.shortcutName: .string("")])
+        try db.updateRule(rule, isPro: isPro)
         let manual = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "manual", isPro: isPro)
-        #expect(manual.history.count == (isPro ? 1 : 0))
-        #expect(FileManager.default.fileExists(atPath: marker) == isPro)
-        if isPro { try FileManager.default.removeItem(atPath: marker) }
+        #expect(manual.matched == [rule.name])
+        #expect(manual.history.first?.actionKind == .runShortcut)
+        #expect(manual.history.first?.status == .skipped)
         let watcher = WatcherCoordinator(db: db)
         watcher.setProAccess(isPro)
         watcher.handle(path: file)
-        #expect(FileManager.default.fileExists(atPath: marker) == isPro)
-        #expect(try db.listHistory().count == (isPro ? 1 : 0))
+        #expect(try db.listHistory().first?.actionKind == .runShortcut)
+        #expect(try db.listHistory().first?.status == .skipped)
+        #expect(FileManager.default.fileExists(atPath: file))
     }
 
 }
