@@ -406,6 +406,15 @@ public final class WatcherCoordinator: @unchecked Sendable {
                 db.withLock { try? $0.removeQuotaPendingFile(path) }
                 continue
             }
+            // A prior failure (e.g. a disconnected disk) may have cached the
+            // unchanged file before its retry hit the quota. It still needs
+            // another evaluation, through the normal settling checks.
+            do {
+                try db.withLock { try $0.deleteWatchedPathState(path) }
+            } catch {
+                onProcessingError?(error.localizedDescription)
+                continue
+            }
             handle(event: .pathArrived(path), waitsForSettledFiles: true)
         }
     }

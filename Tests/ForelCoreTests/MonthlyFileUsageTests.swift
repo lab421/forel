@@ -182,6 +182,68 @@ import Testing
         watcher.waitForPendingEvents()
     }
 
+    @Test(arguments: [false, true], [ActionKind.moveToFolder, .copyToFolder])
+    func unchangedFilesWaitingForADiskResumeAfterQuotaIsLifted(pro: Bool, kind: ActionKind) throws {
+        let fixture = try Fixture()
+        let file = fixture.dir.file("input-invoice.txt", contents: "invoice")
+        let destination = fixture.dir.dir("ConnectedDisk")
+        let resultPath = destination + "/input-invoice.txt"
+        let volume = "ForelMissingShare-\(UUID().uuidString)"
+        var rule = fixture.rule
+        rule.actions = [makeAction(kind, .object(["destination": .string("/Volumes/\(volume)/Inbox")]), ruleId: rule.id)]
+        try fixture.db.updateRule(rule)
+        do {
+            let watcher = fixture.watcher()
+            watcher.handle(path: file)
+            #expect(try fixture.db.listHistory().map(\.status) == [.failed])
+            #expect(try fixture.db.getWatchedPathState(file)?.fingerprint == FileFingerprint.current(file))
+            #expect(try fixture.usage().processed == 0)
+
+            // Other files exhaust the allowance before the disk reconnects.
+            try fixture.seed(500)
+            // Model a reconnected disk with a reachable temporary folder,
+            // as in WatcherDisconnectedVolumeTests, without using /Volumes.
+            rule.actions[0].params = .object(["destination": .string(destination)])
+            try fixture.db.updateRule(rule)
+            watcher.volumeDidMount(atPath: "/Volumes/\(volume)")
+            watcher.waitForPendingEvents()
+            #expect(try fixture.db.quotaPendingFiles() == [file])
+            #expect(try fixture.db.getWatchedPathState(file)?.fingerprint == FileFingerprint.current(file))
+        }
+
+        #expect(RuleEngine.previewFile(path: file, depth: 0, rules: [rule], isPro: false) != nil)
+        #expect(try fixture.usage().processed == 500)
+        // Even an unchanged queued file may now be in use by a writer.
+        try FileManager.default.setAttributes([.creationDate: FileReadiness.busyCreationDate], ofItemAtPath: file)
+        #expect(try fixture.db.getWatchedPathState(file)?.fingerprint == FileFingerprint.current(file))
+        let resumedAt = pro ? fixture.date : fixture.usageDate.resetsAt.addingTimeInterval(1)
+        // A fresh coordinator also verifies that persisted fingerprints and
+        // pending rows from before a restart do not prevent the retry.
+        let watcher = WatcherCoordinator(db: fixture.db, settleInterval: 0.05, now: { resumedAt })
+        watcher.setProAccess(pro)
+        watcher.add(fixture.dir.path)
+        watcher.processingQueue.sync {}
+        Thread.sleep(forTimeInterval: 0.15)
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(!FileManager.default.fileExists(atPath: resultPath))
+        #expect(try fixture.db.withLock { try $0.quotaPendingFiles() == [file] })
+        try FileManager.default.setAttributes([.creationDate: Date()], ofItemAtPath: file)
+        watcher.waitForPendingEvents()
+        #expect(FileManager.default.fileExists(atPath: resultPath))
+        #expect(FileManager.default.fileExists(atPath: file) == (kind == .copyToFolder))
+        #expect(try fixture.db.quotaPendingFiles().isEmpty)
+        #expect(try fixture.db.listHistory().filter { $0.status == .applied }.count == 1)
+        #expect(try fixture.db.monthlyFileUsage(at: resumedAt).processed == (pro ? 500 : 1))
+
+        // Normal duplicate events must still be deduplicated after the retry,
+        // including a Copy that leaves the source file in place.
+        watcher.processingQueue.sync { watcher.handle(path: file) }
+        #expect(try fixture.db.listHistory().count == 2)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: destination) == ["input-invoice.txt"])
+        watcher.remove(fixture.dir.path)
+        watcher.waitForPendingEvents()
+    }
+
     @Test func proProcessingBypassesAnExhaustedFreeAllowance() throws {
         let fixture = try Fixture()
         try fixture.seed(500)

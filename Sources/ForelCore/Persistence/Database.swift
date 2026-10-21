@@ -691,6 +691,12 @@ public final class Database: @unchecked Sendable {
         )
     }
 
+    func deleteWatchedPathState(_ path: String) throws {
+        let stmt = try statement("DELETE FROM watched_path_state WHERE path=?1")
+        stmt.bind(1, path)
+        try stmt.runToCompletion()
+    }
+
     public func upsertWatchedPathState(_ state: WatchedPathState) throws {
         let stmt = try statement(
             """
