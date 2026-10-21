@@ -16,30 +16,28 @@ public struct MonthlyFileUsage: Equatable, Sendable {
     }
 }
 
-extension Database {
-    /// Independent of history retention and Undo; only Free processing uses it.
-    /// Call while holding the database lock, as for other persistence methods.
-    public func monthlyFileUsage(at date: Date = Date(), calendar: Calendar = .current) throws -> MonthlyFileUsage {
+/// Free usage and pending files live outside SQLite so the main database
+/// stays compatible with earlier Forel versions. Share one store between
+/// manual and automatic processing to reserve slots consistently.
+public final class MonthlyFileUsageStore: @unchecked Sendable {
+    private let preferences: UserDefaults?
+    private let lock = NSLock()
+    private var reservations: [String: Int] = [:]
+    private var inMemoryCounts: [String: Int] = [:]
+    private var inMemoryPendingFiles: Set<String> = []
+    private let pendingFilesKey = "free.quotaPendingFiles"
+
+    /// Pass the app's dedicated preferences for persistence. Omitting them
+    /// keeps isolated core clients and tests in memory.
+    public init(preferences: UserDefaults? = nil) {
+        self.preferences = preferences
+    }
+
+    public func monthlyFileUsage(at date: Date = Date(), calendar: Calendar = .current) -> MonthlyFileUsage {
         let period = MonthlyFileUsage(at: date, calendar: calendar)
-        let stmt = try statement("SELECT processed FROM monthly_file_usage WHERE month = ?1")
-        stmt.bind(1, period.month)
-        let stored = try stmt.step() ? Int(stmt.columnInt64(0)) : 0
-        let key = "free.monthlyFileUsage.\(period.month)"
-        let backup = monthlyUsagePreferences?.integer(forKey: key) ?? 0
-        let processed = max(stored, backup)
-        if processed > stored {
-            let restore = try statement("""
-                INSERT INTO monthly_file_usage (month, processed) VALUES (?1, ?2)
-                ON CONFLICT(month) DO UPDATE SET processed = MAX(processed, excluded.processed)
-                """)
-            restore.bind(1, period.month)
-            restore.bind(2, Int64(processed))
-            try restore.runToCompletion()
+        return withLock {
+            MonthlyFileUsage(processed: processed(in: period.month), at: date, calendar: calendar)
         }
-        if processed > backup {
-            monthlyUsagePreferences?.set(processed, forKey: key)
-        }
-        return MonthlyFileUsage(processed: processed, at: date, calendar: calendar)
     }
 
     /// Shared by Run Now and both watcher paths. A file's complete action chain
@@ -51,46 +49,65 @@ extension Database {
             return RuleEngine.run(path: path, depth: depth, rules: rules, batchId: batchId, root: root, isPro: true)
         }
         let period = MonthlyFileUsage(at: date, calendar: calendar)
-        try withLock { db in
-            let usage = try db.monthlyFileUsage(at: date, calendar: calendar)
-            let pending = db.monthlyUsageReservations[period.month, default: 0]
-            guard usage.processed + pending < FreePlan.monthlyFileLimit else {
+        try withLock {
+            let pending = reservations[period.month, default: 0]
+            guard processed(in: period.month) + pending < FreePlan.monthlyFileLimit else {
                 throw FreePlanError.monthlyFileLimit
             }
-            db.monthlyUsageReservations[period.month] = pending + 1
+            reservations[period.month] = pending + 1
         }
         let result = RuleEngine.run(path: path, depth: depth, rules: rules, batchId: batchId, root: root, isPro: false)
-        try withLock { db in
-            defer { db.monthlyUsageReservations[period.month, default: 0] -= 1 }
+        withLock {
+            defer { reservations[period.month, default: 0] -= 1 }
             if result.history.contains(where: { $0.status == .applied }) {
-                let stmt = try db.statement("""
-                    INSERT INTO monthly_file_usage (month, processed) VALUES (?1, 1)
-                    ON CONFLICT(month) DO UPDATE SET processed = processed + 1
-                    """)
-                stmt.bind(1, period.month)
-                try stmt.runToCompletion()
-                _ = try db.monthlyFileUsage(at: date, calendar: calendar)
+                let count = processed(in: period.month) + 1
+                if let preferences {
+                    preferences.set(count, forKey: countKey(for: period.month))
+                } else {
+                    inMemoryCounts[period.month] = count
+                }
             }
         }
         return result
     }
 
-    func queueQuotaPendingFile(_ path: String) throws {
-        let stmt = try statement("INSERT OR IGNORE INTO quota_pending_files (path) VALUES (?1)")
-        stmt.bind(1, path)
-        try stmt.runToCompletion()
+    func queueQuotaPendingFile(_ path: String) {
+        withLock {
+            var paths = pendingFiles()
+            if paths.insert(path).inserted { savePendingFiles(paths) }
+        }
     }
 
-    func removeQuotaPendingFile(_ path: String) throws {
-        let stmt = try statement("DELETE FROM quota_pending_files WHERE path = ?1")
-        stmt.bind(1, path)
-        try stmt.runToCompletion()
+    func removeQuotaPendingFile(_ path: String) {
+        withLock {
+            var paths = pendingFiles()
+            if paths.remove(path) != nil { savePendingFiles(paths) }
+        }
     }
 
-    func quotaPendingFiles() throws -> [String] {
-        let stmt = try statement("SELECT path FROM quota_pending_files ORDER BY path")
-        var paths: [String] = []
-        while try stmt.step() { paths.append(stmt.columnText(0)) }
-        return paths
+    func quotaPendingFiles() -> [String] {
+        withLock { pendingFiles().sorted() }
+    }
+
+    private func countKey(for month: String) -> String { "free.monthlyFileUsage.\(month)" }
+
+    private func processed(in month: String) -> Int {
+        max(0, preferences?.integer(forKey: countKey(for: month)) ?? inMemoryCounts[month, default: 0])
+    }
+
+    private func pendingFiles() -> Set<String> {
+        if let preferences { return Set(preferences.stringArray(forKey: pendingFilesKey) ?? []) }
+        return inMemoryPendingFiles
+    }
+
+    private func savePendingFiles(_ paths: Set<String>) {
+        if let preferences { preferences.set(paths.sorted(), forKey: pendingFilesKey) }
+        else { inMemoryPendingFiles = paths }
+    }
+
+    private func withLock<T>(_ body: () throws -> T) rethrows -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try body()
     }
 }

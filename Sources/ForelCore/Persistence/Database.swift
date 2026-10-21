@@ -31,21 +31,17 @@ extension ISO8601DateFormatter {
 /// `~/Library/Application Support/com.lab421.forel/forel.db` (migrated
 /// automatically from the legacy `com.forel.app` location) keeps working.
 public final class Database: @unchecked Sendable {
-    public static let currentSchemaVersion: Int64 = 9
+    public static let currentSchemaVersion: Int64 = 8
 
     private let handle: OpaquePointer
     private let lock = NSLock()
-    let monthlyUsagePreferences: UserDefaults?
-    // Protected by the database lock; reservations are not completed usage.
-    var monthlyUsageReservations: [String: Int] = [:]
 
-    public init(path: String, monthlyUsagePreferences: UserDefaults? = nil) throws {
+    public init(path: String) throws {
         var db: OpaquePointer?
         guard sqlite3_open(path, &db) == SQLITE_OK, let db else {
             throw SQLiteError("failed to open database at \(path)")
         }
         self.handle = db
-        self.monthlyUsagePreferences = monthlyUsagePreferences
         try initSchema()
     }
 

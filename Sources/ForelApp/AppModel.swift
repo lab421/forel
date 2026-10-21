@@ -74,7 +74,7 @@ final class AppModel: ObservableObject {
     var canAddFolder: Bool { FreePlan.canAddFolder(count: folders.count, isPro: isPro) }
     var canAddRule: Bool { selectedFolderId != nil && selectedFolderIsAllowed }
     var monthlyFileUsage: MonthlyFileUsage? {
-        try? db.withLock { try $0.monthlyFileUsage() }
+        monthlyUsage.monthlyFileUsage()
     }
     var selectedFolderIsAllowed: Bool {
         guard let selectedFolderId else { return false }
@@ -93,6 +93,7 @@ final class AppModel: ObservableObject {
     }
 
     let db: Database
+    private let monthlyUsage: MonthlyFileUsageStore
     private let coordinator: WatcherCoordinator
     private var registeredWatchPaths = Set<String>()
     private let historyPageSize = 200
@@ -117,9 +118,11 @@ final class AppModel: ObservableObject {
         let dbPath = appSupport.appendingPathComponent("forel.db").path
 
         let usagePreferences = UserDefaults(suiteName: "com.lab421.forel.usage") ?? .standard
-        let db = try Database(path: dbPath, monthlyUsagePreferences: usagePreferences)
+        let monthlyUsage = MonthlyFileUsageStore(preferences: usagePreferences)
+        self.monthlyUsage = monthlyUsage
+        let db = try Database(path: dbPath)
         self.db = db
-        self.coordinator = WatcherCoordinator(db: db)
+        self.coordinator = WatcherCoordinator(db: db, monthlyUsage: monthlyUsage)
         self.coordinator.onActivity = { [weak self] summary in
             Task { @MainActor in
                 self?.queueWatcherNotification(summary)
@@ -624,7 +627,7 @@ final class AppModel: ObservableObject {
         }
         isRunningNow = true
         let isPro = self.isPro
-        let database = db
+        let usage = monthlyUsage
         Task {
             defer { isRunningNow = false }
             let result = await Task.detached(priority: .userInitiated) {
@@ -636,7 +639,7 @@ final class AppModel: ObservableObject {
                 var errorMessage: String?
                 for entry in entries {
                     do {
-                        let result = try database.runWithFreePlan(path: entry.path, depth: entry.depth, rules: folderRules,
+                        let result = try usage.runWithFreePlan(path: entry.path, depth: entry.depth, rules: folderRules,
                                                                  batchId: batchId, root: folder.path, isPro: isPro)
                         allHistory.append(contentsOf: result.history)
                     } catch FreePlanError.monthlyFileLimit {

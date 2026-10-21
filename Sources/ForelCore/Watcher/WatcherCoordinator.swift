@@ -28,6 +28,7 @@ public struct WatcherActivitySummary: Equatable, Sendable {
 /// `watcher::on_event` / `load_folder_and_rules_for_path`.
 public final class WatcherCoordinator: @unchecked Sendable {
     private let db: Database
+    private let monthlyUsage: MonthlyFileUsageStore
     private let watcher: FileWatcher
     private var isPro = false
     private let now: @Sendable () -> Date
@@ -80,8 +81,10 @@ public final class WatcherCoordinator: @unchecked Sendable {
         var hasDeferredDescendants = false
     }
 
-    public init(db: Database, settleInterval: TimeInterval = 1.0, now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(db: Database, monthlyUsage: MonthlyFileUsageStore = MonthlyFileUsageStore(),
+                settleInterval: TimeInterval = 1.0, now: @escaping @Sendable () -> Date = { Date() }) {
         self.db = db
+        self.monthlyUsage = monthlyUsage
         self.settleInterval = settleInterval
         self.now = now
         var watcherRef: FileWatcher!
@@ -378,12 +381,12 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
     private func runAndRecord(path: String, depth: Int, rules: [Rule], watchedRoot: String, isPro: Bool) {
         do {
-            let result = try db.runWithFreePlan(path: path, depth: depth, rules: rules,
+            let result = try monthlyUsage.runWithFreePlan(path: path, depth: depth, rules: rules,
                                                batchId: UUID().uuidString, root: watchedRoot, isPro: isPro, at: now())
-            db.withLock { db in try? db.removeQuotaPendingFile(path) }
+            monthlyUsage.removeQuotaPendingFile(path)
             record(matched: result.matched, history: result.history, path: path, rules: rules)
         } catch FreePlanError.monthlyFileLimit {
-            db.withLock { db in try? db.queueQuotaPendingFile(path) }
+            monthlyUsage.queueQuotaPendingFile(path)
             onMonthlyQuotaReached?()
             scheduleQuotaRetry()
         } catch {
@@ -391,19 +394,19 @@ public final class WatcherCoordinator: @unchecked Sendable {
         }
     }
 
-    /// Kept in SQLite so a restart does not lose the files waiting for quota.
+    /// Kept in preferences so a restart does not lose files waiting for quota.
     /// Only still-watched paths are resumed, including after a Pro activation.
     func retryQuotaPendingFiles() {
         guard !watchedRoots.isEmpty else { return }
         let pro = db.withLock { _ in isPro }
-        guard pro || ((try? db.withLock { try $0.monthlyFileUsage(at: now()).isExhausted }) == false) else {
+        guard pro || !monthlyUsage.monthlyFileUsage(at: now()).isExhausted else {
             scheduleQuotaRetry()
             return
         }
-        let paths = db.withLock { (try? $0.quotaPendingFiles()) ?? [] }
+        let paths = monthlyUsage.quotaPendingFiles()
         for path in paths where watchedRoots.contains(where: { Self.isPath(path, under: $0) }) {
             guard FileManager.default.fileExists(atPath: path) else {
-                db.withLock { try? $0.removeQuotaPendingFile(path) }
+                monthlyUsage.removeQuotaPendingFile(path)
                 continue
             }
             // A prior failure (e.g. a disconnected disk) may have cached the

@@ -26,7 +26,7 @@ import Testing
         watcher.handle(event: .rescanSubtree(fixture.dir.path))
         #expect(FileManager.default.fileExists(atPath: next))
         #expect(try fixture.usage().processed == 500)
-        #expect(try fixture.db.quotaPendingFiles().contains(next))
+        #expect(fixture.usageStore.quotaPendingFiles().contains(next))
 
         // Dry Run still shows matching rules at the limit and never consumes.
         for _ in 0..<3 {
@@ -75,19 +75,17 @@ import Testing
         var rule = makeRule(name: "rename")
         rule.actions = [makeAction(.rename, .object(["pattern": .string("done.txt")]), ruleId: rule.id)]
         do {
-            let db = try Database(path: dbPath, monthlyUsagePreferences: preferences.defaults)
-            let result = try db.runWithFreePlan(path: dir.file("input.txt"), depth: 0, rules: [rule], batchId: "month",
+            let db = try Database(path: dbPath)
+            let usageStore = MonthlyFileUsageStore(preferences: preferences.defaults)
+            let result = try usageStore.runWithFreePlan(path: dir.file("input.txt"), depth: 0, rules: [rule], batchId: "month",
                                                 isPro: false, at: october, calendar: calendar)
             try db.insertHistoryEntries(result.history)
             try db.exec("DELETE FROM action_history")
         }
-        let reopened = try Database(path: dbPath, monthlyUsagePreferences: UserDefaults(suiteName: preferences.name)!)
-        #expect(try reopened.monthlyFileUsage(at: october, calendar: calendar).processed == 1)
-        #expect(try reopened.monthlyFileUsage(at: november, calendar: calendar).processed == 0)
-        #expect(try reopened.monthlyFileUsage(at: october, calendar: calendar).resetsAt == november)
-        let restored = try Database(path: ":memory:", monthlyUsagePreferences: preferences.defaults)
-        #expect(try restored.monthlyFileUsage(at: october, calendar: calendar).processed == 1)
-        #expect(try restored.monthlyFileUsage(at: november, calendar: calendar).processed == 0)
+        let reopened = MonthlyFileUsageStore(preferences: UserDefaults(suiteName: preferences.name)!)
+        #expect(reopened.monthlyFileUsage(at: october, calendar: calendar).processed == 1)
+        #expect(reopened.monthlyFileUsage(at: november, calendar: calendar).processed == 0)
+        #expect(reopened.monthlyFileUsage(at: october, calendar: calendar).resetsAt == november)
     }
 
     @Test(arguments: ["manual", "watcher", "rescan"])
@@ -97,59 +95,59 @@ import Testing
         let dbPath = dir.path + "/forel.db"
         let date = Date()
         let period = MonthlyFileUsage(at: date)
+        let next = dir.file("input-501.txt")
         let folder = WatchedFolder(path: dir.path)
         var rule = makeRule(folderId: folder.id, name: "rename inputs")
         rule.conditions = [makeCondition(.name, .startsWith, "input", ruleId: rule.id)]
         rule.actions = [makeAction(.rename, .object(["pattern": .string("processed-{name}")]), ruleId: rule.id)]
         do {
-            let db = try Database(path: dbPath, monthlyUsagePreferences: preferences.defaults)
-            let stmt = try db.statement("INSERT INTO monthly_file_usage (month, processed) VALUES (?1, 499)")
-            stmt.bind(1, period.month)
-            try stmt.runToCompletion()
-            let result = try db.runWithFreePlan(path: dir.file("input-500.txt"), depth: 0, rules: [rule],
+            let db = try Database(path: dbPath)
+            try db.insertFolder(folder)
+            try db.insertRule(rule)
+            preferences.defaults.set(499, forKey: "free.monthlyFileUsage.\(period.month)")
+            let usageStore = MonthlyFileUsageStore(preferences: preferences.defaults)
+            let result = try usageStore.runWithFreePlan(path: dir.file("input-500.txt"), depth: 0, rules: [rule],
                                                batchId: "before-deletion", isPro: false, at: date)
             #expect(result.history.first?.status == .applied)
+            let watcher = WatcherCoordinator(db: db, monthlyUsage: usageStore, now: { date })
+            watcher.handle(path: next)
+            #expect(usageStore.quotaPendingFiles() == [next])
         }
         try FileManager.default.removeItem(atPath: dbPath)
-        let restored = try Database(path: dbPath, monthlyUsagePreferences: UserDefaults(suiteName: preferences.name)!)
+        let restored = try Database(path: dbPath)
+        let usageStore = MonthlyFileUsageStore(preferences: UserDefaults(suiteName: preferences.name)!)
         try restored.insertFolder(folder)
         try restored.insertRule(rule)
-        let next = dir.file("input-501.txt")
-        // Exercise admission before the UI has read or restored the counter.
-        let watcher = WatcherCoordinator(db: restored, now: { date })
+        #expect(usageStore.quotaPendingFiles() == [next])
+        // Exercise admission before the UI has read the saved counter.
+        let watcher = WatcherCoordinator(db: restored, monthlyUsage: usageStore, now: { date })
         switch path {
         case "manual":
             #expect(throws: FreePlanError.monthlyFileLimit) {
-                _ = try restored.runWithFreePlan(path: next, depth: 0, rules: [rule], batchId: "after-deletion",
+                _ = try usageStore.runWithFreePlan(path: next, depth: 0, rules: [rule], batchId: "after-deletion",
                                                  isPro: false, at: date)
             }
         case "watcher": watcher.handle(path: next)
         default: watcher.handle(event: .rescanSubtree(dir.path))
         }
         #expect(FileManager.default.fileExists(atPath: next))
-        #expect(try restored.monthlyFileUsage(at: date).processed == 500)
+        #expect(usageStore.monthlyFileUsage(at: date).processed == 500)
         #expect(RuleEngine.previewFile(path: next, depth: 0, rules: [rule], isPro: false) != nil)
-        #expect(try restored.monthlyFileUsage(at: date).processed == 500)
+        #expect(usageStore.monthlyFileUsage(at: date).processed == 500)
     }
 
-    @Test(arguments: [(300, 400), (400, 300), (400, 0)])
-    func reconciliationKeepsHigherCountAndRepairsBothStores(counts: (Int, Int)) throws {
+    @Test func pendingFilesRemainUniqueAndTheirRemovalSurvivesRestart() {
         let preferences = Preferences()
-        let db = try Database(path: ":memory:", monthlyUsagePreferences: preferences.defaults)
-        let date = Date()
-        let period = MonthlyFileUsage(at: date)
-        let key = "free.monthlyFileUsage.\(period.month)"
-        let stmt = try db.statement("INSERT INTO monthly_file_usage (month, processed) VALUES (?1, ?2)")
-        stmt.bind(1, period.month)
-        stmt.bind(2, Int64(counts.0))
-        try stmt.runToCompletion()
-        if counts.1 > 0 { preferences.defaults.set(counts.1, forKey: key) }
-        #expect(try db.monthlyFileUsage(at: date).processed == 400)
-        #expect(preferences.defaults.integer(forKey: key) == 400)
-        let stored = try db.statement("SELECT processed FROM monthly_file_usage WHERE month = ?1")
-        stored.bind(1, period.month)
-        #expect(try stored.step())
-        #expect(stored.columnInt64(0) == 400)
+        let store = MonthlyFileUsageStore(preferences: preferences.defaults)
+        store.queueQuotaPendingFile("/tmp/b.txt")
+        store.queueQuotaPendingFile("/tmp/a.txt")
+        store.queueQuotaPendingFile("/tmp/a.txt")
+        #expect(store.quotaPendingFiles() == ["/tmp/a.txt", "/tmp/b.txt"])
+        store.removeQuotaPendingFile("/tmp/a.txt")
+        let restarted = MonthlyFileUsageStore(preferences: UserDefaults(suiteName: preferences.name)!)
+        #expect(restarted.quotaPendingFiles() == ["/tmp/b.txt"])
+        restarted.removeQuotaPendingFile("/tmp/b.txt")
+        #expect(store.quotaPendingFiles().isEmpty)
     }
 
     @Test(arguments: [false, true])
@@ -162,22 +160,24 @@ import Testing
             watcher.handle(path: file)
             #expect(FileManager.default.fileExists(atPath: file))
         }
-        // A new coordinator models restarting the app with the pending row.
+        // A new store and coordinator model restarting with saved pending files.
         let nextMonth = fixture.usageDate.resetsAt.addingTimeInterval(1)
         try FileManager.default.setAttributes([.creationDate: FileReadiness.busyCreationDate], ofItemAtPath: file)
-        let watcher = WatcherCoordinator(db: fixture.db, settleInterval: 0.05, now: { pro ? fixture.date : nextMonth })
+        let usageStore = MonthlyFileUsageStore(preferences: UserDefaults(suiteName: fixture.preferences.name)!)
+        let watcher = WatcherCoordinator(db: fixture.db, monthlyUsage: usageStore, settleInterval: 0.05,
+                                         now: { pro ? fixture.date : nextMonth })
         watcher.setProAccess(pro)
         watcher.add(fixture.dir.path)
         watcher.processingQueue.sync {}
         Thread.sleep(forTimeInterval: 0.15)
         #expect(FileManager.default.fileExists(atPath: file))
-        #expect(try fixture.db.withLock { try $0.quotaPendingFiles().contains(file) })
+        #expect(usageStore.quotaPendingFiles().contains(file))
         try FileManager.default.setAttributes([.creationDate: Date()], ofItemAtPath: file)
         watcher.waitForPendingEvents()
         #expect(!FileManager.default.fileExists(atPath: file))
-        #expect(try fixture.db.quotaPendingFiles().isEmpty)
+        #expect(usageStore.quotaPendingFiles().isEmpty)
         #expect(try fixture.usage().processed == 500)
-        #expect(try fixture.db.monthlyFileUsage(at: nextMonth).processed == (pro ? 0 : 1))
+        #expect(usageStore.monthlyFileUsage(at: nextMonth).processed == (pro ? 0 : 1))
         watcher.remove(fixture.dir.path)
         watcher.waitForPendingEvents()
     }
@@ -207,7 +207,7 @@ import Testing
             try fixture.db.updateRule(rule)
             watcher.volumeDidMount(atPath: "/Volumes/\(volume)")
             watcher.waitForPendingEvents()
-            #expect(try fixture.db.quotaPendingFiles() == [file])
+            #expect(fixture.usageStore.quotaPendingFiles() == [file])
             #expect(try fixture.db.getWatchedPathState(file)?.fingerprint == FileFingerprint.current(file))
         }
 
@@ -217,23 +217,24 @@ import Testing
         try FileManager.default.setAttributes([.creationDate: FileReadiness.busyCreationDate], ofItemAtPath: file)
         #expect(try fixture.db.getWatchedPathState(file)?.fingerprint == FileFingerprint.current(file))
         let resumedAt = pro ? fixture.date : fixture.usageDate.resetsAt.addingTimeInterval(1)
-        // A fresh coordinator also verifies that persisted fingerprints and
-        // pending rows from before a restart do not prevent the retry.
-        let watcher = WatcherCoordinator(db: fixture.db, settleInterval: 0.05, now: { resumedAt })
+        // A fresh store and coordinator verify that fingerprints in SQLite
+        // and pending files in preferences still allow the retry after restart.
+        let usageStore = MonthlyFileUsageStore(preferences: UserDefaults(suiteName: fixture.preferences.name)!)
+        let watcher = WatcherCoordinator(db: fixture.db, monthlyUsage: usageStore, settleInterval: 0.05, now: { resumedAt })
         watcher.setProAccess(pro)
         watcher.add(fixture.dir.path)
         watcher.processingQueue.sync {}
         Thread.sleep(forTimeInterval: 0.15)
         #expect(FileManager.default.fileExists(atPath: file))
         #expect(!FileManager.default.fileExists(atPath: resultPath))
-        #expect(try fixture.db.withLock { try $0.quotaPendingFiles() == [file] })
+        #expect(usageStore.quotaPendingFiles() == [file])
         try FileManager.default.setAttributes([.creationDate: Date()], ofItemAtPath: file)
         watcher.waitForPendingEvents()
         #expect(FileManager.default.fileExists(atPath: resultPath))
         #expect(FileManager.default.fileExists(atPath: file) == (kind == .copyToFolder))
-        #expect(try fixture.db.quotaPendingFiles().isEmpty)
+        #expect(usageStore.quotaPendingFiles().isEmpty)
         #expect(try fixture.db.listHistory().filter { $0.status == .applied }.count == 1)
-        #expect(try fixture.db.monthlyFileUsage(at: resumedAt).processed == (pro ? 500 : 1))
+        #expect(usageStore.monthlyFileUsage(at: resumedAt).processed == (pro ? 500 : 1))
 
         // Normal duplicate events must still be deduplicated after the retry,
         // including a Copy that leaves the source file in place.
@@ -247,7 +248,7 @@ import Testing
     @Test func proProcessingBypassesAnExhaustedFreeAllowance() throws {
         let fixture = try Fixture()
         try fixture.seed(500)
-        let result = try fixture.db.runWithFreePlan(path: fixture.dir.file("input-pro.txt"), depth: 0,
+        let result = try fixture.usageStore.runWithFreePlan(path: fixture.dir.file("input-pro.txt"), depth: 0,
                                                    rules: [fixture.rule], batchId: "pro", isPro: true, at: fixture.date)
         #expect(result.history.first?.status == .applied)
         #expect(try fixture.usage().processed == 500)
@@ -266,37 +267,46 @@ import Testing
         #expect(try fixture.usage().processed == 500)
     }
 
-    @Test func upgradingAnExistingDatabaseKeepsRulesAndStartsWithAnUnusedAllowance() throws {
+    @Test func quotaProcessingKeepsTheDatabaseAtVersionEightForRollback() throws {
         let dir = TempDir()
+        let preferences = Preferences()
         let path = dir.path + "/forel.db"
         let folder = WatchedFolder(path: dir.path)
-        let rule = makeRule(folderId: folder.id, name: "Existing rule")
+        var rule = makeRule(folderId: folder.id, name: "Existing rule")
+        rule.actions = [makeAction(.rename, .object(["pattern": .string("processed.txt")]), ruleId: rule.id)]
         do {
             let db = try Database(path: path)
             try db.insertFolder(folder)
             try db.insertRule(rule)
-            // Reconstruct the previous schema, before the quota tables.
-            try db.exec("DROP TABLE monthly_file_usage; DROP TABLE quota_pending_files;")
-            try db.setUserVersion(8)
+            #expect(try db.userVersion() == 8)
+            let usageStore = MonthlyFileUsageStore(preferences: preferences.defaults)
+            let result = try usageStore.runWithFreePlan(path: dir.file("input.txt"), depth: 0, rules: [rule],
+                                                       batchId: "quota", isPro: false)
+            try db.insertHistoryEntries(result.history)
+            #expect(usageStore.monthlyFileUsage().processed == 1)
         }
-        let upgraded = try Database(path: path)
-        #expect(try upgraded.userVersion() == Database.currentSchemaVersion)
-        #expect(try upgraded.listRules(folderId: folder.id).first?.id == rule.id)
-        #expect(try upgraded.monthlyFileUsage().processed == 0)
-        #expect(try upgraded.quotaPendingFiles().isEmpty)
+        let reopened = try Database(path: path)
+        #expect(Database.currentSchemaVersion == 8)
+        #expect(try reopened.userVersion() == 8)
+        #expect(try reopened.listRules(folderId: folder.id).first?.id == rule.id)
+        #expect(try reopened.listHistory().first?.status == .applied)
+        let quotaTables = try reopened.statement("SELECT name FROM sqlite_master WHERE name IN ('monthly_file_usage', 'quota_pending_files')")
+        #expect(try !quotaTables.step())
     }
 
     private final class Fixture: @unchecked Sendable {
         let dir = TempDir()
         let preferences = Preferences()
         let db: Database
+        let usageStore: MonthlyFileUsageStore
         let folder: WatchedFolder
         let rule: Rule
         let date = Date()
         var usageDate: MonthlyFileUsage { MonthlyFileUsage(at: date) }
 
         init() throws {
-            db = try Database(path: ":memory:", monthlyUsagePreferences: preferences.defaults)
+            db = try Database(path: ":memory:")
+            usageStore = MonthlyFileUsageStore(preferences: preferences.defaults)
             folder = WatchedFolder(path: dir.path)
             try db.insertFolder(folder, isPro: false)
             var rule = makeRule(folderId: folder.id, name: "rename inputs")
@@ -307,16 +317,13 @@ import Testing
         }
 
         func seed(_ count: Int) throws {
-            let stmt = try db.statement("INSERT INTO monthly_file_usage (month, processed) VALUES (?1, ?2)")
-            stmt.bind(1, usageDate.month)
-            stmt.bind(2, Int64(count))
-            try stmt.runToCompletion()
+            preferences.defaults.set(count, forKey: "free.monthlyFileUsage.\(usageDate.month)")
         }
 
-        func usage() throws -> MonthlyFileUsage { try db.monthlyFileUsage(at: date) }
-        func watcher() -> WatcherCoordinator { WatcherCoordinator(db: db, now: { self.date }) }
+        func usage() throws -> MonthlyFileUsage { usageStore.monthlyFileUsage(at: date) }
+        func watcher() -> WatcherCoordinator { WatcherCoordinator(db: db, monthlyUsage: usageStore, now: { self.date }) }
         func run(_ path: String, rule: Rule? = nil) throws -> (matched: [String], history: [HistoryEntry]) {
-            try db.runWithFreePlan(path: path, depth: 0, rules: [rule ?? self.rule], batchId: "manual", isPro: false, at: date)
+            try usageStore.runWithFreePlan(path: path, depth: 0, rules: [rule ?? self.rule], batchId: "manual", isPro: false, at: date)
         }
     }
 
