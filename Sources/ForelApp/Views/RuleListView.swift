@@ -190,7 +190,8 @@ struct RuleListView: View {
                 Label("New Rule", systemImage: "plus")
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(model.selectedFolderId == nil)
+            .disabled(!model.canAddRule)
+            .opacity(model.canAddRule ? 1 : 0.45)
 
             Button {
                 model.runNow()
@@ -205,7 +206,8 @@ struct RuleListView: View {
                 }
             }
             .buttonStyle(SecondaryButtonStyle())
-            .disabled(model.selectedFolderId == nil || model.isRunningNow)
+            .disabled(!model.selectedFolderIsAllowed || model.isRunningNow)
+            .opacity(model.selectedFolderIsAllowed ? 1 : 0.45)
 
             Button {
                 model.preview()
@@ -220,7 +222,8 @@ struct RuleListView: View {
                 }
             }
             .buttonStyle(SecondaryButtonStyle())
-            .disabled(model.selectedFolderId == nil || model.isPreviewing)
+            .disabled(!model.selectedFolderIsAllowed || model.isPreviewing)
+            .opacity(model.selectedFolderIsAllowed ? 1 : 0.45)
 
             Spacer()
         }
@@ -278,7 +281,9 @@ struct RuleListView: View {
                 Text("No rules yet")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(ForelTheme.primaryText)
-                Text("Create a rule to automate files in this folder.")
+                Text(model.canAddRule
+                     ? "Create a rule to automate files in this folder."
+                     : "Reorder folders or activate Pro to add rules in this folder.")
                     .font(.system(size: 11))
                     .foregroundStyle(ForelTheme.secondaryText)
                     .multilineTextAlignment(.center)
@@ -294,7 +299,8 @@ struct RuleListView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.top, 8)
-                .disabled(model.selectedFolderId == nil)
+                .disabled(!model.canAddRule)
+                .opacity(model.canAddRule ? 1 : 0.45)
             }
         }
         .frame(maxWidth: .infinity)
@@ -345,6 +351,7 @@ private struct RuleCard: View {
                     .toggleStyle(.switch)
                     .tint(ForelTheme.accent)
                     .controlSize(.small)
+                    .disabled(!model.selectedFolderIsAllowed)
 
                 Button(action: onToggleExpanded) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -400,7 +407,7 @@ private struct RuleCard: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(isExpanded ? ForelTheme.accent.opacity(0.55) : ForelTheme.surfaceBorder)
         )
-        .opacity(rule.enabled ? 1 : 0.6)
+        .opacity(rule.enabled && model.selectedFolderIsAllowed ? 1 : 0.6)
     }
 
     private func metaPill(icon: String, text: String) -> some View {
@@ -413,7 +420,7 @@ private struct RuleCard: View {
 
 
     private var enabledBinding: Binding<Bool> {
-        Binding(get: { rule.enabled }, set: { model.toggleRule(rule, enabled: $0) })
+        Binding(get: { rule.enabled && model.selectedFolderIsAllowed }, set: { model.toggleRule(rule, enabled: $0) })
     }
 }
 

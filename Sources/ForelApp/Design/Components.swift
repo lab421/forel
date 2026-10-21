@@ -198,25 +198,37 @@ struct ForelSwitch: View {
 struct QuickFolderRow: View {
     let folder: WatchedFolder
     @Binding var isOn: Bool
+    var isBlocked = false
 
     var body: some View {
         HStack(spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(ForelTheme.accent.opacity(0.18))
-                Image(systemName: "folder.fill").font(.system(size: 12)).foregroundStyle(ForelTheme.accent)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isBlocked ? ForelTheme.secondaryText.opacity(0.08) : ForelTheme.accent.opacity(0.18))
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(isBlocked ? ForelTheme.secondaryText : ForelTheme.accent)
             }
             .frame(width: 26, height: 26)
 
             Text((folder.path as NSString).lastPathComponent)
                 .font(.system(size: 13))
-                .foregroundStyle(ForelTheme.primaryText)
+                .foregroundStyle(isBlocked ? ForelTheme.secondaryText : ForelTheme.primaryText)
                 .lineLimit(1)
 
             Spacer()
-            ForelSwitch(isOn: $isOn, compact: true)
+            if isBlocked {
+                Label("Pro", systemImage: "lock.fill")
+                    .font(.caption)
+                    .foregroundStyle(ForelTheme.pro)
+            }
+            ForelSwitch(isOn: isBlocked ? .constant(false) : $isOn, compact: true)
+                .disabled(isBlocked)
+                .opacity(isBlocked ? 0.5 : 1)
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 14)
+        .help(isBlocked ? "Reorder folders or activate Pro to use this folder." : folder.path)
     }
 }
 

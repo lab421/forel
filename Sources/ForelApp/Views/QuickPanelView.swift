@@ -69,7 +69,11 @@ struct QuickPanelView: View {
                     GlassCard {
                         VStack(spacing: 0) {
                             ForEach(model.folders, id: \.id) { folder in
-                                QuickFolderRow(folder: folder, isOn: folderBinding(folder))
+                                QuickFolderRow(
+                                    folder: folder,
+                                    isOn: folderBinding(folder),
+                                    isBlocked: !FreePlan.allows(folderID: folder.id, folders: model.folders, isPro: model.isPro)
+                                )
                                 if folder.id != model.folders.last?.id {
                                     Divider().overlay(ForelTheme.divider).padding(.leading, 50)
                                 }

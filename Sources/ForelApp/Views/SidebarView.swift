@@ -142,6 +142,8 @@ struct SidebarView: View {
 
     private func folderCard(_ folder: WatchedFolder) -> some View {
         let isSelected = model.selectedFolderId == folder.id
+        let isAllowed = FreePlan.allows(folderID: folder.id, folders: model.folders, isPro: model.isPro)
+        let isActive = folder.enabled && isAllowed
         return HStack(spacing: 10) {
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 11))
@@ -149,17 +151,17 @@ struct SidebarView: View {
 
             ZStack {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(ForelTheme.accent.opacity(folder.enabled ? 0.18 : 0.08))
+                    .fill(isActive ? ForelTheme.accent.opacity(0.18) : ForelTheme.secondaryText.opacity(0.08))
                 Image(systemName: "folder.fill")
                     .font(.system(size: 12))
-                    .foregroundStyle(folder.enabled ? ForelTheme.accent : ForelTheme.secondaryText)
+                    .foregroundStyle(isActive ? ForelTheme.accent : ForelTheme.secondaryText)
             }
             .frame(width: 26, height: 26)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text((folder.path as NSString).lastPathComponent)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(ForelTheme.primaryText)
+                    .foregroundStyle(isAllowed ? ForelTheme.primaryText : ForelTheme.secondaryText)
                     .lineLimit(1)
                 Text((folder.path as NSString).deletingLastPathComponent)
                     .font(.system(size: 10))
@@ -170,23 +172,26 @@ struct SidebarView: View {
 
             Spacer(minLength: 4)
 
-            if !FreePlan.allows(folderID: folder.id, folders: model.folders, isPro: model.isPro) {
-                Text("Pro")
+            if !isAllowed {
+                Label("Pro", systemImage: "lock.fill")
                     .font(.caption)
-                    .foregroundStyle(ForelTheme.secondaryText)
+                    .foregroundStyle(ForelTheme.pro)
             }
-            ForelSwitch(isOn: enabledBinding(folder), compact: true)
+            ForelSwitch(isOn: isAllowed ? enabledBinding(folder) : .constant(false), compact: true)
+                .disabled(!isAllowed)
+                .opacity(isAllowed ? 1 : 0.5)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isSelected ? ForelTheme.accent.opacity(0.14) : ForelTheme.surface)
+                .fill(isSelected ? (isAllowed ? ForelTheme.accent : ForelTheme.secondaryText).opacity(0.14) : ForelTheme.surface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isSelected ? ForelTheme.accent.opacity(0.5) : ForelTheme.surfaceBorder)
+                .strokeBorder(isSelected ? (isAllowed ? ForelTheme.accent : ForelTheme.secondaryText).opacity(0.5) : ForelTheme.surfaceBorder)
         )
+        .help(isAllowed ? folder.path : "Reorder folders or activate Pro to use this folder.")
         .contentShape(Rectangle())
         .onTapGesture {
             model.selectedFolderId = folder.id
