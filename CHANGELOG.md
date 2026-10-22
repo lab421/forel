@@ -6,6 +6,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- Copy one or more rules to another watched folder without recreating their conditions and actions.
 - Date conditions now support hours, with an "is not in the last" option for excluding recently added, created, or modified files.
 
 ### Fixed
