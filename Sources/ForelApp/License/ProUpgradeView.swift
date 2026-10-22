@@ -21,7 +21,7 @@ enum ProUpgradeContext: Identifiable {
     var message: String {
         switch self {
         case .folders: "Free includes 2 watched folders. With Pro, organize your projects, invoices, and downloads with unlimited folders."
-        case .monthlyFiles: "Free includes 500 processed files per calendar month, shared across all folders. Activate Pro for unlimited processing, or resume next month. Dry Run remains available and your remaining files stay in place."
+        case .monthlyFiles: "Free includes 300 processed files per calendar month, shared across all folders. Activate Pro for unlimited processing, or resume next month. Dry Run remains available and your remaining files stay in place."
         case .feature(let feature): feature.benefit
         }
     }

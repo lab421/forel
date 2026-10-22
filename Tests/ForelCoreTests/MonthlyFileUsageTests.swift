@@ -4,11 +4,11 @@ import Testing
 
 @Suite struct MonthlyFileUsageTests {
     @Test(arguments: ["manual", "watcher", "rescan"])
-    func fiveHundredthFileRunsButNextFileStaysUntouched(path: String) throws {
+    func threeHundredthFileRunsButNextFileStaysUntouched(path: String) throws {
         let fixture = try Fixture()
-        try fixture.seed(499)
-        let file = fixture.dir.file("input-500.txt")
-        let next = fixture.dir.file("input-501.txt")
+        try fixture.seed(299)
+        let file = fixture.dir.file("input-300.txt")
+        let next = fixture.dir.file("input-301.txt")
         let watcher = fixture.watcher()
         switch path {
         case "manual":
@@ -20,19 +20,19 @@ import Testing
         }
         #expect(!FileManager.default.fileExists(atPath: file))
         #expect(FileManager.default.fileExists(atPath: next))
-        #expect(try fixture.usage().processed == 500)
+        #expect(try fixture.usage().processed == 300)
         #expect(throws: FreePlanError.monthlyFileLimit) { _ = try fixture.run(next) }
         watcher.handle(path: next)
         watcher.handle(event: .rescanSubtree(fixture.dir.path))
         #expect(FileManager.default.fileExists(atPath: next))
-        #expect(try fixture.usage().processed == 500)
+        #expect(try fixture.usage().processed == 300)
         #expect(fixture.usageStore.quotaPendingFiles().contains(next))
 
         // Dry Run still shows matching rules at the limit and never consumes.
         for _ in 0..<3 {
             #expect(RuleEngine.previewFile(path: next, depth: 0, rules: [fixture.rule], isPro: false) != nil)
         }
-        #expect(try fixture.usage().processed == 500)
+        #expect(try fixture.usage().processed == 300)
         #expect(FileManager.default.fileExists(atPath: next))
     }
 
@@ -95,7 +95,7 @@ import Testing
         let dbPath = dir.path + "/forel.db"
         let date = Date()
         let period = MonthlyFileUsage(at: date)
-        let next = dir.file("input-501.txt")
+        let next = dir.file("input-301.txt")
         let folder = WatchedFolder(path: dir.path)
         var rule = makeRule(folderId: folder.id, name: "rename inputs")
         rule.conditions = [makeCondition(.name, .startsWith, "input", ruleId: rule.id)]
@@ -104,9 +104,9 @@ import Testing
             let db = try Database(path: dbPath)
             try db.insertFolder(folder)
             try db.insertRule(rule)
-            preferences.defaults.set(499, forKey: "free.monthlyFileUsage.\(period.month)")
+            preferences.defaults.set(299, forKey: "free.monthlyFileUsage.\(period.month)")
             let usageStore = MonthlyFileUsageStore(preferences: preferences.defaults)
-            let result = try usageStore.runWithFreePlan(path: dir.file("input-500.txt"), depth: 0, rules: [rule],
+            let result = try usageStore.runWithFreePlan(path: dir.file("input-300.txt"), depth: 0, rules: [rule],
                                                batchId: "before-deletion", isPro: false, at: date)
             #expect(result.history.first?.status == .applied)
             let watcher = WatcherCoordinator(db: db, monthlyUsage: usageStore, now: { date })
@@ -131,9 +131,9 @@ import Testing
         default: watcher.handle(event: .rescanSubtree(dir.path))
         }
         #expect(FileManager.default.fileExists(atPath: next))
-        #expect(usageStore.monthlyFileUsage(at: date).processed == 500)
+        #expect(usageStore.monthlyFileUsage(at: date).processed == 300)
         #expect(RuleEngine.previewFile(path: next, depth: 0, rules: [rule], isPro: false) != nil)
-        #expect(usageStore.monthlyFileUsage(at: date).processed == 500)
+        #expect(usageStore.monthlyFileUsage(at: date).processed == 300)
     }
 
     @Test func pendingFilesRemainUniqueAndTheirRemovalSurvivesRestart() {
@@ -153,7 +153,7 @@ import Testing
     @Test(arguments: [false, true])
     func queuedWatcherFilesResumeAfterRenewalOrProActivation(pro: Bool) throws {
         let fixture = try Fixture()
-        try fixture.seed(500)
+        try fixture.seed(300)
         let file = fixture.dir.file("input-pending.txt")
         do {
             let watcher = fixture.watcher()
@@ -176,7 +176,7 @@ import Testing
         watcher.waitForPendingEvents()
         #expect(!FileManager.default.fileExists(atPath: file))
         #expect(usageStore.quotaPendingFiles().isEmpty)
-        #expect(try fixture.usage().processed == 500)
+        #expect(try fixture.usage().processed == 300)
         #expect(usageStore.monthlyFileUsage(at: nextMonth).processed == (pro ? 0 : 1))
         watcher.remove(fixture.dir.path)
         watcher.waitForPendingEvents()
@@ -200,7 +200,7 @@ import Testing
             #expect(try fixture.usage().processed == 0)
 
             // Other files exhaust the allowance before the disk reconnects.
-            try fixture.seed(500)
+            try fixture.seed(300)
             // Model a reconnected disk with a reachable temporary folder,
             // as in WatcherDisconnectedVolumeTests, without using /Volumes.
             rule.actions[0].params = .object(["destination": .string(destination)])
@@ -212,7 +212,7 @@ import Testing
         }
 
         #expect(RuleEngine.previewFile(path: file, depth: 0, rules: [rule], isPro: false) != nil)
-        #expect(try fixture.usage().processed == 500)
+        #expect(try fixture.usage().processed == 300)
         // Even an unchanged queued file may now be in use by a writer.
         try FileManager.default.setAttributes([.creationDate: FileReadiness.busyCreationDate], ofItemAtPath: file)
         #expect(try fixture.db.getWatchedPathState(file)?.fingerprint == FileFingerprint.current(file))
@@ -234,7 +234,7 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: file) == (kind == .copyToFolder))
         #expect(usageStore.quotaPendingFiles().isEmpty)
         #expect(try fixture.db.listHistory().filter { $0.status == .applied }.count == 1)
-        #expect(usageStore.monthlyFileUsage(at: resumedAt).processed == (pro ? 500 : 1))
+        #expect(usageStore.monthlyFileUsage(at: resumedAt).processed == (pro ? 300 : 1))
 
         // Normal duplicate events must still be deduplicated after the retry,
         // including a Copy that leaves the source file in place.
@@ -247,16 +247,16 @@ import Testing
 
     @Test func proProcessingBypassesAnExhaustedFreeAllowance() throws {
         let fixture = try Fixture()
-        try fixture.seed(500)
+        try fixture.seed(300)
         let result = try fixture.usageStore.runWithFreePlan(path: fixture.dir.file("input-pro.txt"), depth: 0,
                                                    rules: [fixture.rule], batchId: "pro", isPro: true, at: fixture.date)
         #expect(result.history.first?.status == .applied)
-        #expect(try fixture.usage().processed == 500)
+        #expect(try fixture.usage().processed == 300)
     }
 
     @Test func simultaneousManualAndAutomaticRunsCannotSpendTheLastSlotTwice() throws {
         let fixture = try Fixture()
-        try fixture.seed(499)
+        try fixture.seed(299)
         let first = fixture.dir.file("input-first.txt")
         let second = fixture.dir.file("input-second.txt")
         DispatchQueue.concurrentPerform(iterations: 2) { index in
@@ -264,7 +264,26 @@ import Testing
         }
         let remaining = [first, second].filter { FileManager.default.fileExists(atPath: $0) }
         #expect(remaining.count == 1)
-        #expect(try fixture.usage().processed == 500)
+        #expect(try fixture.usage().processed == 300)
+    }
+
+    @Test func usageSavedAboveTheNewLimitStaysBlockedUntilNextMonth() throws {
+        let fixture = try Fixture()
+        try fixture.seed(500)
+        let usage = MonthlyFileUsageStore(preferences: fixture.preferences.defaults)
+        let file = fixture.dir.file("input-existing-usage.txt")
+        #expect(usage.monthlyFileUsage(at: fixture.date).isExhausted)
+        #expect(throws: FreePlanError.monthlyFileLimit) {
+            _ = try usage.runWithFreePlan(path: file, depth: 0, rules: [fixture.rule],
+                                         batchId: "current-month", isPro: false, at: fixture.date)
+        }
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(usage.monthlyFileUsage(at: fixture.date).processed == 500)
+        let nextMonth = fixture.usageDate.resetsAt.addingTimeInterval(1)
+        let result = try usage.runWithFreePlan(path: file, depth: 0, rules: [fixture.rule],
+                                              batchId: "next-month", isPro: false, at: nextMonth)
+        #expect(result.history.first?.status == .applied)
+        #expect(usage.monthlyFileUsage(at: nextMonth).processed == 1)
     }
 
     @Test func quotaProcessingKeepsTheDatabaseAtVersionEightForRollback() throws {

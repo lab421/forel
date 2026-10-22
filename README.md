@@ -92,7 +92,7 @@ Forel Free is available indefinitely without a license. Pro is a paid license; t
 | Feature | Free | Pro |
 |---|---|---|
 | Watched folders | 2, including disabled folders | Unlimited |
-| Files processed | 500 per calendar month | Unlimited |
+| Files processed | 300 per calendar month | Unlimited |
 | Rules per folder and actions per rule | Unlimited | Unlimited |
 | Background watching and Run Now | Included | Included |
 | Move, copy, rename, tags, labels, trash, delete, uncompress, open app | Included | Included |
@@ -111,7 +111,7 @@ Forel Free is available indefinitely without a license. Pro is a paid license; t
 
 [View pricing and buy Forel Pro](https://forel-app.github.io/), then activate your license in **Settings → License**. The Free badge in the quick panel also opens License settings. Monthly file usage is visible in the app; attempting a Pro action or reaching a quota explains the benefit and offers a purchase or activation link.
 
-Free includes **2 watched folders and 500 processed files per calendar month**, with unlimited rules and actions. Each item counts once per run when an action is applied; Dry Run does not count. The allowance renews on the first day of each month. At the limit, files stay in place and automatic processing resumes after renewal or Pro activation.
+Free includes **2 watched folders and 300 processed files per calendar month**, with unlimited rules and actions. Each item counts once per run when an action is applied; Dry Run does not count. The allowance renews on the first day of each month. At the limit, files stay in place and automatic processing resumes after renewal or Pro activation.
 
 Switching back to Free keeps your configuration. Reorder folders to choose which 2 remain available. OCR for images and scanned PDFs, and media library imports, require Pro.
 

@@ -112,6 +112,6 @@ struct LicenseSettingsView: View {
     private var statusSubtitle: String {
         license.hasAccess
             ? "Unlimited folders and files, with OCR and media imports."
-            : "Free forever: 2 watched folders and 500 processed files per month, with unlimited rules and actions. No trial."
+            : "Free forever: 2 watched folders and 300 processed files per month, with unlimited rules and actions. No trial."
     }
 }
