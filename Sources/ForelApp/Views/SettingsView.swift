@@ -159,7 +159,7 @@ struct SettingsView: View {
                 ToggleRow(
                     title: "Automatic updates",
                     subtitle: "Check for new versions in the background",
-                    isOn: automaticUpdatesBinding
+                    isOn: $updater.automaticallyChecksForUpdates
                 )
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
                 SettingsActionRow(
@@ -257,10 +257,6 @@ struct SettingsView: View {
 
     private var historyMaxDaysDoubleBinding: Binding<Double> {
         Binding(get: { Double(model.historyMaxDays) }, set: { model.setHistoryMaxDays(Int($0)) })
-    }
-
-    private var automaticUpdatesBinding: Binding<Bool> {
-        Binding(get: { updater.automaticallyChecksForUpdates }, set: { updater.automaticallyChecksForUpdates = $0 })
     }
 
     private var versionSubtitle: String {

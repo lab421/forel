@@ -81,23 +81,22 @@ final class UpdaterManager: ObservableObject {
 
     init(db: Database) {
         self.db = db
-        let stored = try? db.getSetting(Self.settingKey)
-        autoCheck = stored.map { $0 != "0" } ?? true
-        if autoCheck {
+        let stored = db.withLock { db in try? db.getSetting(Self.settingKey) }
+        automaticallyChecksForUpdates = stored.map { $0 != "0" } ?? true
+        if automaticallyChecksForUpdates {
             scheduleAutomaticChecks()
             checkForUpdates()
         }
     }
 
-    private var autoCheck: Bool
-
-    var automaticallyChecksForUpdates: Bool {
-        get { autoCheck }
-        set {
-            guard newValue != autoCheck else { return }
-            autoCheck = newValue
-            try? db.setSetting(Self.settingKey, newValue ? "1" : "0")
-            if newValue {
+    /// Published so Settings redraws its switch when this changes; `didSet`
+    /// does not run for the initial value assigned in `init`.
+    @Published var automaticallyChecksForUpdates: Bool {
+        didSet {
+            guard automaticallyChecksForUpdates != oldValue else { return }
+            let enabled = automaticallyChecksForUpdates
+            db.withLock { db in try? db.setSetting(Self.settingKey, enabled ? "1" : "0") }
+            if enabled {
                 scheduleAutomaticChecks()
                 checkForUpdates()
             } else {

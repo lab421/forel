@@ -20,6 +20,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Fixed
 - The menu bar icon now appears when Forel starts at login, without having to reopen the app.
+- Turning off Automatic updates in Settings now works: the switch used to stay on, and clicking it again turned the setting back on.
 - Run Now no longer reports failed actions as applied: its result now counts applied, failed, skipped, and pending actions separately.
 - Dry Run now warns when a Move or Copy destination can't be reached or written to, such as a disconnected disk or network share.
 - Folders on a network share chosen through Network in the folder picker no longer stop working later.
