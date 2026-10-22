@@ -23,6 +23,7 @@ import Darwin
 /// with "\nN" (the colour's Finder index).
 enum FinderTags {
     static let xattrName = "com.apple.metadata:_kMDItemUserTags"
+    static let commentXattrName = "com.apple.metadata:kMDItemFinderComment"
 
     /// Reads the Finder tags on `path`, or an empty list if there are none.
     static func read(_ path: String) -> [String] {
@@ -97,6 +98,28 @@ enum FinderTags {
             tags.append("\(capitalize(color))\n\(idx)")
         }
         try write(path, tags)
+    }
+
+    static func writeComment(_ path: String, _ comment: String) throws {
+        let data = try PropertyListSerialization.data(fromPropertyList: comment, format: .binary, options: 0)
+        let result = data.withUnsafeBytes { bytes in
+            setxattr(path, commentXattrName, bytes.baseAddress, data.count, 0, 0)
+        }
+        guard result == 0 else {
+            throw SQLiteError("failed to write Finder comment on \(path): errno \(errno)")
+        }
+    }
+
+    static func readComment(_ path: String) -> String? {
+        let size = getxattr(path, commentXattrName, nil, 0, 0, 0)
+        guard size > 0 else { return nil }
+        var buffer = [UInt8](repeating: 0, count: size)
+        let read = getxattr(path, commentXattrName, &buffer, size, 0, 0)
+        guard read > 0,
+              let value = try? PropertyListSerialization.propertyList(from: Data(buffer[0..<read]), options: [], format: nil) as? String else {
+            return nil
+        }
+        return value
     }
 
     private static func capitalize(_ s: String) -> String {

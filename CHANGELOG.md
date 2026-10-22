@@ -34,6 +34,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [1.0.9] - 2026-10-02
 
+### Added
+- Rules can now sort items into subfolders, synchronize copies to another folder, create ZIP archives, edit Finder comments and item attributes, open or reveal items, and create Finder aliases.
+
 ### Fixed
 - About Forel now displays the app name, version, build number, copyright, and repository link.
 - Automatic rules now keep processing simultaneous file arrivals when an earlier file takes time to move to another disk or network folder.

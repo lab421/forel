@@ -122,14 +122,23 @@ public enum ActionKind: String, Codable, Equatable, Sendable {
     case moveToFolder = "move_to_folder"
     case copyToFolder = "copy_to_folder"
     case rename
+    case sortIntoSubfolder = "sort_into_subfolder"
+    case syncToFolder = "sync_to_folder"
     case moveToTrash = "move_to_trash"
     case delete
     case addTag = "add_tag"
     case removeTag = "remove_tag"
     case setColorLabel = "set_color_label"
+    case addComment = "add_comment"
+    case toggleExtension = "toggle_extension"
+    case toggleLock = "toggle_lock"
+    case archive
     case runScript = "run_script"
     case runShortcut = "run_shortcut"
     case openApplication = "open_application"
+    case open
+    case showInFinder = "show_in_finder"
+    case makeAlias = "make_alias"
     case importToLibrary = "import_to_library"
     case uncompress
 

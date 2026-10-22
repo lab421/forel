@@ -116,6 +116,18 @@ import Foundation
         #expect(RuleValidator.validate(actions) == [.init(message: "Application cannot be empty")])
     }
 
+    @Test func localFileActionsValidateRequiredDestinations() {
+        let validSort = makeAction(.sortIntoSubfolder, .object([ActionParam.subfolder: .string("Invoices/2026")]))
+        let unsafeSort = makeAction(.sortIntoSubfolder, .object([ActionParam.subfolder: .string("../Outside")]))
+        let missingSync = makeAction(.syncToFolder, .object([:]))
+        let missingAlias = makeAction(.makeAlias, .object([:]))
+
+        #expect(RuleValidator.validate([validSort]).isEmpty)
+        #expect(RuleValidator.validate([unsafeSort]) == [.init(message: "Subfolder must be a relative path")])
+        #expect(RuleValidator.validate([missingSync]) == [.init(message: "Destination path cannot be empty")])
+        #expect(RuleValidator.validate([missingAlias]) == [.init(message: "Alias destination cannot be empty")])
+    }
+
     @Test func unrelatedActionProducesNoIssues() {
         let actions = [makeAction(.moveToTrash, .object([:]))]
         #expect(RuleValidator.validate(actions).isEmpty)

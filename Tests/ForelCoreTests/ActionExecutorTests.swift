@@ -19,6 +19,72 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct ActionExecutorTests {
+    @Test func localFileActionsExecuteAndPlanConsistently() throws {
+        let dir = TempDir()
+
+        let sortable = dir.file("sortable.txt", contents: "sort me")
+        let sort = makeAction(.sortIntoSubfolder, .object([ActionParam.subfolder: .string("Sorted")]))
+        let sortPlan = try ActionExecutor.plan(sort, path: sortable)
+        let sorted = try ActionExecutor.execute(sort, path: sortable).newPath
+        #expect(sorted == sortPlan.targetPath)
+        #expect(FileManager.default.fileExists(atPath: sorted))
+
+        let source = dir.file("report.txt", contents: "report")
+        let destination = dir.dir("Destination")
+        let sync = makeAction(.syncToFolder, .object([ActionParam.destination: .string(destination)]))
+        let syncPlan = try ActionExecutor.plan(sync, path: source)
+        let synced = try ActionExecutor.execute(sync, path: source).copiedPath
+        #expect(synced == syncPlan.targetPath)
+        #expect(FileManager.default.fileExists(atPath: source))
+        #expect(FileManager.default.fileExists(atPath: synced!))
+        #expect(try ActionExecutor.plan(sync, path: source).status == .wouldSkip)
+
+        let archive = makeAction(.archive, .object([:]))
+        let archivePlan = try ActionExecutor.plan(archive, path: source)
+        let archived = try ActionExecutor.execute(archive, path: source).copiedPath
+        #expect(archived == archivePlan.targetPath)
+        #expect(FileManager.default.fileExists(atPath: archived!))
+
+        let comment = makeAction(.addComment, .object([ActionParam.comment: .string("Reviewed")]))
+        _ = try ActionExecutor.execute(comment, path: source)
+        #expect(FinderTags.readComment(source) == "Reviewed")
+    }
+
+    @Test func FinderToggleActionsCanBeReversedByRunningAgain() throws {
+        let dir = TempDir()
+        let file = dir.file("document.txt", contents: "hello")
+        let extensionAction = makeAction(.toggleExtension, .object([:]))
+        let lockAction = makeAction(.toggleLock, .object([:]))
+
+        let initialHidden = try URL(fileURLWithPath: file).resourceValues(forKeys: [.hasHiddenExtensionKey]).hasHiddenExtension ?? false
+        _ = try ActionExecutor.execute(extensionAction, path: file)
+        #expect((try URL(fileURLWithPath: file).resourceValues(forKeys: [.hasHiddenExtensionKey]).hasHiddenExtension ?? false) != initialHidden)
+        _ = try ActionExecutor.execute(extensionAction, path: file)
+        #expect((try URL(fileURLWithPath: file).resourceValues(forKeys: [.hasHiddenExtensionKey]).hasHiddenExtension ?? false) == initialHidden)
+
+        let initialLocked = try URL(fileURLWithPath: file).resourceValues(forKeys: [.isUserImmutableKey]).isUserImmutable ?? false
+        _ = try ActionExecutor.execute(lockAction, path: file)
+        #expect((try URL(fileURLWithPath: file).resourceValues(forKeys: [.isUserImmutableKey]).isUserImmutable ?? false) != initialLocked)
+        _ = try ActionExecutor.execute(lockAction, path: file)
+        #expect((try URL(fileURLWithPath: file).resourceValues(forKeys: [.isUserImmutableKey]).isUserImmutable ?? false) == initialLocked)
+    }
+
+    @Test func FinderLaunchActionsProducePlansWithoutLaunchingApps() throws {
+        let dir = TempDir()
+        let file = dir.file("document.txt")
+        let destination = dir.dir("Aliases")
+        let actions = [
+            makeAction(.open, .object([:])),
+            makeAction(.showInFinder, .object([:])),
+            makeAction(.makeAlias, .object([ActionParam.aliasDestination: .string(destination)])),
+        ]
+
+        for action in actions {
+            let plan = try ActionExecutor.plan(action, path: file)
+            #expect(plan.kind == action.kind)
+            #expect(plan.status == .wouldRun)
+        }
+    }
     @Test func addAndRemoveTagUpdatesFinderTagXattrWithoutDuplicates() throws {
         let dir = TempDir()
         let file = dir.file("document.txt", contents: "hello")
