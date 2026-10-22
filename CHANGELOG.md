@@ -34,6 +34,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ## [1.0.9] - 2026-10-02
 
+### Added
+- Rules can now process a matched folder's contents or ignore an item before it reaches later rules.
+
 ### Fixed
 - About Forel now displays the app name, version, build number, copyright, and repository link.
 - Automatic rules now keep processing simultaneous file arrivals when an earlier file takes time to move to another disk or network folder.

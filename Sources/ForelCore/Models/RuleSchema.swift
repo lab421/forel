@@ -248,6 +248,8 @@ public extension ActionKind {
         case .openApplication: return "Open application"
         case .importToLibrary: return "Import to library"
         case .uncompress: return "Uncompress"
+        case .runRulesOnFolderContents: return "Run rules on folder contents"
+        case .ignore: return "Ignore"
         }
     }
 
@@ -265,6 +267,8 @@ public extension ActionKind {
         case .openApplication: return "app"
         case .importToLibrary: return "tray.full"
         case .uncompress: return "doc.zipper"
+        case .runRulesOnFolderContents: return "folder.badge.play"
+        case .ignore: return "eye.slash"
         }
     }
 
@@ -276,7 +280,7 @@ public extension ActionKind {
         switch self {
         case .moveToFolder, .copyToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress:
             return true
-        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
+        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete, .runRulesOnFolderContents, .ignore:
             return false
         }
     }
@@ -302,7 +306,7 @@ public extension ActionKind {
         case .importToLibrary:
             return [ActionParamSpec(key: ActionParam.libraryType, kind: .libraryType),
                     ActionParamSpec(key: ActionParam.targetPlaylist, kind: .playlist)]
-        case .moveToTrash, .delete, .uncompress:
+        case .moveToTrash, .delete, .uncompress, .runRulesOnFolderContents, .ignore:
             return []
         }
     }
@@ -352,6 +356,7 @@ public enum RuleSchema {
         ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .rename, .uncompress]),
         ActionKindGroup(title: "Tags", kinds: [.addTag, .removeTag, .setColorLabel]),
         ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut, .openApplication]),
+        ActionKindGroup(title: "Rule flow", kinds: [.runRulesOnFolderContents, .ignore]),
         ActionKindGroup(title: "Disposal", kinds: [.moveToTrash, .delete]),
         ActionKindGroup(title: "Library", kinds: [.importToLibrary]),
     ]

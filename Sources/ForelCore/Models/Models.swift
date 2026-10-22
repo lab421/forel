@@ -132,6 +132,8 @@ public enum ActionKind: String, Codable, Equatable, Sendable {
     case openApplication = "open_application"
     case importToLibrary = "import_to_library"
     case uncompress
+    case runRulesOnFolderContents = "run_rules_on_folder_contents"
+    case ignore
 
     public init(dbValue: String) {
         self = ActionKind(rawValue: dbValue) ?? .moveToFolder
