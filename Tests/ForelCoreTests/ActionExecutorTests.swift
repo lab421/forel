@@ -19,6 +19,37 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct ActionExecutorTests {
+    @Test func uploadPlanRedactsCredentialsAndBuildsABoundedCurlCommand() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "report")
+        let value = "sftp://alice:secret@example.com/incoming/report.txt"
+        let action = makeAction(.upload, .object([ActionParam.uploadURL: .string(value)]))
+
+        let plan = try ActionExecutor.plan(action, path: file)
+        let destination = try #require(UploadDestination.url(from: value))
+        let arguments = UploadDestination.curlArguments(sourcePath: file, destination: destination)
+
+        #expect(plan.status == .wouldRun)
+        #expect(plan.description == "Upload to sftp://example.com/incoming/report.txt")
+        #expect(!plan.description.contains("secret"))
+        #expect(arguments.contains("--connect-timeout"))
+        #expect(arguments.contains("--speed-time"))
+        #expect(arguments.contains("--ftp-create-dirs"))
+        #expect(arguments.suffix(2) == ["--", destination.absoluteString])
+    }
+
+    @Test func invalidUploadDestinationPlansASkip() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "report")
+        let action = makeAction(.upload, .object([ActionParam.uploadURL: .string("file:///tmp/report.txt")]))
+
+        let plan = try ActionExecutor.plan(action, path: file)
+
+        #expect(plan.status == .wouldSkip)
+        #expect(plan.description == "Skip — enter a valid FTP, FTPS, SFTP, HTTP, or HTTPS upload URL")
+        #expect(plan.finalPath == file)
+    }
+
     @Test func addAndRemoveTagUpdatesFinderTagXattrWithoutDuplicates() throws {
         let dir = TempDir()
         let file = dir.file("document.txt", contents: "hello")

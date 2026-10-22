@@ -19,6 +19,25 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct RuleEngineTests {
+    @Test func invalidUploadIsSkippedTheSameWayInPreviewAndRunNow() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "report")
+        let action = makeAction(.upload, .object([
+            ActionParam.uploadURL: .string("file:///tmp/report.txt"),
+        ]))
+        let rule = makeRule(name: "upload reports", actions: [action])
+
+        let preview = try #require(RuleEngine.previewFile(path: file, depth: 0, rules: [rule]))
+        let result = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "upload")
+
+        #expect(preview.rules[0].actions[0].status == .wouldSkip)
+        #expect(preview.rules[0].actions[0].description == "Skip — enter a valid FTP, FTPS, SFTP, HTTP, or HTTPS upload URL")
+        #expect(result.history.count == 1)
+        #expect(result.history[0].status == .skipped)
+        #expect(result.history[0].message == preview.rules[0].actions[0].description)
+        #expect(FileManager.default.fileExists(atPath: file))
+    }
+
     @Test func evaluateFileMatchesEnabledRulesWithAllOrAnyConditions() throws {
         let dir = TempDir()
         let file = dir.file("invoice.txt", contents: "paid")
