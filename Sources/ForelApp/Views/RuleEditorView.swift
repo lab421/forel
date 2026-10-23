@@ -941,6 +941,11 @@ private struct ActionRow: View {
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
+        case .compress:
+            Text("Creates \u{201C}<name>.zip\u{201D} next to the matched file or folder.")
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .frame(minHeight: 32, alignment: .center)
         case .moveToTrash, .delete:
             Text("No parameters")
                 .font(.system(size: 11))

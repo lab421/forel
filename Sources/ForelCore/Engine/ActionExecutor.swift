@@ -219,6 +219,8 @@ public enum ActionExecutor {
             return try importToLibrary(action, path: path)
         case .uncompress:
             return try uncompress(action, path: path)
+        case .compress:
+            return try compress(path: path)
         }
     }
 
@@ -324,6 +326,31 @@ public enum ActionExecutor {
 
         _ = try moveIntoDir(path: path, destDir: try trashDir())
         return Applied(newPath: plan.target, undo: .none)
+    }
+
+    /// Zips `path` (file or folder) into `<name>.zip` beside it, numbering the
+    /// name when that archive already exists. The source is left in place,
+    /// exactly like a copy — only the archive is the new artifact.
+    private static func compress(path: String) throws -> Applied {
+        let dir = (path as NSString).deletingLastPathComponent
+        let fileName = compressArchiveName(path)
+        let dest = try resolveDestination(
+            naiveDest: (dir as NSString).appendingPathComponent(fileName),
+            dir: dir,
+            fileName: fileName,
+            resolution: .rename
+        )
+        do {
+            try FileManager.default.zipItem(at: URL(fileURLWithPath: path), to: URL(fileURLWithPath: dest))
+        } catch {
+            throw ActionError("Could not create ZIP archive: \(error)")
+        }
+        return Applied(newPath: path, undo: .none, copiedPath: dest)
+    }
+
+    private static func compressArchiveName(_ path: String) -> String {
+        let baseName = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+        return baseName + ".zip"
     }
 
     /// Resolves the actual path a move/copy should write to, given the
@@ -1190,6 +1217,24 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .compress:
+            let dir = (path as NSString).deletingLastPathComponent
+            let fileName = compressArchiveName(path)
+            let naiveTarget = (dir as NSString).appendingPathComponent(fileName)
+            let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
+            // Compress has no options, so an existing archive is always
+            // worked around by numbering the new one, never skipped.
+            let target = try resolveDestination(naiveDest: naiveTarget, dir: dir, fileName: fileName, resolution: .rename)
+            return ActionPlan(
+                kind: action.kind,
+                description: conflicts ? "Compress to \(target) (renamed to avoid an existing archive)" : "Compress to \(target)",
+                sourcePath: path,
+                targetPath: target,
+                status: .wouldRun,
+                finalPath: path,
+                copiedPath: target,
+                isTerminal: false
+            )
         }
     }
 
@@ -1208,7 +1253,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress, .compress:
             return true
         }
     }

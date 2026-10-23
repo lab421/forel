@@ -567,6 +567,8 @@ private struct RuleDetails: View {
             return ("import to \(library)", playlist.isEmpty ? nil : playlist)
         case .uncompress:
             return ("uncompress ZIP", MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
+        case .compress:
+            return ("create ZIP", nil)
         }
     }
 
