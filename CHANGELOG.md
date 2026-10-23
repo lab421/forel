@@ -10,6 +10,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Fixed
 - Date Added conditions no longer crash when reading a file's timestamp.
+- Editing the number in a relative date or size condition no longer resets its unit, which could silently turn "2 Months" into "2 Days".
 
 ## [1.1.0] - 2026-10-22
 
