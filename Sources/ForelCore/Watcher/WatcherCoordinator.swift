@@ -224,9 +224,19 @@ public final class WatcherCoordinator: @unchecked Sendable {
         }
         settling[path] = nil
         handle(path: path)
-        if state.hasDeferredDescendants {
+        // Contents a folder arrived with never get their own FSEvents events —
+        // they were created outside the watched tree — so a folder that
+        // settles must have its subtree walked, the way Run Now does. The
+        // includesContents snapshot already waited for everything inside to
+        // stop changing, so the entries can be evaluated right away.
+        if state.hasDeferredDescendants || (state.includesContents && isDirectory(path)) {
             handleRescanSubtree(root: path, waitsForSettledFiles: false)
         }
+    }
+
+    private func isDirectory(_ path: String) -> Bool {
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
     }
 
     public func isProcessing(in root: String) -> Bool {
