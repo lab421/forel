@@ -499,8 +499,10 @@ struct GlassField: View {
     }
 }
 
-/// A read-only folder path field with a "Choose…" button opening the native
-/// macOS Finder directory picker. Used everywhere a folder is selected.
+/// A folder path field with a "Choose…" button opening the native macOS
+/// Finder directory picker, and an editable text field underneath so paths
+/// with date tokens (e.g. `/Volumes/Archive/{year}/{month}`) can be typed.
+/// Used everywhere a folder is selected.
 struct FolderField: View {
     let placeholder: String
     @Binding var path: String
@@ -509,11 +511,11 @@ struct FolderField: View {
         HStack(spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
-                Text(path.isEmpty ? placeholder : path)
+                TextField(placeholder, text: $path)
+                    .textFieldStyle(.plain)
                     .font(.system(size: 12))
-                    .foregroundStyle(path.isEmpty ? ForelTheme.secondaryText : ForelTheme.primaryText)
+                    .foregroundStyle(ForelTheme.primaryText)
                     .lineLimit(1)
-                    .truncationMode(.middle)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)

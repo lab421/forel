@@ -65,6 +65,50 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: (dir.path as NSString).appendingPathComponent("report-archived.txt.txt")))
     }
 
+    @Test func moveToFolderExpandsDateTokensFromTheFileCreationDate() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.pdf", contents: "hello")
+        let calendar = Calendar.current
+        let created = calendar.date(from: DateComponents(year: 2026, month: 3, day: 5, hour: 12))!
+        try FileManager.default.setAttributes([.creationDate: created], ofItemAtPath: file)
+        let destination = dir.dir("Archive/{year}/{month}-{day}")
+
+        let action = makeAction(.moveToFolder, .object([ActionParam.destination: .string(destination)]))
+        let plan = try ActionExecutor.plan(action, path: file)
+        let expectedDir = (dir.path as NSString).appendingPathComponent("Archive/2026/03-05")
+        #expect(plan.targetPath == (expectedDir as NSString).appendingPathComponent("invoice.pdf"))
+
+        let applied = try ActionExecutor.execute(action, path: file)
+        #expect(applied.newPath == (expectedDir as NSString).appendingPathComponent("invoice.pdf"))
+        #expect(try String(contentsOfFile: applied.newPath, encoding: .utf8) == "hello")
+    }
+
+    @Test func copyToFolderExpandsDateTokensAndKeepsTheSource() throws {
+        let dir = TempDir()
+        let file = dir.file("shot.png", contents: "png")
+        let calendar = Calendar.current
+        let created = calendar.date(from: DateComponents(year: 2026, month: 7, day: 14, hour: 12))!
+        try FileManager.default.setAttributes([.creationDate: created], ofItemAtPath: file)
+        let destination = dir.dir("Screenshots/{year}/{month}")
+
+        let action = makeAction(.copyToFolder, .object([ActionParam.destination: .string(destination)]))
+        let applied = try ActionExecutor.execute(action, path: file)
+
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(applied.copiedPath == (dir.path as NSString).appendingPathComponent("Screenshots/2026/07/shot.png"))
+    }
+
+    @Test func destinationTokensWithUnknownBracesAreLeftAlone() throws {
+        let dir = TempDir()
+        let file = dir.file("note.txt", contents: "hi")
+        let destination = dir.dir("Keep {literal}/{year}")
+
+        let applied = try ActionExecutor.execute(makeAction(.moveToFolder, .object([ActionParam.destination: .string(destination)])), path: file)
+
+        let expectedDir = (dir.path as NSString).appendingPathComponent("Keep {literal}/\(Calendar.current.component(.year, from: Date()))")
+        #expect(applied.newPath == (expectedDir as NSString).appendingPathComponent("note.txt"))
+    }
+
     @Test func uncompressZipExtractsSingleRootItemAndMovesArchiveAway() throws {
         let dir = TempDir()
         let staging = dir.dir("staging")

@@ -7,6 +7,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Added
 - Date conditions now support hours, with an "is not in the last" option for excluding recently added, created, or modified files.
+- Move to folder and Copy to folder destinations now accept {year}, {month}, and {day} date tokens (e.g. ~/Archive/{year}/{month}), resolved from each file's creation date. The destination field can now also be typed into.
 
 ### Fixed
 - Date Added conditions no longer crash when reading a file's timestamp.
