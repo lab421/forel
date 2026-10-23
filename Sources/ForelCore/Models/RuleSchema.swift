@@ -247,6 +247,7 @@ public extension ActionKind {
         case .runShortcut: return "Run shortcut"
         case .openApplication: return "Open application"
         case .importToLibrary: return "Import to library"
+        case .compress: return "Compress"
         case .uncompress: return "Uncompress"
         }
     }
@@ -264,6 +265,7 @@ public extension ActionKind {
         case .runShortcut: return "square.stack.3d.up"
         case .openApplication: return "app"
         case .importToLibrary: return "tray.full"
+        case .compress: return "archivebox"
         case .uncompress: return "doc.zipper"
         }
     }
@@ -276,7 +278,7 @@ public extension ActionKind {
         switch self {
         case .moveToFolder, .copyToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress:
             return true
-        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
+        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete, .compress:
             return false
         }
     }
@@ -302,7 +304,7 @@ public extension ActionKind {
         case .importToLibrary:
             return [ActionParamSpec(key: ActionParam.libraryType, kind: .libraryType),
                     ActionParamSpec(key: ActionParam.targetPlaylist, kind: .playlist)]
-        case .moveToTrash, .delete, .uncompress:
+        case .moveToTrash, .delete, .uncompress, .compress:
             return []
         }
     }
@@ -349,7 +351,7 @@ public enum RuleSchema {
     public static let conditionKinds: [ConditionKind] = conditionKindGroups.flatMap(\.kinds)
 
     public static let actionKindGroups: [ActionKindGroup] = [
-        ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .rename, .uncompress]),
+        ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .rename, .compress, .uncompress]),
         ActionKindGroup(title: "Tags", kinds: [.addTag, .removeTag, .setColorLabel]),
         ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut, .openApplication]),
         ActionKindGroup(title: "Disposal", kinds: [.moveToTrash, .delete]),

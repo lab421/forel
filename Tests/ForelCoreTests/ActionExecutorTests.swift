@@ -65,6 +65,76 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: (dir.path as NSString).appendingPathComponent("report-archived.txt.txt")))
     }
 
+    @Test func compressFileCreatesZipBesideItAndKeepsTheSource() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "hello")
+
+        let action = makeAction(.compress, .object([:]))
+        let plan = try ActionExecutor.plan(action, path: file)
+        #expect(plan.status == .wouldRun)
+        #expect(plan.targetPath == (dir.path as NSString).appendingPathComponent("report.zip"))
+        #expect(plan.finalPath == file)
+
+        let applied = try ActionExecutor.execute(action, path: file)
+
+        #expect(applied.newPath == file)
+        #expect(applied.copiedPath == (dir.path as NSString).appendingPathComponent("report.zip"))
+        #expect(applied.undo == .none)
+        #expect(FileManager.default.fileExists(atPath: file))
+        try assertZip(at: applied.copiedPath!, contains: ["report.txt"], with: ["report.txt": "hello"])
+    }
+
+    @Test func compressFolderArchivesItsContentsRecursively() throws {
+        let dir = TempDir()
+        let folder = dir.dir("Export")
+        try "a".write(toFile: (folder as NSString).appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        let nested = dir.dir("Export/Nested")
+        try "b".write(toFile: (nested as NSString).appendingPathComponent("b.txt"), atomically: true, encoding: .utf8)
+
+        let applied = try ActionExecutor.execute(makeAction(.compress, .object([:])), path: folder)
+
+        #expect(applied.copiedPath == (dir.path as NSString).appendingPathComponent("Export.zip"))
+        #expect(FileManager.default.fileExists(atPath: folder))
+        // Folder archives keep the folder itself as the wrapper entry, like Finder.
+        try assertZip(at: applied.copiedPath!, contains: ["Export/a.txt", "Export/Nested/b.txt"], with: ["Export/a.txt": "a", "Export/Nested/b.txt": "b"])
+    }
+
+    @Test func compressWithExistingArchiveRenamesTheNewOne() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "new")
+        let existing = (dir.path as NSString).appendingPathComponent("report.zip")
+        try "old".write(toFile: existing, atomically: true, encoding: .utf8)
+
+        let plan = try ActionExecutor.plan(makeAction(.compress, .object([:])), path: file)
+        #expect(plan.targetPath == (dir.path as NSString).appendingPathComponent("report (1).zip"))
+        #expect(plan.description.contains("renamed"))
+
+        let applied = try ActionExecutor.execute(makeAction(.compress, .object([:])), path: file)
+
+        #expect(applied.copiedPath == (dir.path as NSString).appendingPathComponent("report (1).zip"))
+        try assertZip(at: applied.copiedPath!, contains: ["report.txt"], with: ["report.txt": "new"])
+        #expect(try String(contentsOfFile: existing, encoding: .utf8) == "old")
+    }
+
+    /// Extracts `zip` and checks it contains exactly `names`, each with the
+    /// given contents.
+    private func assertZip(at zip: String, contains names: [String], with contents: [String: String]) throws {
+        let out = TempDir()
+        try FileManager.default.unzipItem(at: URL(fileURLWithPath: zip), to: URL(fileURLWithPath: out.path))
+        var seen: Set<String> = []
+        let enumerator = FileManager.default.enumerator(atPath: out.path)
+        while let item = enumerator?.nextObject() as? String {
+            let full = (out.path as NSString).appendingPathComponent(item)
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: full, isDirectory: &isDir), !isDir.boolValue else { continue }
+            seen.insert(item)
+            if let expected = contents[item] {
+                #expect(try String(contentsOfFile: full, encoding: .utf8) == expected)
+            }
+        }
+        #expect(seen == Set(names))
+    }
+
     @Test func uncompressZipExtractsSingleRootItemAndMovesArchiveAway() throws {
         let dir = TempDir()
         let staging = dir.dir("staging")

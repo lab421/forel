@@ -7,6 +7,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Added
 - Date conditions now support hours, with an "is not in the last" option for excluding recently added, created, or modified files.
+- New Compress action: zips the matched file or folder into "<name>.zip" next to it, numbering the archive if one already exists.
 
 ### Fixed
 - Date Added conditions no longer crash when reading a file's timestamp.
