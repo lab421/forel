@@ -506,24 +506,37 @@ struct GlassField: View {
 struct FolderField: View {
     let placeholder: String
     @Binding var path: String
+    /// Shown under the field only while the user is typing in it.
+    var hint: String? = nil
+    @FocusState private var isEditing: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
-                TextField(placeholder, text: $path)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(ForelTheme.primaryText)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
+                    TextField(placeholder, text: $path)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(ForelTheme.primaryText)
+                        .lineLimit(1)
+                        .focused($isEditing)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
 
-            Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+                Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+            }
+
+            if let hint, isEditing {
+                Text(hint)
+                    .font(.system(size: 10))
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .padding(.leading, 10)
+            }
         }
     }
 
