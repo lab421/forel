@@ -11,6 +11,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Fixed
 - Date Added conditions no longer crash when reading a file's timestamp.
+- Moving a folder into a watched folder now applies matching rules to the files inside it automatically, the same way Run Now does.
 
 ## [1.1.0] - 2026-10-22
 

@@ -206,6 +206,38 @@ import Foundation
         #expect(try db.listHistory().count == 2)
     }
 
+    @Test func folderArrivingWithContentsProcessesThemWithoutTheirOwnEvents() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let destination = dir.dir("Documents")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sort pdf", recursionDepth: nil)
+        rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
+        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        // Like moving a folder in from elsewhere: FSEvents reports only the
+        // folder — its existing contents were created outside the watched
+        // tree and never get events of their own.
+        let incoming = dir.dir("Export")
+        _ = dir.dir("Export/Nested")
+        let first = (incoming as NSString).appendingPathComponent("a.pdf")
+        let second = (incoming as NSString).appendingPathComponent("Nested/b.pdf")
+        try "a".write(toFile: first, atomically: true, encoding: .utf8)
+        try "b".write(toFile: second, atomically: true, encoding: .utf8)
+
+        let coordinator = WatcherCoordinator(db: db, settleInterval: 0.05)
+        coordinator.enqueue(event: .pathArrived(incoming))
+        coordinator.waitForPendingEvents()
+
+        #expect(FileManager.default.fileExists(atPath: incoming))
+        #expect(!FileManager.default.fileExists(atPath: first))
+        #expect(!FileManager.default.fileExists(atPath: second))
+        #expect(Set(try FileManager.default.contentsOfDirectory(atPath: destination)) == ["a.pdf", "b.pdf"])
+        #expect(try db.listHistory().count == 2)
+    }
+
     @Test(.timeLimit(.minutes(1)))
     func rescanDoesNotReadSubfoldersBeyondWhatTheRulesNeed() throws {
         let db = try makeDB()
