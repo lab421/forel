@@ -886,7 +886,11 @@ private struct ActionRow: View {
     @ViewBuilder private var actionParams: some View {
         switch action.kind {
         case .moveToFolder, .copyToFolder:
-            FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
+            FolderField(
+                placeholder: "Destination folder",
+                path: paramBinding(ActionParam.destination),
+                hint: "Add {year}, {month}, or {day} for dated folders, e.g. …/Archive/{year}/{month}"
+            )
         case .rename:
             RenamePatternEditor(pattern: paramBinding(ActionParam.pattern), cleanFileName: action.params[ActionParam.cleanFileName]?.boolValue == true)
         case .addTag, .removeTag:
