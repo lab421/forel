@@ -76,6 +76,7 @@ File matching and processing happen **locally on your Mac**. Forel does not uplo
 - **Content matching & OCR** — Match text inside documents, images, and scanned PDFs using local extraction and on-device OCR. See [Content matching](#content-matching) for supported formats and limits.
 - **Folder watching** — Monitor folders in real time with native macOS FSEvents: up to 2 in Free, unlimited in Pro.
 - **Dry Run & Run Now** — Preview matching files and planned actions without changing files, then run rules manually on existing files when ready.
+- **Copy rules** — Copy a rule to another watched folder, or select several with ⌘-click and choose **Copy rules to folder…**. Copies are independent and keep their action destinations.
 - **History & Undo** — Review action results and undo supported actions when it is safe to do so.
 - **Menu bar app** — Forel lives in your menu bar. Toggle individual rules on/off without opening the main window.
 - **Actions** — Move, copy, rename, tag, trash, delete, or run a custom script.
@@ -250,7 +251,7 @@ History / Undo (SQLite)
 - [ ] Toggle extension hidden / visible
 - [ ] Move folder based on criteria
 - [ ] Scheduler — **Pro · Coming soon**
-- [ ] Copy rules accros watching folders
+- [x] Copy rules across watched folders
 - [ ] Compress actions
 - [ ] Sync actions — **Pro · Coming soon**
 - [ ] Dynamic destination folders with date tokens (e.g. `~/Screenshots/{year}/{month}`)

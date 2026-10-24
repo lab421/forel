@@ -21,6 +21,8 @@ import ForelCore
 struct RuleListView: View {
     @EnvironmentObject var model: AppModel
     @State private var editingRule: Rule?
+    @State private var selectedRuleIDs: Set<String> = []
+    @State private var copyRequest: RuleCopyRequest?
 
     private var selectedFolder: WatchedFolder? {
         model.folders.first { $0.id == model.selectedFolderId }
@@ -39,7 +41,21 @@ struct RuleListView: View {
                 .sheet(item: $model.previewResult) { result in
                     PreviewSheet(result: result) { model.previewResult = nil }
                 }
+                .sheet(item: $copyRequest) { request in
+                    CopyRulesSheet(
+                        ruleCount: request.ruleIDs.count,
+                        sourceFolderID: request.sourceFolderID,
+                        folders: model.folders, isPro: model.isPro,
+                        onCopy: { destination in
+                            try model.copyRules(request.ruleIDs, fromFolderID: request.sourceFolderID, toFolderID: destination)
+                            copyRequest = nil
+                        },
+                        onCancel: { copyRequest = nil }
+                    )
+                }
         }
+        .onChange(of: model.selectedFolderId) { _, _ in selectedRuleIDs.removeAll() }
+        .onChange(of: model.rules.map(\.id)) { _, ids in selectedRuleIDs.formIntersection(ids) }
     }
 
     private var content: some View {
@@ -64,6 +80,16 @@ struct RuleListView: View {
             if !model.rules.isEmpty {
                 actionBar
             }
+            if !selectedRuleIDs.isEmpty {
+                HStack {
+                    Text("\(selectedRuleIDs.count) rule\(selectedRuleIDs.count == 1 ? "" : "s") selected")
+                        .font(.caption)
+                        .foregroundStyle(ForelTheme.secondaryText)
+                    Button("Copy rules to folder…") { requestCopy(selectedRuleIDs) }
+                        .buttonStyle(SecondaryButtonStyle())
+                    Spacer()
+                }
+            }
 
             if let runNowMessage = model.runNowMessageForSelectedFolder {
                 runNowBanner(runNowMessage)
@@ -77,7 +103,7 @@ struct RuleListView: View {
                     Spacer(minLength: 0)
                 }
             } else {
-                List {
+                List(selection: $selectedRuleIDs) {
                     ForEach(Array(model.rules.enumerated()), id: \.element.id) { index, rule in
                         VStack(alignment: .leading, spacing: 4) {
                             if !model.selectedFolderIsAllowed || (!model.isPro && FreePlan.requiredFeature(for: rule) != nil) {
@@ -96,10 +122,14 @@ struct RuleListView: View {
                             rule: rule,
                             order: index + 1,
                             isExpanded: model.isRuleExpanded(rule),
+                            isSelected: selectedRuleIDs.contains(rule.id),
                             onToggleExpanded: { model.toggleRuleExpanded(rule) },
-                            onEdit: { editingRule = rule }
+                            onEdit: { editingRule = rule },
+                            onCopy: { requestCopy([rule.id]) }
                             )
                         }
+                            .tag(rule.id)
+                            .background(RuleListSelectionAppearance())
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -109,6 +139,10 @@ struct RuleListView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.never)
+                .contextMenu(forSelectionType: String.self) { ids in
+                    Button("Copy rules to folder…") { requestCopy(ids) }
+                        .disabled(ids.isEmpty)
+                }
             }
         }
         .animation(.easeInOut(duration: 0.25), value: model.runNowMessageForSelectedFolder)
@@ -119,6 +153,11 @@ struct RuleListView: View {
 
     private func editorHeight(for availableHeight: CGFloat) -> CGFloat {
         max(680, availableHeight - 64)
+    }
+
+    private func requestCopy(_ ruleIDs: Set<String>) {
+        guard let sourceFolderID = model.selectedFolderId, !ruleIDs.isEmpty else { return }
+        copyRequest = RuleCopyRequest(sourceFolderID: sourceFolderID, ruleIDs: ruleIDs)
     }
 
     private func moveRules(from source: IndexSet, to destination: Int) {
@@ -313,8 +352,10 @@ private struct RuleCard: View {
     let rule: Rule
     let order: Int
     let isExpanded: Bool
+    let isSelected: Bool
     let onToggleExpanded: () -> Void
     let onEdit: () -> Void
+    let onCopy: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -378,6 +419,11 @@ private struct RuleCard: View {
 
                 Spacer(minLength: 8)
 
+                Button(action: onCopy) {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(IconButtonStyle())
+
                 Button(action: onEdit) {
                     Image(systemName: "pencil")
                 }
@@ -405,7 +451,10 @@ private struct RuleCard: View {
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ForelTheme.surface))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isExpanded ? ForelTheme.accent.opacity(0.55) : ForelTheme.surfaceBorder)
+                .strokeBorder(
+                    isSelected ? ForelTheme.accent : (isExpanded ? ForelTheme.accent.opacity(0.55) : ForelTheme.surfaceBorder),
+                    lineWidth: isSelected ? 1.5 : 1
+                )
         )
         .opacity(rule.enabled && model.selectedFolderIsAllowed ? 1 : 0.6)
     }
@@ -422,6 +471,47 @@ private struct RuleCard: View {
     private var enabledBinding: Binding<Bool> {
         Binding(get: { rule.enabled && model.selectedFolderIsAllowed }, set: { model.toggleRule(rule, enabled: $0) })
     }
+}
+
+/// Keep native List selection and keyboard handling without drawing a second,
+/// rectangular selection background behind the rounded rule cards.
+private struct RuleListSelectionAppearance: NSViewRepresentable {
+    func makeNSView(context: Context) -> SelectionAppearanceView { SelectionAppearanceView() }
+
+    func updateNSView(_ view: SelectionAppearanceView, context: Context) {
+        view.removeNativeHighlight()
+    }
+
+    final class SelectionAppearanceView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            removeNativeHighlight()
+        }
+
+        override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview()
+            removeNativeHighlight()
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        func removeNativeHighlight() {
+            var ancestor = superview
+            while let view = ancestor {
+                if let table = view as? NSTableView {
+                    table.selectionHighlightStyle = .none
+                    return
+                }
+                ancestor = view.superview
+            }
+        }
+    }
+}
+
+private struct RuleCopyRequest: Identifiable {
+    let id = UUID()
+    let sourceFolderID: String
+    let ruleIDs: Set<String>
 }
 
 private struct RuleDetails: View {
