@@ -357,7 +357,7 @@ public enum ActionExecutor {
             resolution: .rename
         )
         do {
-            try FileManager.default.zipItem(at: URL(fileURLWithPath: path), to: URL(fileURLWithPath: dest))
+            try FileManager.default.zipItem(at: URL(fileURLWithPath: path), to: URL(fileURLWithPath: dest), compressionMethod: .deflate)
         } catch {
             throw ActionError("Could not create ZIP archive: \(error)")
         }

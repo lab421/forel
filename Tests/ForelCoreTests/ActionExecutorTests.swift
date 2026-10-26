@@ -99,6 +99,69 @@ import Foundation
         try assertZip(at: applied.copiedPath!, contains: ["Export/a.txt", "Export/Nested/b.txt"], with: ["Export/a.txt": "a", "Export/Nested/b.txt": "b"])
     }
 
+    @Test(arguments: ["preview", "manual", "watcher"], [false, true])
+    func compressUsesCompressionAcrossExecutionPaths(execution: String, isFolder: Bool) throws {
+        let dir = TempDir()
+        let watched = dir.dir("Watched")
+        let contents = String(repeating: "Compressible file contents\n", count: 10_000)
+        let source: String
+        let archivedName: String
+        let original: String
+        if isFolder {
+            source = dir.dir("Watched/Export")
+            _ = dir.dir("Watched/Export/Nested")
+            original = dir.file("Watched/Export/Nested/report.txt", contents: contents)
+            archivedName = "Export/Nested/report.txt"
+        } else {
+            source = dir.file("Watched/report.txt", contents: contents)
+            original = source
+            archivedName = "report.txt"
+        }
+        let archivePath = watched + (isFolder ? "/Export.zip" : "/report.zip")
+        let db = try Database(path: ":memory:")
+        let folder = WatchedFolder(path: watched)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "Compress")
+        rule.conditions = [isFolder
+            ? makeCondition(.kind, .is, "folder", ruleId: rule.id)
+            : makeCondition(.extension_, .is, "txt", ruleId: rule.id)]
+        rule.actions = [makeAction(.compress, .object([:]), ruleId: rule.id)]
+        try db.insertRule(rule)
+        let rules = try db.executionRules(folderID: folder.id, isPro: false)
+
+        if execution == "watcher" {
+            let coordinator = WatcherCoordinator(db: db, settleInterval: 0.01)
+            coordinator.enqueue(event: .pathArrived(source))
+            coordinator.waitForPendingEvents()
+            let history = try db.listHistory()
+            #expect(history.count == 1)
+            #expect(history.first?.status == .applied)
+        } else {
+            let entries = RuleEngine.walkEntries(root: watched, maxDepth: RuleEngine.maxRuleDepth(rules))
+            #expect(entries.map(\.path) == [source])
+            for entry in entries {
+                if execution == "preview" {
+                    let preview = try #require(RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: rules, isPro: false))
+                    #expect(preview.rules.first?.actions.first?.targetPath == archivePath)
+                } else {
+                    let result = RuleEngine.run(path: entry.path, depth: entry.depth, rules: rules, batchId: "manual", root: watched, isPro: false)
+                    #expect(result.history.count == 1)
+                    #expect(result.history.first?.status == .applied)
+                }
+            }
+        }
+
+        #expect(try String(contentsOfFile: original, encoding: .utf8) == contents)
+        if execution == "preview" {
+            #expect(!FileManager.default.fileExists(atPath: archivePath))
+        } else {
+            let attributes = try FileManager.default.attributesOfItem(atPath: archivePath)
+            let size = try #require(attributes[.size] as? NSNumber)
+            #expect(size.intValue < contents.utf8.count / 10)
+            try assertZip(at: archivePath, contains: [archivedName], with: [archivedName: contents])
+        }
+    }
+
     @Test func compressWithExistingArchiveRenamesTheNewOne() throws {
         let dir = TempDir()
         let file = dir.file("report.txt", contents: "new")
