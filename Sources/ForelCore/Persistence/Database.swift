@@ -519,25 +519,64 @@ public final class Database: @unchecked Sendable {
     public func insertRule(_ rule: Rule) throws {
         let priority = try nextRulePriority(folderId: rule.folderId)
         try transaction {
-            let stmt = try statement(
-                """
-                INSERT INTO rules (id, folder_id, name, enabled, condition_match, recursion_depth, priority, created_at)
-                VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
-                """
-            )
-            stmt.bind(1, rule.id)
-            stmt.bind(2, rule.folderId)
-            stmt.bind(3, rule.name)
-            stmt.bind(4, bool: rule.enabled)
-            stmt.bind(5, rule.conditionMatch == .any ? "any" : "all")
-            stmt.bind(6, rule.recursionDepth ?? -1)
-            stmt.bind(7, priority)
-            stmt.bind(8, rule.createdAt)
-            try stmt.runToCompletion()
-
-            for condition in rule.conditions { try insertCondition(condition) }
-            for action in rule.actions { try insertAction(action) }
+            try insertRuleRows(rule, priority: priority)
         }
+    }
+
+    private func insertRuleRows(_ rule: Rule, priority: Int64) throws {
+        let stmt = try statement(
+            """
+            INSERT INTO rules (id, folder_id, name, enabled, condition_match, recursion_depth, priority, created_at)
+            VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
+            """
+        )
+        stmt.bind(1, rule.id)
+        stmt.bind(2, rule.folderId)
+        stmt.bind(3, rule.name)
+        stmt.bind(4, bool: rule.enabled)
+        stmt.bind(5, rule.conditionMatch == .any ? "any" : "all")
+        stmt.bind(6, rule.recursionDepth ?? -1)
+        stmt.bind(7, priority)
+        stmt.bind(8, rule.createdAt)
+        try stmt.runToCompletion()
+
+        for condition in rule.conditions { try insertCondition(condition) }
+        for action in rule.actions { try insertAction(action) }
+    }
+
+    /// Copies the current saved rules in their source order, appending them to
+    /// the destination. New identities keep edits, deletion, and history separate.
+    public func copyRules(_ ruleIDs: Set<String>, fromFolderID: String, toFolderID: String, isPro: Bool) throws -> [Rule] {
+        guard !ruleIDs.isEmpty else { throw RuleCopyError.noSelection }
+        guard fromFolderID != toFolderID else { throw RuleCopyError.sameFolder }
+        var copies: [Rule] = []
+        try transaction {
+            let folders = try listFolders()
+            guard folders.contains(where: { $0.id == fromFolderID }),
+                  folders.contains(where: { $0.id == toFolderID }) else { throw RuleCopyError.missingFolder }
+            guard FreePlan.allows(folderID: toFolderID, folders: folders, isPro: isPro) else {
+                throw FreePlanError.proFolder
+            }
+            let sources = try listRules(folderId: fromFolderID).filter { ruleIDs.contains($0.id) }
+            guard sources.count == ruleIDs.count else { throw RuleCopyError.missingRules }
+            for source in sources {
+                try FreePlan.validate(source, isPro: isPro)
+                var copy = Rule(
+                    folderId: toFolderID, name: source.name, enabled: source.enabled,
+                    conditionMatch: source.conditionMatch, recursionDepth: source.recursionDepth,
+                    priority: try nextRulePriority(folderId: toFolderID)
+                )
+                copy.conditions = source.conditions.map {
+                    Condition(ruleId: copy.id, kind: $0.kind, operator: $0.operator, value: $0.value)
+                }
+                copy.actions = source.actions.map {
+                    Action(ruleId: copy.id, kind: $0.kind, params: $0.params, position: $0.position)
+                }
+                try insertRuleRows(copy, priority: copy.priority)
+                copies.append(copy)
+            }
+        }
+        return copies
     }
 
     public func updateRule(_ rule: Rule) throws {
