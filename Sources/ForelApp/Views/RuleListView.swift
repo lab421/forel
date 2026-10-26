@@ -87,6 +87,8 @@ struct RuleListView: View {
                         .foregroundStyle(ForelTheme.secondaryText)
                     Button("Copy rules to folder…") { requestCopy(selectedRuleIDs) }
                         .buttonStyle(SecondaryButtonStyle())
+                    Button("Deselect all") { selectedRuleIDs.removeAll() }
+                        .buttonStyle(SecondaryButtonStyle())
                     Spacer()
                 }
             }
