@@ -220,7 +220,7 @@ public enum ActionExecutor {
         case .uncompress:
             return try uncompress(action, path: path)
         case .compress:
-            return try compress(path: path)
+            return try compress(action, path: path)
         }
     }
 
@@ -344,12 +344,12 @@ public enum ActionExecutor {
         return Applied(newPath: plan.target, undo: .none)
     }
 
-    /// Zips `path` (file or folder) into `<name>.zip` beside it, numbering the
-    /// name when that archive already exists. The source is left in place,
+    /// Zips `path` beside it using the configured name (default `<name>.zip`),
+    /// numbering the name when that archive already exists. The source is left in place,
     /// exactly like a copy — only the archive is the new artifact.
-    private static func compress(path: String) throws -> Applied {
+    private static func compress(_ action: Action, path: String) throws -> Applied {
         let dir = (path as NSString).deletingLastPathComponent
-        let fileName = compressArchiveName(path)
+        let fileName = try compressArchiveName(action, path: path)
         let dest = try resolveDestination(
             naiveDest: (dir as NSString).appendingPathComponent(fileName),
             dir: dir,
@@ -364,9 +364,43 @@ public enum ActionExecutor {
         return Applied(newPath: path, undo: .none, copiedPath: dest)
     }
 
-    private static func compressArchiveName(_ path: String) -> String {
-        let baseName = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
-        return baseName + ".zip"
+    private static func compressArchiveName(_ action: Action, path: String) throws -> String {
+        let name = (path as NSString).lastPathComponent
+        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+        let isFolder = (attributes?[.type] as? FileAttributeType) == .typeDirectory
+        return try archiveFileName(
+            pattern: action.params[ActionParam.archiveName]?.stringValue ?? "",
+            sourceName: isFolder ? name : (name as NSString).deletingPathExtension
+        )
+    }
+
+    /// Resolves an archive name for execution, validation, and editor previews.
+    /// Dates use the local time zone; ZIP is appended when omitted.
+    public static func archiveFileName(pattern: String, sourceName: String, at date: Date = Date()) throws -> String {
+        let trimmed = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        let template = trimmed.isEmpty ? "{name}.zip" : trimmed
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        let day = formatter.string(from: date)
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        // Insert the source name last so braces in its name stay literal.
+        var result = template
+            .replacingOccurrences(of: "{current_date}", with: day)
+            .replacingOccurrences(of: "{timestamp}", with: formatter.string(from: date))
+            .replacingOccurrences(of: "{name}", with: sourceName)
+        guard !result.isEmpty, result != ".", result != "..",
+              !result.contains("/"), !result.contains("\0"),
+              !result.hasSuffix("."), !result.hasSuffix(" ") else {
+            throw ActionError("Archive name must be a filename, without '/' or null characters, and cannot end with a dot or space.")
+        }
+        if !result.lowercased().hasSuffix(".zip") { result += ".zip" }
+        guard result.utf8.count <= 255 else {
+            throw ActionError("Archive name is too long (maximum 255 bytes including .zip).")
+        }
+        return result
     }
 
     /// Resolves the actual path a move/copy should write to, given the
@@ -1235,7 +1269,7 @@ public enum ActionExecutor {
             )
         case .compress:
             let dir = (path as NSString).deletingLastPathComponent
-            let fileName = compressArchiveName(path)
+            let fileName = try compressArchiveName(action, path: path)
             let naiveTarget = (dir as NSString).appendingPathComponent(fileName)
             let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
             // Compress has no options, so an existing archive is always

@@ -48,6 +48,12 @@ public enum RuleValidator {
                 if action.params[ActionParam.pattern]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
                     return Issue(message: "Rename pattern cannot be empty")
                 }
+            case .compress:
+                do {
+                    _ = try ActionExecutor.archiveFileName(pattern: action.params[ActionParam.archiveName]?.stringValue ?? "", sourceName: "file")
+                } catch {
+                    return Issue(message: String(describing: error))
+                }
             case .addTag, .removeTag:
                 if tags(in: action).isEmpty {
                     return Issue(message: "At least one tag is required")

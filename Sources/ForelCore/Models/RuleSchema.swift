@@ -195,6 +195,7 @@ public enum ActionParam {
     public static let destination = "destination"
     public static let onConflict = "on_conflict"
     public static let pattern = "pattern"
+    public static let archiveName = "archive_name"
     public static let tags = "tags"
     public static let color = "color"
     public static let script = "script"
@@ -211,6 +212,7 @@ public enum ActionParam {
 public enum ActionParamKind: Sendable, Equatable {
     case folderPath
     case renamePattern
+    case archiveName
     case tags
     case colorLabel
     case script
@@ -304,7 +306,9 @@ public extension ActionKind {
         case .importToLibrary:
             return [ActionParamSpec(key: ActionParam.libraryType, kind: .libraryType),
                     ActionParamSpec(key: ActionParam.targetPlaylist, kind: .playlist)]
-        case .moveToTrash, .delete, .uncompress, .compress:
+        case .compress:
+            return [ActionParamSpec(key: ActionParam.archiveName, kind: .archiveName)]
+        case .moveToTrash, .delete, .uncompress:
             return []
         }
     }

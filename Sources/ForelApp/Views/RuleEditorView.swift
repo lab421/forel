@@ -948,10 +948,7 @@ private struct ActionRow: View {
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
         case .compress:
-            Text("Creates \u{201C}<name>.zip\u{201D} next to the matched file or folder.")
-                .font(.system(size: 11))
-                .foregroundStyle(ForelTheme.secondaryText)
-                .frame(minHeight: 32, alignment: .center)
+            ArchiveNameEditor(pattern: paramBinding(ActionParam.archiveName))
         case .moveToTrash, .delete:
             Text("No parameters")
                 .font(.system(size: 11))
@@ -1370,6 +1367,54 @@ private struct TagTokensEditor: View {
         .background(Capsule().fill(ForelTheme.accent.opacity(0.18)))
         .overlay(Capsule().strokeBorder(ForelTheme.accent.opacity(0.35)))
         .foregroundStyle(ForelTheme.primaryText)
+    }
+}
+
+private struct ArchiveNameEditor: View {
+    @Binding var pattern: String
+
+    private let tokens = [
+        (value: "{name}", label: "Source name"),
+        (value: "{current_date}", label: "Current date"),
+        (value: "{timestamp}", label: "Timestamp"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GlassField(placeholder: "Archive name, e.g. {name}-{timestamp}.zip", text: $pattern)
+                .accessibilityLabel("Archive name")
+            HStack(spacing: 6) {
+                ForEach(tokens, id: \.value) { token in
+                    Button(token.label) { insert(token.value) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .help("Insert \(token.value)")
+                }
+            }
+            Text(preview)
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .textSelection(.enabled)
+            Text("Empty uses {name}.zip. Saved next to the source; .zip is added automatically.")
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var preview: String {
+        do {
+            return "Preview: \(try ActionExecutor.archiveFileName(pattern: pattern, sourceName: "file"))"
+        } catch {
+            return String(describing: error)
+        }
+    }
+
+    private func insert(_ token: String) {
+        var base = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        if base.lowercased().hasSuffix(".zip") { base = String(base.dropLast(4)) }
+        let separator = base.isEmpty || base.hasSuffix("-") || base.hasSuffix("_") ? "" : "-"
+        pattern = base + separator + token + ".zip"
     }
 }
 

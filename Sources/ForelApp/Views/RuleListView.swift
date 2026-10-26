@@ -660,7 +660,8 @@ private struct RuleDetails: View {
         case .uncompress:
             return ("uncompress ZIP", MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
         case .compress:
-            return ("create ZIP", nil)
+            let name = action.params[ActionParam.archiveName]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ("create ZIP", name.isEmpty ? "{name}.zip" : name)
         }
     }
 
