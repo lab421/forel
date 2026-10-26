@@ -499,29 +499,44 @@ struct GlassField: View {
     }
 }
 
-/// A read-only folder path field with a "Choose…" button opening the native
-/// macOS Finder directory picker. Used everywhere a folder is selected.
+/// A folder path field with a "Choose…" button opening the native macOS
+/// Finder directory picker, and an editable text field underneath so paths
+/// with date tokens (e.g. `/Volumes/Archive/{year}/{month}`) can be typed.
+/// Used everywhere a folder is selected.
 struct FolderField: View {
     let placeholder: String
     @Binding var path: String
+    /// Shown under the field only while the user is typing in it.
+    var hint: String? = nil
+    @FocusState private var isEditing: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
-                Text(path.isEmpty ? placeholder : path)
-                    .font(.system(size: 12))
-                    .foregroundStyle(path.isEmpty ? ForelTheme.secondaryText : ForelTheme.primaryText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
+                    TextField(placeholder, text: $path)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(ForelTheme.primaryText)
+                        .lineLimit(1)
+                        .focused($isEditing)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
 
-            Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+                Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+            }
+
+            if let hint, isEditing {
+                Text(hint)
+                    .font(.system(size: 10))
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .padding(.leading, 10)
+            }
         }
     }
 

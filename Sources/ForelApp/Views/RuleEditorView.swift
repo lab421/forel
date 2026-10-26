@@ -679,7 +679,9 @@ private struct RelativeDateValueEditor: View {
     }
 
     private var parts: (number: String, unit: String) {
-        let pieces = value.split(separator: " ", maxSplits: 1).map(String.init)
+        // omittingEmptySubsequences: false keeps "" as the number when the
+        // field is transiently empty mid-edit, so the unit survives keystrokes.
+        let pieces = value.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
         let number = pieces.first?.filter(\.isNumber)
         let unit = pieces.count > 1 ? pieces[1] : "days"
         return ((number?.isEmpty == false ? number! : "7"), units.contains(unit) ? unit : "days")
@@ -714,7 +716,7 @@ private struct SizeValueEditor: View {
     }
 
     private var parts: (number: String, unit: String) {
-        let pieces = value.split(separator: " ", maxSplits: 1).map(String.init)
+        let pieces = value.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
         let number = pieces.first?.filter { $0.isNumber || $0 == "." }
         let rawUnit = pieces.count > 1 ? pieces[1] : "MB"
         let unit = ["bytes", "KB", "MB", "GB"].contains(rawUnit) ? rawUnit : "MB"
@@ -886,7 +888,11 @@ private struct ActionRow: View {
     @ViewBuilder private var actionParams: some View {
         switch action.kind {
         case .moveToFolder, .copyToFolder:
-            FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
+            FolderField(
+                placeholder: "Destination folder",
+                path: paramBinding(ActionParam.destination),
+                hint: "Add {year}, {month}, or {day} for dated folders, e.g. …/Archive/{year}/{month}"
+            )
         case .rename:
             RenamePatternEditor(pattern: paramBinding(ActionParam.pattern), cleanFileName: action.params[ActionParam.cleanFileName]?.boolValue == true)
         case .addTag, .removeTag:

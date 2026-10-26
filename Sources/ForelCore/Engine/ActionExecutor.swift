@@ -192,7 +192,7 @@ public enum ActionExecutor {
     public static func execute(_ action: Action, path: String) throws -> Applied {
         switch action.kind {
         case .moveToFolder:
-            let destDir = try stringParam(action, ActionParam.destination, "MoveToFolder")
+            let destDir = try expandedDestination(stringParam(action, ActionParam.destination, "MoveToFolder"), fileAtPath: path)
             return try moveIntoDir(path: path, destDir: destDir, resolution: conflictResolution(action))
         case .copyToFolder:
             return try copyToFolder(action, path: path)
@@ -246,6 +246,22 @@ public enum ActionExecutor {
         }
     }
 
+    /// Resolves the date tokens a destination template may contain —
+    /// `{year}`, `{month}`, `{day}`, with month/day zero-padded — from the
+    /// file's creation date (the date a "sort my downloads by month" workflow
+    /// means; it survives moves). Unknown `{...}` sequences are left as-is.
+    private static func expandedDestination(_ template: String, fileAtPath: String) -> String {
+        guard template.contains("{") else { return template }
+        let attrs = try? FileManager.default.attributesOfItem(atPath: fileAtPath)
+        let date = (attrs?[.creationDate] as? Date) ?? (attrs?[.modificationDate] as? Date) ?? Date()
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        var result = template
+        if let year = parts.year { result = result.replacingOccurrences(of: "{year}", with: String(year)) }
+        if let month = parts.month { result = result.replacingOccurrences(of: "{month}", with: String(format: "%02d", month)) }
+        if let day = parts.day { result = result.replacingOccurrences(of: "{day}", with: String(format: "%02d", day)) }
+        return result
+    }
+
     /// Runs `body` as is. Only when it fails and the destination is on a disk
     /// or share that isn't mounted, the error says so by name instead of the
     /// file system's message, which can blame the startup disk.
@@ -265,7 +281,7 @@ public enum ActionExecutor {
     }
 
     private static func copyToFolder(_ action: Action, path: String) throws -> Applied {
-        let destDir = try stringParam(action, ActionParam.destination, "CopyToFolder")
+        let destDir = try expandedDestination(stringParam(action, ActionParam.destination, "CopyToFolder"), fileAtPath: path)
         return try explainingDisconnectedVolume(destDir) {
             try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
             let fileName = (path as NSString).lastPathComponent
@@ -927,7 +943,7 @@ public enum ActionExecutor {
 
         switch action.kind {
         case .moveToFolder:
-            let destDir = action.params[ActionParam.destination]?.stringValue ?? ""
+            let destDir = expandedDestination(action.params[ActionParam.destination]?.stringValue ?? "", fileAtPath: path)
 
             // A file already directly in its destination folder is a no-op,
             // never a rename-to-avoid-itself collision — and since nothing
@@ -979,7 +995,7 @@ public enum ActionExecutor {
                 warning: destinationWarning(destDir)
             )
         case .copyToFolder:
-            let destDir = action.params[ActionParam.destination]?.stringValue ?? ""
+            let destDir = expandedDestination(action.params[ActionParam.destination]?.stringValue ?? "", fileAtPath: path)
             let naiveTarget = (destDir as NSString).appendingPathComponent(fileName)
             let resolution = conflictResolution(action)
             let conflicts = FileManager.default.fileExists(atPath: naiveTarget)

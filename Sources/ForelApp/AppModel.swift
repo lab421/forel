@@ -587,6 +587,14 @@ final class AppModel: ObservableObject {
         } catch { showError(error); return false }
     }
 
+    func copyRules(_ ruleIDs: Set<String>, fromFolderID: String, toFolderID: String) throws {
+        _ = try db.withLock { db in
+            try db.copyRules(ruleIDs, fromFolderID: fromFolderID, toFolderID: toFolderID, isPro: isPro)
+        }
+        selectedFolderId = toFolderID
+        reloadRules()
+    }
+
     func deleteRule(_ rule: Rule) {
         db.withLock { db in try? db.deleteRule(rule.id) }
         clearRuleExpansionState(rule.id)
