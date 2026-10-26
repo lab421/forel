@@ -238,6 +238,47 @@ import Foundation
         #expect(try db.listHistory().count == 2)
     }
 
+    @Test(arguments: ["preview", "manual", "watcher-arrival", "watcher-rescan"])
+    func directorySymlinksDoNotProcessExternalContents(execution: String) throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let watched = dir.dir("Watched")
+        let outside = dir.dir("Outside")
+        let destination = dir.dir("Archive")
+        let original = dir.file("Outside/private.pdf", contents: "private")
+        let link = watched + "/Link"
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: outside)
+        let folder = WatchedFolder(path: watched)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sort pdf", recursionDepth: nil)
+        rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
+        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(destination)]), ruleId: rule.id)]
+        try db.insertRule(rule)
+        let rules = try db.executionRules(folderID: folder.id, isPro: false)
+
+        if execution == "preview" || execution == "manual" {
+            let entries = RuleEngine.walkEntries(root: watched, maxDepth: RuleEngine.maxRuleDepth(rules))
+            #expect(entries.map(\.path) == [link])
+            for entry in entries {
+                if execution == "preview" {
+                    #expect(RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: rules, isPro: false) == nil)
+                } else {
+                    let result = RuleEngine.run(path: entry.path, depth: entry.depth, rules: rules, batchId: "manual", root: watched, isPro: false)
+                    #expect(result.history.isEmpty)
+                }
+            }
+        } else {
+            let coordinator = WatcherCoordinator(db: db, settleInterval: 0.01)
+            coordinator.enqueue(event: execution == "watcher-arrival" ? .pathArrived(link) : .rescanSubtree(link))
+            coordinator.waitForPendingEvents()
+        }
+
+        #expect(try String(contentsOfFile: original, encoding: .utf8) == "private")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: destination).isEmpty)
+        #expect(try db.listHistory().isEmpty)
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link) == outside)
+    }
+
     @Test(.timeLimit(.minutes(1)))
     func rescanDoesNotReadSubfoldersBeyondWhatTheRulesNeed() throws {
         let db = try makeDB()

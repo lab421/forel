@@ -11,6 +11,7 @@ All notable changes to Forel are documented here. Format loosely follows
 - Move to folder and Copy to folder destinations now accept {year}, {month}, and {day} date tokens (e.g. ~/Archive/{year}/{month}), resolved from each file's creation date. The destination field can now also be typed into.
 
 ### Fixed
+- Symbolic links to folders no longer cause automatic rules to process files outside the watched folder.
 - Date Added conditions no longer crash when reading a file's timestamp.
 - Moving a folder into a watched folder now applies matching rules to the files inside it automatically, the same way Run Now does.
 - Editing the number in a relative date or size condition no longer resets its unit, which could silently turn "2 Months" into "2 Days".

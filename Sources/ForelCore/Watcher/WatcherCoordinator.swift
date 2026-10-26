@@ -229,14 +229,16 @@ public final class WatcherCoordinator: @unchecked Sendable {
         // settles must have its subtree walked, the way Run Now does. The
         // includesContents snapshot already waited for everything inside to
         // stop changing, so the entries can be evaluated right away.
-        if state.hasDeferredDescendants || (state.includesContents && isDirectory(path)) {
+        if state.hasDeferredDescendants || (state.includesContents && isRealDirectory(path)) {
             handleRescanSubtree(root: path, waitsForSettledFiles: false)
         }
     }
 
-    private func isDirectory(_ path: String) -> Bool {
-        var isDir: ObjCBool = false
-        return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
+    private func isRealDirectory(_ path: String) -> Bool {
+        // Inspect the item itself: following a directory symlink would let a
+        // subtree scan apply this watched folder's rules outside its tree.
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path) else { return false }
+        return (attributes[.type] as? FileAttributeType) == .typeDirectory
     }
 
     public func isProcessing(in root: String) -> Bool {
@@ -334,9 +336,8 @@ public final class WatcherCoordinator: @unchecked Sendable {
     }
 
     private func handleRescanSubtree(root: String, waitsForSettledFiles: Bool) {
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir) else { return }
-        guard isDir.boolValue else {
+        guard FileManager.default.fileExists(atPath: root) else { return }
+        guard isRealDirectory(root) else {
             handle(event: .pathArrived(root), waitsForSettledFiles: waitsForSettledFiles)
             return
         }
