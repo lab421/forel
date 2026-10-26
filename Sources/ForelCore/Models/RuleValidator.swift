@@ -51,6 +51,7 @@ public enum RuleValidator {
             case .compress:
                 do {
                     _ = try ActionExecutor.archiveFileName(pattern: action.params[ActionParam.archiveName]?.stringValue ?? "", sourceName: "file")
+                    _ = try ActionExecutor.archiveDestinationPath(action.params[ActionParam.destination]?.stringValue ?? "")
                 } catch {
                     return Issue(message: String(describing: error))
                 }

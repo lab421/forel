@@ -1028,6 +1028,8 @@ private struct ActionOptionsView: View {
                 conflictResolutionOptions
             case .rename:
                 renameOptions
+            case .compress:
+                compressionOptions
             default:
                 Text("No options for this action.")
                     .font(.system(size: 12))
@@ -1046,6 +1048,50 @@ private struct ActionOptionsView: View {
             .toggleStyle(.switch)
             .controlSize(.small)
         }
+    }
+
+    private var compressionOptions: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Destination")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(ForelTheme.secondaryText)
+            FolderField(
+                placeholder: "Next to the source (default)",
+                path: paramBinding(ActionParam.destination),
+                hint: "Supports {year}, {month}, and {day}."
+            )
+            if action.params[ActionParam.destination]?.stringValue?.isEmpty == false {
+                Button("Use source folder") { paramBinding(ActionParam.destination).wrappedValue = "" }
+                    .buttonStyle(.link)
+            }
+            Text("Leave empty to save next to the source. Existing ZIPs are kept; new archives are numbered.")
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Divider()
+            Toggle("Delete source after compression", isOn: deleteSourceBinding)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .font(.system(size: 12))
+            if ActionExecutor.deletesSourceAfterCompression(action) {
+                Label("After the ZIP is created successfully, the original file or folder and all its contents are permanently deleted. This cannot be undone. Following actions apply to the ZIP.", systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(ForelTheme.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var deleteSourceBinding: Binding<Bool> {
+        Binding(
+            get: { ActionExecutor.deletesSourceAfterCompression(action) },
+            set: { enabled in
+                var params: [String: JSONValue] = [:]
+                if case .object(let existing) = action.params { params = existing }
+                params[ActionParam.deleteSourceAfterCompression] = .bool(enabled)
+                action.params = .object(params)
+            }
+        )
     }
 
     private var conflictResolutionOptions: some View {
@@ -1395,7 +1441,7 @@ private struct ArchiveNameEditor: View {
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .textSelection(.enabled)
-            Text("Empty uses {name}.zip. Saved next to the source; .zip is added automatically.")
+            Text("Empty uses {name}.zip. The .zip extension is added automatically; choose a destination in Options.")
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)

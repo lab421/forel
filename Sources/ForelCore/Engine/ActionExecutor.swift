@@ -344,24 +344,66 @@ public enum ActionExecutor {
         return Applied(newPath: plan.target, undo: .none)
     }
 
-    /// Zips `path` beside it using the configured name (default `<name>.zip`),
-    /// numbering the name when that archive already exists. The source is left in place,
-    /// exactly like a copy — only the archive is the new artifact.
+    /// Creates a ZIP using the configured name and destination. Cleanup only
+    /// removes the source after the archive has been written successfully.
     private static func compress(_ action: Action, path: String) throws -> Applied {
-        let dir = (path as NSString).deletingLastPathComponent
+        let dir = try compressionDirectory(action, path: path)
         let fileName = try compressArchiveName(action, path: path)
-        let dest = try resolveDestination(
-            naiveDest: (dir as NSString).appendingPathComponent(fileName),
-            dir: dir,
-            fileName: fileName,
-            resolution: .rename
-        )
-        do {
-            try FileManager.default.zipItem(at: URL(fileURLWithPath: path), to: URL(fileURLWithPath: dest), compressionMethod: .deflate)
-        } catch {
-            throw ActionError("Could not create ZIP archive: \(error)")
+        return try explainingDisconnectedVolume(dir) {
+            try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            let dest = try resolveDestination(
+                naiveDest: (dir as NSString).appendingPathComponent(fileName),
+                dir: dir, fileName: fileName, resolution: .rename
+            )
+            do {
+                try FileManager.default.zipItem(at: URL(fileURLWithPath: path), to: URL(fileURLWithPath: dest), compressionMethod: .deflate)
+            } catch {
+                // A failed write can leave an incomplete archive. Keep the
+                // source and remove only the new archive we tried to create.
+                try? FileManager.default.removeItem(atPath: dest)
+                throw ActionError("Could not create ZIP archive. The source was kept. \(error)")
+            }
+            if deletesSourceAfterCompression(action) {
+                do {
+                    try FileManager.default.removeItem(atPath: path)
+                } catch {
+                    throw ActionError("ZIP created at \(dest), but the source could not be deleted: \(error)")
+                }
+                return Applied(newPath: dest, undo: .none)
+            }
+            return Applied(newPath: path, undo: .none, copiedPath: dest)
         }
-        return Applied(newPath: path, undo: .none, copiedPath: dest)
+    }
+
+    public static func deletesSourceAfterCompression(_ action: Action) -> Bool {
+        action.params[ActionParam.deleteSourceAfterCompression]?.boolValue == true
+    }
+
+    /// Empty means next to the source. Custom destinations must be absolute;
+    /// a relative path must never silently resolve against the app's directory.
+    static func archiveDestinationPath(_ value: String) throws -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let expanded = (trimmed as NSString).expandingTildeInPath
+        guard expanded.hasPrefix("/"), !expanded.contains("\0") else {
+            throw ActionError("Archive destination must be an absolute folder path or start with ~/.")
+        }
+        return (expanded as NSString).standardizingPath
+    }
+
+    private static func compressionDirectory(_ action: Action, path: String) throws -> String {
+        let configured = try archiveDestinationPath(action.params[ActionParam.destination]?.stringValue ?? "")
+        let directory = configured.map { expandedDestination($0, fileAtPath: path) }
+            ?? (path as NSString).deletingLastPathComponent
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue {
+            let source = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().pathComponents
+            let destination = URL(fileURLWithPath: directory).standardizedFileURL.resolvingSymlinksInPath().pathComponents
+            guard !destination.starts(with: source) else {
+                throw ActionError("Choose an archive destination outside the source folder. A ZIP inside it would include itself and could be deleted with the source.")
+            }
+        }
+        return directory
     }
 
     private static func compressArchiveName(_ action: Action, path: String) throws -> String {
@@ -1268,22 +1310,28 @@ public enum ActionExecutor {
                 isTerminal: false
             )
         case .compress:
-            let dir = (path as NSString).deletingLastPathComponent
+            let dir = try compressionDirectory(action, path: path)
             let fileName = try compressArchiveName(action, path: path)
             let naiveTarget = (dir as NSString).appendingPathComponent(fileName)
             let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
-            // Compress has no options, so an existing archive is always
-            // worked around by numbering the new one, never skipped.
+            // Existing archives are always preserved by numbering the new one.
             let target = try resolveDestination(naiveDest: naiveTarget, dir: dir, fileName: fileName, resolution: .rename)
+            let cleanup = deletesSourceAfterCompression(action)
+            var description = "Compress to \(target)"
+            if conflicts { description += " (renamed to avoid an existing archive)" }
+            if cleanup { description += "; permanently delete source after success" }
+            let warning = [destinationWarning(dir), cleanup ? "The original file or folder and all its contents will be permanently deleted after the ZIP is created. This cannot be undone. Following actions apply to the ZIP." : nil]
+                .compactMap { $0 }.joined(separator: " ")
             return ActionPlan(
                 kind: action.kind,
-                description: conflicts ? "Compress to \(target) (renamed to avoid an existing archive)" : "Compress to \(target)",
+                description: description,
                 sourcePath: path,
                 targetPath: target,
                 status: .wouldRun,
-                finalPath: path,
-                copiedPath: target,
-                isTerminal: false
+                finalPath: cleanup ? target : path,
+                copiedPath: cleanup ? nil : target,
+                isTerminal: false,
+                warning: warning.isEmpty ? nil : warning
             )
         }
     }

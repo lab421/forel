@@ -661,7 +661,11 @@ private struct RuleDetails: View {
             return ("uncompress ZIP", MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
         case .compress:
             let name = action.params[ActionParam.archiveName]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return ("create ZIP", name.isEmpty ? "{name}.zip" : name)
+            let destination = action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            var details = [name.isEmpty ? "{name}.zip" : name]
+            if !destination.isEmpty { details.append("to \(destination)") }
+            if ActionExecutor.deletesSourceAfterCompression(action) { details.append("permanently delete source after success") }
+            return ("create ZIP", details.joined(separator: " · "))
         }
     }
 

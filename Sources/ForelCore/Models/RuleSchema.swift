@@ -196,6 +196,7 @@ public enum ActionParam {
     public static let onConflict = "on_conflict"
     public static let pattern = "pattern"
     public static let archiveName = "archive_name"
+    public static let deleteSourceAfterCompression = "delete_source_after_compression"
     public static let tags = "tags"
     public static let color = "color"
     public static let script = "script"
@@ -278,9 +279,9 @@ public extension ActionKind {
     /// have none, instead of showing an empty "No options" popover.
     var hasOptions: Bool {
         switch self {
-        case .moveToFolder, .copyToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress, .compress:
             return true
-        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete, .compress:
+        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
             return false
         }
     }
@@ -307,7 +308,8 @@ public extension ActionKind {
             return [ActionParamSpec(key: ActionParam.libraryType, kind: .libraryType),
                     ActionParamSpec(key: ActionParam.targetPlaylist, kind: .playlist)]
         case .compress:
-            return [ActionParamSpec(key: ActionParam.archiveName, kind: .archiveName)]
+            return [ActionParamSpec(key: ActionParam.archiveName, kind: .archiveName),
+                    ActionParamSpec(key: ActionParam.destination, kind: .folderPath)]
         case .moveToTrash, .delete, .uncompress:
             return []
         }
