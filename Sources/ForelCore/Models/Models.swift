@@ -131,6 +131,7 @@ public enum ActionKind: String, Codable, Equatable, Sendable {
     case runShortcut = "run_shortcut"
     case openApplication = "open_application"
     case importToLibrary = "import_to_library"
+    case compress
     case uncompress
 
     public init(dbValue: String) {
