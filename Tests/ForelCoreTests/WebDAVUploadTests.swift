@@ -3,6 +3,19 @@ import Testing
 @testable import ForelCore
 
 @Suite struct WebDAVUploadTests {
+    @Test func connectionTestIsReadOnlyAndRejectsBadCredentialsAndRedirects() throws {
+        let remote = TempDir()
+        try FileManager.default.createDirectory(atPath: (remote.path as NSString).appendingPathComponent("incoming"), withIntermediateDirectories: true)
+        let (server, port) = try startServer(root: remote.path)
+        defer { server.terminate(); server.waitUntilExit() }
+        let config = try configuration(port: port, conflict: .replace)
+        try SystemUploadTransport().testConnection(configuration: config, password: "secret")
+        #expect(throws: ActionError.self) { try SystemUploadTransport().testConnection(configuration: config, password: "wrong-secret") }
+        #expect(throws: ActionError.self) { try SystemUploadTransport().testConnection(configuration: configuration(port: port, remote: "/missing", conflict: .replace), password: "secret") }
+        #expect(throws: ActionError.self) { try SystemUploadTransport().testConnection(configuration: configuration(port: port, remote: "/redirect", conflict: .replace), password: "secret") }
+        #expect(!FileManager.default.fileExists(atPath: (remote.path as NSString).appendingPathComponent("redirect-followed")))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: (remote.path as NSString).appendingPathComponent("incoming")).isEmpty)
+    }
     @Test func localUploadRejectsSymlinkSwapsAndSnapshotsBytes() throws {
         let dir = TempDir()
         let nested = dir.dir("nested")

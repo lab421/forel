@@ -573,6 +573,7 @@ private struct RuleCopyRequest: Identifiable {
 }
 
 private struct RuleDetails: View {
+    @EnvironmentObject private var model: AppModel
     let rule: Rule
 
     var body: some View {
@@ -724,7 +725,10 @@ private struct RuleDetails: View {
         case .runWorkflow:
             return ("run Automator workflow", action.params[ActionParam.workflowPath]?.stringValue)
         case .upload:
-            return ("upload", action.params["upload_host"]?.stringValue)
+            let serverID = action.params["upload_server_id"]?.stringValue
+            let serverName = model.uploadServers.first { $0.id == serverID }?.name ?? "Missing server"
+            let folder = action.params["upload_remote_path"]?.stringValue ?? "/"
+            return ("upload to \(serverName)", folder)
         case .runShortcut:
             let name = action.params[ActionParam.shortcutName]?.stringValue ?? ""
             return (name.isEmpty ? "run shortcut" : name, ActionExecutor.shortcutInputMode(action).label)

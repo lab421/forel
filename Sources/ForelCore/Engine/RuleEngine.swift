@@ -114,12 +114,12 @@ public enum RuleEngine {
     /// status) with `previewFile` by going through `ActionExecutor.plan`
     /// first, then acting on it — so Dry Run, Run Now, and the watcher can
     /// never see a different outcome for the same file and rules.
-    public static func run(path: String, depth: Int, rules: [Rule], batchId: String, root: String? = nil, isPro: Bool = true, platform: any ActionPlatform = MacActionPlatform(), lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata(), matchState: (any HazelMatchStateStore)? = nil, counterStore: (any FolderCounterStore)? = nil, now: Date = Date(), forceRunPreviouslyMatched: Bool = false, beforeAction: (() throws -> Void)? = nil) -> (matched: [String], history: [HistoryEntry]) {
-        let result = runWithTraversal(path: path, depth: depth, rules: rules, batchId: batchId, root: root, isPro: isPro, platform: platform, lastOpened: lastOpened, matchState: matchState, counterStore: counterStore, now: now, forceRunPreviouslyMatched: forceRunPreviouslyMatched, beforeAction: beforeAction)
+    public static func run(path: String, depth: Int, rules: [Rule], batchId: String, root: String? = nil, isPro: Bool = true, platform: any ActionPlatform = MacActionPlatform(), lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata(), matchState: (any HazelMatchStateStore)? = nil, counterStore: (any FolderCounterStore)? = nil, uploadServers: [UploadServer] = [], now: Date = Date(), forceRunPreviouslyMatched: Bool = false, beforeAction: (() throws -> Void)? = nil) -> (matched: [String], history: [HistoryEntry]) {
+        let result = runWithTraversal(path: path, depth: depth, rules: rules, batchId: batchId, root: root, isPro: isPro, platform: platform, lastOpened: lastOpened, matchState: matchState, counterStore: counterStore, uploadServers: uploadServers, now: now, forceRunPreviouslyMatched: forceRunPreviouslyMatched, beforeAction: beforeAction)
         return (result.matched, result.history)
     }
 
-    public static func runWithTraversal(path: String, depth: Int, rules: [Rule], batchId: String, root: String? = nil, isPro: Bool = true, platform: any ActionPlatform = MacActionPlatform(), lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata(), matchState: (any HazelMatchStateStore)? = nil, counterStore: (any FolderCounterStore)? = nil, now: Date = Date(), forceRunPreviouslyMatched: Bool = false, peerRecheckOnly: Bool = false, beforeAction: (() throws -> Void)? = nil, onRecurse: ((String) -> Void)? = nil) -> (matched: [String], history: [HistoryEntry], recurses: Bool) {
+    public static func runWithTraversal(path: String, depth: Int, rules: [Rule], batchId: String, root: String? = nil, isPro: Bool = true, platform: any ActionPlatform = MacActionPlatform(), lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata(), matchState: (any HazelMatchStateStore)? = nil, counterStore: (any FolderCounterStore)? = nil, uploadServers: [UploadServer] = [], now: Date = Date(), forceRunPreviouslyMatched: Bool = false, peerRecheckOnly: Bool = false, beforeAction: (() throws -> Void)? = nil, onRecurse: ((String) -> Void)? = nil) -> (matched: [String], history: [HistoryEntry], recurses: Bool) {
         guard !SystemFileFilter.isExcluded((path as NSString).lastPathComponent), !FileReadiness.isMarkedBusy(path) else {
             return ([], [], false)
         }
@@ -210,7 +210,7 @@ public enum RuleEngine {
                     if FileReadiness.containsBusyItem(path) { return ([], [], false) }
                 }
 
-                let result = runActions(rule, path: currentPath, batchId: batchId, platform: platform, watchedRoot: root, counterStore: counterStore, initialAttributes: conditionAttributes, beforeAction: beforeAction, onRecurse: onRecurse)
+                let result = runActions(rule, path: currentPath, batchId: batchId, platform: platform, watchedRoot: root, counterStore: counterStore, uploadServers: uploadServers, initialAttributes: conditionAttributes, beforeAction: beforeAction, onRecurse: onRecurse)
                 history.append(contentsOf: result.history)
                 recurses = recurses || result.recurses
                 matched.append(rule.name)
@@ -262,7 +262,7 @@ public enum RuleEngine {
         return (matched, history, recurses)
     }
 
-    public static func previewFile(path: String, depth: Int, rules: [Rule], root: String? = nil, isPro: Bool = true, lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata(), matchState: (any HazelMatchStateStore)? = nil, counterStore: (any FolderCounterStore)? = nil, now: Date = Date(), onRecurse: ((String) -> Void)? = nil) -> FilePreview? {
+    public static func previewFile(path: String, depth: Int, rules: [Rule], root: String? = nil, isPro: Bool = true, lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata(), matchState: (any HazelMatchStateStore)? = nil, counterStore: (any FolderCounterStore)? = nil, uploadServers: [UploadServer] = [], now: Date = Date(), onRecurse: ((String) -> Void)? = nil) -> FilePreview? {
         guard !SystemFileFilter.isExcluded((path as NSString).lastPathComponent), !FileReadiness.isMarkedBusy(path) else {
             return nil
         }
@@ -318,7 +318,7 @@ public enum RuleEngine {
                     if FileReadiness.containsBusyItem(path) { return nil }
                 }
 
-                let result = previewActions(rule, path: currentPath, watchedRoot: root, counterStore: counterStore, initialAttributes: conditionAttributes, onRecurse: onRecurse)
+                let result = previewActions(rule, path: currentPath, watchedRoot: root, counterStore: counterStore, uploadServers: uploadServers, initialAttributes: conditionAttributes, onRecurse: onRecurse)
                 matchedRules.append(
                     RulePreview(
                         ruleId: rule.id,
@@ -679,7 +679,7 @@ public enum RuleEngine {
     /// the exact same way `previewActions` would (via `ActionExecutor.plan`)
     /// before acting on it — the single place preview and execution can
     /// never disagree.
-    private static func runActions(_ rule: Rule, path: String, batchId: String, platform: any ActionPlatform, watchedRoot: String?, counterStore: (any FolderCounterStore)?, initialAttributes: [String: JSONValue], beforeAction: (() throws -> Void)?, onRecurse: ((String) -> Void)?) -> (history: [HistoryEntry], copiedPaths: [String], finalPath: String, isTerminal: Bool, continues: Bool, recurses: Bool) {
+    private static func runActions(_ rule: Rule, path: String, batchId: String, platform: any ActionPlatform, watchedRoot: String?, counterStore: (any FolderCounterStore)?, uploadServers: [UploadServer], initialAttributes: [String: JSONValue], beforeAction: (() throws -> Void)?, onRecurse: ((String) -> Void)?) -> (history: [HistoryEntry], copiedPaths: [String], finalPath: String, isTerminal: Bool, continues: Bool, recurses: Bool) {
         let sorted = rule.actions.sorted { $0.position < $1.position }
 
         var history: [HistoryEntry] = []
@@ -738,7 +738,7 @@ public enum RuleEngine {
                         reserved = try counterStore.reserveLowest(folderId: rule.folderId) { value in
                             var candidateContext = hazelContext
                             candidateContext?.counterValue = value
-                            guard let target = try ActionExecutor.plan(action, path: current, contextPath: path, hazelContext: candidateContext, watchedRoot: watchedRoot).targetPath else {
+                            guard let target = try ActionExecutor.plan(action, path: current, contextPath: path, hazelContext: candidateContext, watchedRoot: watchedRoot, uploadServers: uploadServers).targetPath else {
                                 throw ActionError("Cannot determine the counter destination")
                             }
                             return URL(fileURLWithPath: target).standardizedFileURL.path
@@ -747,7 +747,7 @@ public enum RuleEngine {
                     reservation = reserved
                     hazelContext?.counterValue = reserved.value
                 }
-                let actionPlan = try ActionExecutor.plan(action, path: current, contextPath: path, hazelContext: hazelContext, watchedRoot: watchedRoot)
+                let actionPlan = try ActionExecutor.plan(action, path: current, contextPath: path, hazelContext: hazelContext, watchedRoot: watchedRoot, uploadServers: uploadServers)
 
                 switch actionPlan.status {
                 case .wouldSkip:
@@ -809,7 +809,7 @@ public enum RuleEngine {
                     if haltOnFailure || terminalFileAction(action.kind) { stoppedOnTerminal = true; break actionsLoop }
                 case .wouldRun:
                     try beforeAction?()
-                    let applied = try ActionExecutor.execute(action, path: current, contextPath: path, hazelContext: hazelContext, platform: platform, watchedRoot: watchedRoot)
+                    let applied = try ActionExecutor.execute(action, path: current, contextPath: path, hazelContext: hazelContext, platform: platform, watchedRoot: watchedRoot, uploadServers: uploadServers)
                     if let reservation {
                         try counterStore?.commit(reservation)
                         counterCommitted = true
@@ -885,7 +885,7 @@ public enum RuleEngine {
         (action.params[HazelPattern.tokensKey]?.arrayValue ?? []).contains { $0["type"]?.stringValue == "counter" && $0["allocation"]?.stringValue == "lowest" }
     }
 
-    private static func previewActions(_ rule: Rule, path: String, watchedRoot: String? = nil, counterStore: (any FolderCounterStore)? = nil, initialAttributes: [String: JSONValue] = [:], onRecurse: ((String) -> Void)? = nil) -> (actions: [ActionPreview], copiedPaths: [String], finalPath: String, isTerminal: Bool, continues: Bool) {
+    private static func previewActions(_ rule: Rule, path: String, watchedRoot: String? = nil, counterStore: (any FolderCounterStore)? = nil, uploadServers: [UploadServer] = [], initialAttributes: [String: JSONValue] = [:], onRecurse: ((String) -> Void)? = nil) -> (actions: [ActionPreview], copiedPaths: [String], finalPath: String, isTerminal: Bool, continues: Bool) {
         let sorted = rule.actions.sorted { $0.position < $1.position }
 
         var actions: [ActionPreview] = []
@@ -932,7 +932,7 @@ public enum RuleEngine {
                         let reservation = try previewStore.reserveLowest(folderId: rule.folderId) { value in
                             var candidateContext = hazelContext
                             candidateContext?.counterValue = value
-                            guard let target = try ActionExecutor.plan(action, path: current, contextPath: path, hazelContext: candidateContext, watchedRoot: watchedRoot).targetPath else {
+                            guard let target = try ActionExecutor.plan(action, path: current, contextPath: path, hazelContext: candidateContext, watchedRoot: watchedRoot, uploadServers: uploadServers).targetPath else {
                                 throw ActionError("Cannot determine the counter destination")
                             }
                             return URL(fileURLWithPath: target).standardizedFileURL.path
@@ -947,7 +947,7 @@ public enum RuleEngine {
                         hazelContext?.counterValue = try counterStore.nextValue(folderId: rule.folderId)
                     }
                 }
-                let plan = try ActionExecutor.plan(action, path: current, contextPath: path, hazelContext: hazelContext, watchedRoot: watchedRoot)
+                let plan = try ActionExecutor.plan(action, path: current, contextPath: path, hazelContext: hazelContext, watchedRoot: watchedRoot, uploadServers: uploadServers)
                 actions.append(
                     ActionPreview(
                         kind: plan.kind,

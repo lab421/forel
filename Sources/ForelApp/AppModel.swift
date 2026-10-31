@@ -44,6 +44,7 @@ final class AppModel: ObservableObject {
     @Published var folders: [WatchedFolder] = []
     @Published var selectedFolderId: String?
     @Published var rules: [Rule] = []
+    @Published private(set) var uploadServers: [UploadServer] = []
     @Published private(set) var ruleRunStats: [RuleRunStats] = []
     @Published var history: [HistoryEntry] = []
     @Published var historyTotalCount: Int = 0
@@ -182,6 +183,7 @@ final class AppModel: ObservableObject {
 
         coordinator.setProAccess(isPro)
         reloadFolders()
+        reloadUploadServers()
         let hazelPromptSeen = db.withLock { db in (try? db.getSetting("hazel_import_prompt_seen")) == "1" }
         showHazelImportAssistant = !hazelPromptSeen && folders.isEmpty && hazelAppURL != nil
         startHistoryCleanupTimer()
@@ -399,6 +401,10 @@ final class AppModel: ObservableObject {
         reloadRuleRunStats()
     }
 
+    func reloadUploadServers() {
+        uploadServers = db.withLock { db in (try? db.loadUploadServers()) ?? [] }
+    }
+
     func reloadHistory() {
         loadHistoryPage(reset: true)
         reloadRuleRunStats()
@@ -605,6 +611,10 @@ final class AppModel: ObservableObject {
             proUpgrade = .folders
             return false
         }
+        if rule.enabled, hasMissingUploadServer(rule) {
+            showError("Choose an available saved server for each upload action before enabling this rule.")
+            return false
+        }
         do {
             try db.withLock { db in
                 let existing = try db.listRules(folderId: rule.folderId)
@@ -615,6 +625,7 @@ final class AppModel: ObservableObject {
                 }
             }
             reloadRules()
+            reloadUploadServers()
             return true
         } catch { showError(error); return false }
     }
@@ -625,6 +636,7 @@ final class AppModel: ObservableObject {
         }
         selectedFolderId = toFolderID
         reloadRules()
+        reloadUploadServers()
     }
 
     func deleteRule(_ rule: Rule) {
@@ -652,6 +664,7 @@ final class AppModel: ObservableObject {
             let result = try RuleTransfer.importRules(from: RuleTransfer.readFile(at: url), folderId: folderId)
             try db.withLock { try $0.importRules(result.rules, toFolderID: folderId, isPro: isPro) }
             reloadRules()
+            reloadUploadServers()
             if result.issues.isEmpty {
                 showRunNowMessage(RunNowMessage(text: "Imported \(result.rules.count) rule\(result.rules.count == 1 ? "" : "s")", hasFailures: false, folderId: folderId))
             } else {
@@ -687,6 +700,10 @@ final class AppModel: ObservableObject {
     }
 
     func toggleRule(_ rule: Rule, enabled: Bool) {
+        if enabled, hasMissingUploadServer(rule) {
+            showError("Choose an available saved server for each upload action before enabling this rule.")
+            return
+        }
         if enabled, let error = rule.importError {
             alertTitle = "Cannot enable incomplete import"
             errorMessage = "Recreate this rule to replace its unsupported parts.\n\n\(error)"
@@ -705,6 +722,14 @@ final class AppModel: ObservableObject {
         do { try db.withLock { db in try db.toggleRule(rule.id, enabled: enabled) } }
         catch { showError(error) }
         reloadRules()
+    }
+
+    private func hasMissingUploadServer(_ rule: Rule) -> Bool {
+        rule.actions.contains { action in
+            guard action.kind == .upload else { return false }
+            guard let id = action.params["upload_server_id"]?.stringValue, !id.isEmpty else { return true }
+            return !uploadServers.contains { $0.id == id }
+        }
     }
 
     func reorderRules(_ ruleIds: [String]) {
@@ -728,6 +753,7 @@ final class AppModel: ObservableObject {
         let usage = monthlyUsage
         let matchState = DatabaseHazelMatchStateStore(db: db)
         let counterStore = DatabaseFolderCounterStore(db: db)
+        let uploadServers = self.uploadServers
         Task {
             defer { isRunningNow = false }
             let result = await Task.detached(priority: .userInitiated) {
@@ -739,7 +765,7 @@ final class AppModel: ObservableObject {
                     guard !limitReached, errorMessage == nil else { return false }
                     do {
                         let result = try usage.withFreePlan(isPro: isPro) { beforeAction in
-                            let result = RuleEngine.runWithTraversal(path: entry.path, depth: entry.depth, rules: activeRules, batchId: batchId, root: folder.path, isPro: isPro, matchState: matchState, counterStore: counterStore, forceRunPreviouslyMatched: true, beforeAction: beforeAction, onRecurse: recurse)
+                            let result = RuleEngine.runWithTraversal(path: entry.path, depth: entry.depth, rules: activeRules, batchId: batchId, root: folder.path, isPro: isPro, matchState: matchState, counterStore: counterStore, uploadServers: uploadServers, forceRunPreviouslyMatched: true, beforeAction: beforeAction, onRecurse: recurse)
                             return (result, result.history)
                         }
                         allHistory.append(contentsOf: result.history)
@@ -825,6 +851,7 @@ final class AppModel: ObservableObject {
         let matchLimit = previewMatchLimit
         let matchState = DatabaseHazelMatchStateStore(db: db)
         let counterStore = PreviewFolderCounterStore(underlying: DatabaseFolderCounterStore(db: db))
+        let uploadServers = self.uploadServers
         isPreviewing = true
         let isPro = self.isPro
         Task {
@@ -836,7 +863,7 @@ final class AppModel: ObservableObject {
                 RuleEngine.forEachRuleEntryExecuting(root: folder.path, rules: folderRules, isPro: isPro) { entry, activeRules, recurse in
                     filesScanned += 1
                     var didRecurse = false
-                    let match = RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: activeRules, root: folder.path, isPro: isPro, matchState: matchState, counterStore: counterStore, onRecurse: { target in didRecurse = true; recurse(target) })
+                    let match = RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: activeRules, root: folder.path, isPro: isPro, matchState: matchState, counterStore: counterStore, uploadServers: uploadServers, onRecurse: { target in didRecurse = true; recurse(target) })
                     guard let match else { return didRecurse }
                     if matches.count < matchLimit {
                         matches.append(match)

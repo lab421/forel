@@ -180,6 +180,7 @@ public final class Database: @unchecked Sendable {
             """
         )
         try runMigrations()
+        try migrateInlineUploadActions()
     }
 
     // MARK: - App settings
@@ -198,6 +199,76 @@ public final class Database: @unchecked Sendable {
         stmt.bind(1, key)
         stmt.bind(2, value)
         try stmt.runToCompletion()
+    }
+
+    public func loadUploadServers() throws -> [UploadServer] {
+        guard let value = try getSetting("upload_servers"), let data = value.data(using: .utf8) else { return [] }
+        let servers = try JSONDecoder().decode([UploadServer].self, from: data)
+        guard Set(servers.map(\.id)).count == servers.count else { throw SQLiteError("Saved upload server identifiers are duplicated") }
+        return servers
+    }
+
+    public func saveUploadServer(_ server: UploadServer) throws {
+        guard !server.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !server.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !server.credentialID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ActionError("Enter a server name and valid server and credential identifiers")
+        }
+        _ = try server.configuration()
+        try saveUploadServerUnchecked(server)
+    }
+
+    private func saveUploadServerUnchecked(_ server: UploadServer) throws {
+        var servers = try loadUploadServers()
+        if let index = servers.firstIndex(where: { $0.id == server.id }) { servers[index] = server }
+        else { servers.append(server) }
+        try setSetting("upload_servers", String(decoding: JSONEncoder().encode(servers), as: UTF8.self))
+    }
+
+    public func deleteUploadServer(id: String) throws {
+        let servers = try loadUploadServers().filter { $0.id != id }
+        try setSetting("upload_servers", String(decoding: JSONEncoder().encode(servers), as: UTF8.self))
+    }
+
+    private func catalogUploadAction(_ action: Action) throws -> Action {
+        guard action.kind == .upload, case .object(var params) = action.params else { return action }
+        if params["upload_server_id"] == nil,
+           let type = params["upload_protocol"]?.stringValue.flatMap(UploadProtocol.init(rawValue:)),
+           let host = params["upload_host"]?.stringValue, !host.isEmpty {
+            let portText = params["upload_port"]?.stringValue ?? ""
+            let server = UploadServer(name: host, protocolType: type, host: host,
+                                      port: portText.isEmpty ? nil : (Int(portText) ?? 0),
+                                      username: params["upload_username"]?.stringValue ?? "",
+                                      identityPath: params["upload_identity_path"]?.stringValue,
+                                      credentialID: params["upload_credential_id"]?.stringValue ?? action.id)
+            // Preserve invalid legacy settings for repair rather than preventing startup
+            // or silently changing their destination.
+            try saveUploadServerUnchecked(server)
+            params["upload_server_id"] = .string(server.id)
+        }
+        let allowed = Set(["upload_server_id", "upload_remote_path", ActionParam.onConflict, ActionParam.folderStructure])
+        params = params.filter { allowed.contains($0.key) }
+        var result = action
+        result.params = .object(params)
+        return result
+    }
+
+    private func migrateInlineUploadActions() throws {
+        try transaction {
+            let stmt = try statement("SELECT id, rule_id, params, position FROM actions WHERE kind = 'upload'")
+            var actions: [Action] = []
+            while try stmt.step() {
+                actions.append(Action(id: stmt.columnText(0), ruleId: stmt.columnText(1), kind: .upload, params: JSONValue.parse(stmt.columnText(2)), position: stmt.columnInt64(3)))
+            }
+            for action in actions {
+                let migrated = try catalogUploadAction(action)
+                if migrated.params != action.params {
+                    let update = try statement("UPDATE actions SET params = ?1 WHERE id = ?2")
+                    update.bind(1, migrated.params.jsonString); update.bind(2, action.id)
+                    try update.runToCompletion()
+                }
+            }
+        }
     }
 
     // MARK: - Custom tags
@@ -708,6 +779,7 @@ public final class Database: @unchecked Sendable {
     }
 
     private func insertAction(_ action: Action) throws {
+        let action = try catalogUploadAction(action)
         let stmt = try statement("INSERT INTO actions (id, rule_id, kind, params, position) VALUES (?1,?2,?3,?4,?5)")
         stmt.bind(1, action.id)
         stmt.bind(2, action.ruleId)

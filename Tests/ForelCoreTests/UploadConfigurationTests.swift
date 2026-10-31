@@ -3,6 +3,73 @@ import Testing
 @testable import ForelCore
 
 @Suite struct UploadConfigurationTests {
+    @Test func serverCatalogAndInlineMigrationKeepRulesReferential() throws {
+        let db = try Database(path: ":memory:")
+        let folder = WatchedFolder(path: "/tmp/upload-catalog-test")
+        try db.insertFolder(folder)
+        let action = makeAction(.upload, .object(["upload_protocol": .string("sftp"), "upload_host": .string("example.com"), "upload_username": .string("alice"), "upload_credential_id": .string("legacy-key"), "upload_remote_path": .string("/incoming")]))
+        var rule = makeRule(folderId: folder.id, name: "Upload", actions: [action])
+        rule.actions[0].ruleId = rule.id
+        try db.insertRule(rule)
+        let server = try #require(db.loadUploadServers().first)
+        #expect(server.credentialID == "legacy-key")
+        let saved = try #require(db.listRules(folderId: folder.id).first)
+        let savedAction = try #require(saved.actions.first)
+        #expect(savedAction.params["upload_server_id"]?.stringValue == server.id)
+        #expect(savedAction.params["upload_host"] == nil)
+        #expect(try UploadConfiguration(action: savedAction, serverLookup: { _ in server }).host == "example.com")
+        try db.deleteUploadServer(id: server.id)
+        #expect(try db.listRules(folderId: folder.id).count == 1)
+        #expect(throws: ActionError.self) { try UploadConfiguration(action: savedAction, serverLookup: { _ in nil }) }
+    }
+
+    @Test func nativeTransferNeverCarriesOrRebindsServerDetails() throws {
+        let action = makeAction(.upload, .object(["upload_server_id": .string("server-id"), "upload_host": .string("private.example"), "upload_credential_id": .string("credential-id"), "upload_url": .string("ftp://alice:secret@example.com"), "upload_remote_path": .string("/incoming")]))
+        let data = try RuleTransfer.exportForel([makeRule(name: "Upload", actions: [action])])
+        let json = String(decoding: data, as: UTF8.self)
+        for sensitive in ["server-id", "private.example", "credential-id", "secret", "upload_url"] { #expect(!json.contains(sensitive)) }
+        let imported = try RuleTransfer.importRules(from: data, folderId: "destination")
+        #expect(imported.rules.first?.enabled == false)
+        #expect(imported.rules.first?.actions.first?.params["upload_server_id"] == nil)
+        #expect(imported.rules.first?.actions.first?.params["upload_remote_path"]?.stringValue == "/incoming")
+    }
+
+    @Test func legacyUploadURLIsRemovedWithoutBindingDestination() throws {
+        let db = try Database(path: ":memory:")
+        let folder = WatchedFolder(path: "/tmp/legacy-url-test")
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "Legacy", actions: [makeAction(.upload, .object(["upload_url": .string("ftp://user:secret@example.com/private")]))])
+        rule.actions[0].ruleId = rule.id
+        try db.insertRule(rule)
+        let saved = try #require(db.listRules(folderId: folder.id).first?.actions.first)
+        #expect(saved.params["upload_url"] == nil)
+        #expect(saved.params["upload_server_id"] == nil)
+        #expect(try db.loadUploadServers().isEmpty)
+        #expect(throws: ActionError.self) { try UploadConfiguration(action: saved, serverLookup: { _ in nil }) }
+    }
+
+    @Test func openingExistingDatabaseMigratesInlineUpload() throws {
+        let dir = TempDir()
+        let path = (dir.path as NSString).appendingPathComponent("rules.db")
+        let folder = WatchedFolder(path: dir.path)
+        let action = makeAction(.upload, .object([:]))
+        var rule = makeRule(folderId: folder.id, name: "Old upload", actions: [action])
+        rule.actions[0].ruleId = rule.id
+        do {
+            let db = try Database(path: path)
+            try db.insertFolder(folder); try db.insertRule(rule)
+            let update = try db.statement("UPDATE actions SET params=?1 WHERE id=?2")
+            update.bind(1, JSONValue.object(["upload_protocol": .string("ftp"), "upload_host": .string("legacy.example"), "upload_username": .string("alice"), "upload_remote_path": .string("/old")]).jsonString)
+            update.bind(2, action.id)
+            try update.runToCompletion()
+        }
+        let reopened = try Database(path: path)
+        let server = try #require(reopened.loadUploadServers().first)
+        let saved = try #require(reopened.listRules(folderId: folder.id).first?.actions.first)
+        #expect(saved.params["upload_server_id"]?.stringValue == server.id)
+        #expect(saved.params["upload_host"] == nil)
+        #expect(server.credentialID == action.id)
+    }
     private final class Platform: ActionPlatform, @unchecked Sendable {
         var uploads: [UploadConfiguration] = []
         func upload(path: String, configuration: UploadConfiguration) throws { uploads.append(configuration) }
@@ -11,6 +78,37 @@ import Testing
         func notify(text: String, sound: Bool) throws {}
         func pause(seconds: TimeInterval) throws {}
         func trash(path: String) throws -> String { throw ActionError("Unexpected trash") }
+    }
+
+    @Test func savedServerResolvesAndMissingServerFailsAcrossExecutionPaths() throws {
+        let dir = TempDir()
+        let folder = WatchedFolder(path: dir.path)
+        let db = try Database(path: ":memory:")
+        try db.insertFolder(folder)
+        let server = UploadServer(name: "Example", protocolType: .webdavs, host: "example.com", username: "user")
+        try db.saveUploadServer(server)
+        var rule = makeRule(folderId: folder.id, name: "Upload", actions: [makeAction(.upload, .object(["upload_server_id": .string(server.id), "upload_remote_path": .string("/incoming")]))])
+        rule.actions[0].ruleId = rule.id
+        try db.insertRule(rule)
+        let platform = Platform()
+        func file(_ name: String) throws -> String {
+            let path = (dir.path as NSString).appendingPathComponent(name)
+            try "x".write(toFile: path, atomically: true, encoding: .utf8)
+            return path
+        }
+        let preview = try file("preview.txt")
+        #expect(RuleEngine.previewFile(path: preview, depth: 0, rules: [rule], uploadServers: [server])?.rules.first?.actions.first?.status == .wouldRun)
+        let manual = try file("manual.txt")
+        #expect(RuleEngine.run(path: manual, depth: 0, rules: [rule], batchId: "manual", platform: platform, uploadServers: [server]).history.first?.status == .applied)
+        WatcherCoordinator(db: db, actionPlatform: platform).handle(path: try file("watched.txt"))
+        #expect(try db.listHistory().first?.status == .applied)
+        #expect(platform.uploads.count == 2)
+        try db.deleteUploadServer(id: server.id)
+        #expect(RuleEngine.previewFile(path: preview, depth: 0, rules: [rule], uploadServers: [])?.rules.first?.actions.first?.status == .blocked)
+        #expect(RuleEngine.run(path: manual, depth: 0, rules: [rule], batchId: "missing", platform: platform, uploadServers: []).history.first?.status == .failed)
+        WatcherCoordinator(db: db, actionPlatform: platform).handle(path: try file("missing-watched.txt"))
+        #expect(try db.listHistory().contains { $0.status == .failed && ($0.message?.contains("server") == true) })
+        #expect(platform.uploads.count == 2)
     }
 
     @Test func uploadFolderStructureUsesSourceHierarchyInPreviewManualAndWatcher() throws {

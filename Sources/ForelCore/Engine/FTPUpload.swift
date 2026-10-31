@@ -6,6 +6,41 @@ import Darwin
 /// FTP(S) uploads through macOS curl. Credentials are supplied over a pipe,
 /// never in the URL, command-line arguments, or a persistent configuration.
 enum FTPUpload {
+    static func testConnection(configuration: UploadConfiguration, password: String?, testCAPath: String? = nil) throws {
+        let credential = try curlCredential(configuration.username, password: password)
+        var allowed = CharacterSet.urlPathAllowed; allowed.remove(charactersIn: "/%?#")
+        let parts = try configuration.effectiveRemotePath.split(separator: "/").map { part -> String in
+            guard part != ".", part != "..", let encoded = String(part).addingPercentEncoding(withAllowedCharacters: allowed) else { throw ActionError("Invalid FTP path") }
+            return encoded
+        }.joined(separator: "/")
+        var url = URLComponents()
+        url.scheme = configuration.protocolType == .ftpsImplicit ? "ftps" : "ftp"
+        url.host = configuration.host; url.port = configuration.port
+        url.percentEncodedPath = "//" + parts + (parts.isEmpty ? "" : "/")
+        guard let address = url.url else { throw ActionError("Invalid FTP server address") }
+        let task = Process(); task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        var options = ["-q", "--silent", "--fail", "--noproxy", "*", "--connect-timeout", "15", "--max-time", "20", "--config", "-"]
+        if configuration.protocolType == .ftpsExplicit { options.append("--ssl-reqd") }
+        if let testCAPath { options += ["--cacert", testCAPath] }
+        task.arguments = options + [address.absoluteString]
+        let input = Pipe(); task.standardInput = input
+        task.standardOutput = FileHandle.nullDevice; task.standardError = FileHandle.nullDevice
+        do { try task.run() } catch { throw ActionError("Cannot start FTP connection test") }
+        do { try input.fileHandleForWriting.write(contentsOf: credential); try input.fileHandleForWriting.close() }
+        catch { if task.isRunning { task.terminate() }; task.waitUntilExit(); throw ActionError("Cannot provide FTP credentials") }
+        let deadline = Date().addingTimeInterval(20)
+        while task.isRunning {
+            if Task<Never, Never>.isCancelled || Date() >= deadline {
+                task.terminate(); Thread.sleep(forTimeInterval: 0.1)
+                if task.isRunning { kill(task.processIdentifier, SIGKILL) }
+                task.waitUntilExit()
+                throw ActionError(Task<Never, Never>.isCancelled ? "Connection test was cancelled" : "Connection test timed out")
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        task.waitUntilExit()
+        guard task.terminationReason == .exit && task.terminationStatus == 0 else { throw ActionError("FTP connection test failed; check the server, credentials, and folder") }
+    }
     static func run(path: String, configuration: UploadConfiguration, password: String?, testCAPath: String? = nil) throws {
         guard configuration.conflict == .replace else {
             throw ActionError("This FTP server cannot guarantee a safe no-overwrite upload; choose Replace or use SFTP/WebDAV")

@@ -3,6 +3,15 @@ import Testing
 @testable import ForelCore
 
 @Suite struct SFTPUploadTests {
+    @Test func connectionTestChecksDirectoryWithoutWriting() throws {
+        let root = TempDir(), local = TempDir()
+        try FileManager.default.createDirectory(atPath: (root.path as NSString).appendingPathComponent("incoming"), withIntermediateDirectories: true)
+        let server = try makeServer(in: local)
+        let env = ["FOREL_SFTP_TEST_ROOT": root.path]
+        try SFTPUpload.testConnection(configuration: configuration(.replace), password: "private secret", sshExecutable: URL(fileURLWithPath: server), testEnvironment: env)
+        #expect(throws: ActionError.self) { try SFTPUpload.testConnection(configuration: configuration(.replace), password: "wrong", sshExecutable: URL(fileURLWithPath: server), testEnvironment: env) }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: (root.path as NSString).appendingPathComponent("incoming")).isEmpty)
+    }
     private func configuration(_ conflict: MoveConflictResolution) throws -> UploadConfiguration {
         try UploadConfiguration(action: makeAction(.upload, .object([
             "upload_protocol": .string("sftp"), "upload_host": .string("localhost"),
@@ -83,9 +92,11 @@ import Testing
         ]))
         let config = try UploadConfiguration(action: action)
         let trusted = (root as NSString).appendingPathComponent("known_hosts")
+        try SFTPUpload.testConnection(configuration: config, password: nil, knownHostsPath: trusted)
         try SFTPUpload.run(path: file, configuration: config, password: nil, knownHostsPath: trusted)
         #expect(try String(contentsOfFile: (remote as NSString).appendingPathComponent("real input.txt"), encoding: .utf8) == "sftp fixture")
         let untrusted = dir.file("empty-known-hosts")
+        #expect(throws: ActionError.self) { try SFTPUpload.testConnection(configuration: config, password: nil, knownHostsPath: untrusted) }
         #expect(throws: ActionError.self) { try SFTPUpload.run(path: file, configuration: config, password: nil, knownHostsPath: untrusted) }
         let encrypted = (root as NSString).appendingPathComponent("client-encrypted")
         if FileManager.default.fileExists(atPath: encrypted) {
@@ -255,6 +266,11 @@ import Testing
               h,at=parse(b,at);offset=struct.unpack('>Q',b[at:at+8])[0];at+=8;chunk,at=parse(b,at)
               if 'FOREL_SFTP_FAIL_WRITE' in os.environ: status(i,4)
               else: handles[h].seek(offset);handles[h].write(chunk);status(i,0)
+            elif op==11:
+              name,at=parse(b,at); p=loc(name)
+              if not os.path.isdir(p): status(i,2);continue
+              seq+=1;h=str(seq).encode();handles[h]=os.scandir(p)
+              send(bytes([102])+u32(i)+string(h))
             elif op==4:
               h,at=parse(b,at);handles.pop(h).close();status(i,0)
             elif op==7:

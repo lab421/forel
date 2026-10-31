@@ -42,11 +42,13 @@ enum SFTPUpload {
         let process: Process
         let input: FileHandle
         let output: FileHandle
+        let deadline: Date?
         var nextID: UInt32 = 1
         var posixRename = false
         var hardlink = false
-        init(process: Process, input: FileHandle, output: FileHandle) throws {
+        init(process: Process, input: FileHandle, output: FileHandle, deadline: Date? = nil) throws {
             self.process = process; self.input = input; self.output = output
+            self.deadline = deadline
             let flags = fcntl(input.fileDescriptor, F_GETFL)
             guard flags >= 0, fcntl(input.fileDescriptor, F_SETFL, flags | O_NONBLOCK) == 0 else { throw ActionError("Cannot configure SFTP connection") }
             var hello = Packet(); hello.byte(1); hello.u32(3)
@@ -62,7 +64,7 @@ enum SFTPUpload {
         func send(_ data: Data) throws {
             guard data.count <= 131_072 else { throw ActionError("SFTP request is too large") }
             var header = Packet(); header.u32(UInt32(data.count)); header.data.append(data)
-            let deadline = Date().addingTimeInterval(60)
+            let deadline = self.deadline ?? Date().addingTimeInterval(60)
             var offset = 0
             while offset < header.data.count {
                 if Task<Never, Never>.isCancelled { throw ActionError("SFTP upload was cancelled") }
@@ -82,7 +84,7 @@ enum SFTPUpload {
             }
         }
         func readExactly(_ count: Int) throws -> Data {
-            var result = Data(); let deadline = Date().addingTimeInterval(60)
+            var result = Data(); let deadline = self.deadline ?? Date().addingTimeInterval(60)
             while result.count < count {
                 if Task<Never, Never>.isCancelled { throw ActionError("SFTP upload was cancelled") }
                 if Date() >= deadline { throw ActionError("SFTP server timed out") }
@@ -125,6 +127,13 @@ enum SFTPUpload {
             let code = try response.u32()
             if code == 2 { return false }
             throw ActionError("SFTP could not inspect the destination (status \(code))")
+        }
+        func checkDirectory(_ path: String) throws {
+            var (kind, response) = try request(11) { $0.string(path) } // OPENDIR
+            guard kind == 102 else { throw ActionError("SFTP could not open the server folder") }
+            let handle = try response.bytes()
+            guard !handle.isEmpty, handle.count <= 16_384 else { throw ActionError("Invalid SFTP directory handle") }
+            guard try status(4, { $0.bytes(handle) }) == 0 else { throw ActionError("SFTP could not close the server folder") }
         }
         func mkdir(_ path: String) throws {
             let code = try mkdirStatus(path)
@@ -169,6 +178,55 @@ enum SFTPUpload {
                 _ = try? status(4) { $0.bytes(handle) }
                 throw error
             }
+        }
+    }
+
+    static func testConnection(configuration: UploadConfiguration, password: String?,
+                               sshExecutable: URL = URL(fileURLWithPath: "/usr/bin/ssh"),
+                               testEnvironment: [String: String] = [:], knownHostsPath: String? = nil) throws {
+        let manager = FileManager.default
+        let directory = manager.temporaryDirectory.appendingPathComponent("forel-sftp-\(UUID().uuidString)", isDirectory: true)
+        try manager.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? manager.removeItem(at: directory) }
+        func quoted(_ text: String) -> String { "\"" + text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" }
+        let sshConfig = directory.appendingPathComponent("config")
+        let host = configuration.host.hasPrefix("[") ? String(configuration.host.dropFirst().dropLast()) : configuration.host
+        var settings = "Host forel-upload\n  HostName \(quoted(host))\n  User \(quoted(configuration.username))\n  Port \(configuration.port)\n  StrictHostKeyChecking yes\n  UpdateHostKeys no\n  ConnectTimeout 15\n  NumberOfPasswordPrompts 1\n  BatchMode no\n"
+        if let knownHostsPath { settings += "  UserKnownHostsFile \(quoted(knownHostsPath))\n  GlobalKnownHostsFile /dev/null\n" }
+        if let identity = configuration.identityPath { settings += "  IdentityFile \(quoted(identity))\n  IdentitiesOnly yes\n" }
+        try Data(settings.utf8).write(to: sshConfig, options: .atomic)
+        let process = Process(); process.executableURL = sshExecutable
+        process.arguments = ["-F", sshConfig.path, "-s", "forel-upload", "sftp"]
+        let input = Pipe(), output = Pipe()
+        process.standardInput = input; process.standardOutput = output; process.standardError = FileHandle.nullDevice
+        var environment = ProcessInfo.processInfo.environment
+        environment.merge(testEnvironment) { _, value in value }
+        if let password {
+            let secret = directory.appendingPathComponent("secret")
+            try Data(password.utf8).write(to: secret, options: .atomic)
+            try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: secret.path)
+            let helper = directory.appendingPathComponent("askpass")
+            try Data("#!/bin/sh\nexec /bin/cat \"$FOREL_SFTP_SECRET_PATH\"\n".utf8).write(to: helper, options: .atomic)
+            try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
+            environment["SSH_ASKPASS"] = helper.path; environment["SSH_ASKPASS_REQUIRE"] = "force"
+            environment["DISPLAY"] = "forel"; environment["FOREL_SFTP_SECRET_PATH"] = secret.path
+        }
+        process.environment = environment
+        do { try process.run() } catch { throw ActionError("Cannot start SFTP connection test") }
+        defer {
+            try? input.fileHandleForWriting.close()
+            if process.isRunning {
+                process.terminate(); Thread.sleep(forTimeInterval: 0.1)
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            }
+            process.waitUntilExit()
+        }
+        do {
+            let connection = try Connection(process: process, input: input.fileHandleForWriting, output: output.fileHandleForReading, deadline: Date().addingTimeInterval(20))
+            try connection.checkDirectory(configuration.effectiveRemotePath)
+        } catch {
+            if Task<Never, Never>.isCancelled { throw ActionError("Connection test was cancelled") }
+            throw ActionError("SFTP connection test failed; check the server, credentials, trusted host key, and folder")
         }
     }
 

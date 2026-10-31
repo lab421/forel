@@ -250,9 +250,15 @@ public struct ActionPlan: Equatable, Sendable {
 }
 
 public enum ActionExecutor {
+    private static func uploadConfiguration(_ action: Action, servers: [UploadServer]) throws -> UploadConfiguration {
+        if action.params["upload_server_id"] != nil {
+            return try UploadConfiguration(action: action, serverLookup: { id in servers.first { $0.id == id } })
+        }
+        return try UploadConfiguration(action: action)
+    }
     /// Executes the action on the file at `path`, returning the new path and an
     /// `Undo` describing how to reverse it.
-    public static func execute(_ action: Action, path: String, contextPath: String? = nil, hazelContext: HazelPatternContext? = nil, platform: any ActionPlatform = MacActionPlatform(), watchedRoot: String? = nil) throws -> Applied {
+    public static func execute(_ action: Action, path: String, contextPath: String? = nil, hazelContext: HazelPatternContext? = nil, platform: any ActionPlatform = MacActionPlatform(), watchedRoot: String? = nil, uploadServers: [UploadServer] = []) throws -> Applied {
         switch action.kind {
         case .hazelContinue, .hazelRecurse:
             throw ActionError("Hazel control actions must be handled by the rule engine")
@@ -337,7 +343,7 @@ public enum ActionExecutor {
             try platform.runWorkflow(workflowPath: workflow, inputPath: path)
             return Applied(newPath: path, undo: .none)
         case .upload:
-            let upload = try UploadConfiguration(action: action).withRelativeFolders(folderStructureComponents(action, path: path, watchedRoot: watchedRoot))
+            let upload = try uploadConfiguration(action, servers: uploadServers).withRelativeFolders(folderStructureComponents(action, path: path, watchedRoot: watchedRoot))
             try platform.upload(path: path, configuration: upload)
             return Applied(newPath: path, undo: .none)
         case .runShortcut:
@@ -1703,7 +1709,7 @@ public enum ActionExecutor {
         try plan(action, path: path).description
     }
 
-    public static func plan(_ action: Action, path: String, contextPath: String? = nil, hazelContext: HazelPatternContext? = nil, watchedRoot: String? = nil) throws -> ActionPlan {
+    public static func plan(_ action: Action, path: String, contextPath: String? = nil, hazelContext: HazelPatternContext? = nil, watchedRoot: String? = nil, uploadServers: [UploadServer] = []) throws -> ActionPlan {
         let fileName = (path as NSString).lastPathComponent
 
         switch action.kind {
@@ -1988,7 +1994,7 @@ public enum ActionExecutor {
                               sourcePath: path, targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
         case .upload:
             let source = FileManager.default.fileExists(atPath: path) ? path : (contextPath ?? path)
-            let upload = try UploadConfiguration(action: action).withRelativeFolders(folderStructureComponents(action, path: source, watchedRoot: watchedRoot))
+            let upload = try uploadConfiguration(action, servers: uploadServers).withRelativeFolders(folderStructureComponents(action, path: source, watchedRoot: watchedRoot))
             return ActionPlan(kind: action.kind, description: "Upload to \(upload.host)\(upload.effectiveRemotePath)", sourcePath: path,
                               targetPath: nil, status: .wouldRun, finalPath: path, copiedPath: nil, isTerminal: false)
         case .runShortcut:

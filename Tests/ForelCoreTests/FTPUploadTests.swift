@@ -33,6 +33,9 @@ import Testing
                 "upload_username": .string("fixture"), "upload_remote_path": .string("/incoming"), ActionParam.onConflict: .string(conflict.rawValue)
             ])))
         }
+        try FTPUpload.testConnection(configuration: config(.replace), password: "fixture-secret")
+        #expect(throws: ActionError.self) { try FTPUpload.testConnection(configuration: config(.replace), password: "wrong") }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: (root.path as NSString).appendingPathComponent("incoming")).isEmpty)
         let file = local.file("ftp # file.txt", contents: "uploaded")
         let remote = (root.path as NSString).appendingPathComponent("incoming/ftp # file.txt")
         try "old".write(toFile: remote, atomically: true, encoding: .utf8)
@@ -96,6 +99,8 @@ import Testing
                 "upload_username": .string("fixture"), "upload_remote_path": .string("/incoming"), ActionParam.onConflict: .string("replace")
             ])))
             let file = local.file("\(mode.rawValue).txt", contents: "secure")
+            #expect(throws: ActionError.self) { try FTPUpload.testConnection(configuration: config, password: "fixture-secret") }
+            try FTPUpload.testConnection(configuration: config, password: "fixture-secret", testCAPath: cert)
             #expect(throws: ActionError.self) { try FTPUpload.run(path: file, configuration: config, password: "fixture-secret") }
             try FTPUpload.run(path: file, configuration: config, password: "fixture-secret", testCAPath: cert)
             #expect(try String(contentsOfFile: (root.path as NSString).appendingPathComponent("incoming/\(mode.rawValue).txt"), encoding: .utf8) == "secure")

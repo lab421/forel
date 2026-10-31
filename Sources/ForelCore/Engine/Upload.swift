@@ -4,7 +4,7 @@ import Foundation
 import Security
 import Darwin
 
-public enum UploadProtocol: String, CaseIterable, Sendable {
+public enum UploadProtocol: String, CaseIterable, Codable, Sendable {
     case ftp, ftpsImplicit = "ftps_implicit", ftpsExplicit = "ftps_explicit", sftp, webdav, webdavs
     public var label: String {
         switch self {
@@ -27,6 +27,40 @@ public enum UploadProtocol: String, CaseIterable, Sendable {
     }
 }
 
+public struct UploadServer: Codable, Equatable, Sendable, Identifiable {
+    public var id: String
+    public var name: String
+    public var protocolType: UploadProtocol
+    public var host: String
+    public var port: Int?
+    public var username: String
+    public var identityPath: String?
+    public var credentialID: String
+
+    public init(id: String = UUID().uuidString, name: String, protocolType: UploadProtocol, host: String, port: Int? = nil, username: String, identityPath: String? = nil, credentialID: String = UUID().uuidString) {
+        self.id = id; self.name = name; self.protocolType = protocolType; self.host = host
+        self.port = port; self.username = username; self.identityPath = identityPath; self.credentialID = credentialID
+    }
+
+    public func resolving(action: Action) -> Action {
+        var result = action
+        guard case .object(var params) = action.params else { return result }
+        params["upload_protocol"] = .string(protocolType.rawValue)
+        params["upload_host"] = .string(host)
+        params["upload_port"] = .string(port.map(String.init) ?? "")
+        params["upload_username"] = .string(username)
+        params["upload_identity_path"] = .string(identityPath ?? "")
+        params["upload_credential_id"] = .string(credentialID)
+        result.params = .object(params)
+        return result
+    }
+
+    public func configuration(remotePath: String = "/", conflict: MoveConflictResolution = .replace) throws -> UploadConfiguration {
+        let action = Action(ruleId: "", kind: .upload, params: .object(["upload_remote_path": .string(remotePath), ActionParam.onConflict: .string(conflict.rawValue)]), position: 0)
+        return try UploadConfiguration(action: resolving(action: action))
+    }
+}
+
 public struct UploadConfiguration: Sendable, Equatable {
     public let protocolType: UploadProtocol
     public let host: String
@@ -37,6 +71,26 @@ public struct UploadConfiguration: Sendable, Equatable {
     public let identityPath: String?
     public let conflict: MoveConflictResolution
     public let relativeFolders: [String]
+
+    static func validateReference(_ action: Action) throws {
+        guard let id = action.params["upload_server_id"]?.stringValue, !id.isEmpty else { throw ActionError("Choose a saved upload server") }
+        _ = try validatedActionOptions(action)
+    }
+
+    private static func validatedActionOptions(_ action: Action) throws -> (String, MoveConflictResolution) {
+        let remotePath = action.params["upload_remote_path"]?.stringValue ?? "/"
+        guard remotePath.hasPrefix("/"), !remotePath.contains("\0"), !remotePath.contains("\n"), !remotePath.contains("\r"),
+              !remotePath.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { throw ActionError("Enter an absolute server folder without . or .. components") }
+        let rawConflict = action.params[ActionParam.onConflict]?.stringValue ?? MoveConflictResolution.rename.rawValue
+        guard let conflict = MoveConflictResolution(rawValue: rawConflict), conflict != .discard else { throw ActionError("Invalid upload conflict policy") }
+        return (remotePath, conflict)
+    }
+
+    public init(action: Action, serverLookup: (String) throws -> UploadServer?) throws {
+        guard let id = action.params["upload_server_id"]?.stringValue, !id.isEmpty,
+              let server = try serverLookup(id) else { throw ActionError("Choose a saved upload server; the selected server may have been deleted") }
+        try self.init(action: server.resolving(action: action))
+    }
 
     public init(action: Action) throws {
         guard let type = action.params["upload_protocol"]?.stringValue.flatMap(UploadProtocol.init(rawValue:)) else { throw ActionError("Choose an upload protocol") }
@@ -54,15 +108,11 @@ public struct UploadConfiguration: Sendable, Equatable {
         guard (1...65535).contains(port) else { throw ActionError("Enter a valid server port") }
         let username = action.params["upload_username"]?.stringValue ?? ""
         guard !username.isEmpty, !username.contains("\0"), !username.contains("\n"), !username.contains("\r") else { throw ActionError("Enter a valid server user name") }
-        let remotePath = action.params["upload_remote_path"]?.stringValue ?? "/"
-        guard remotePath.hasPrefix("/"), !remotePath.contains("\0"), !remotePath.contains("\n"), !remotePath.contains("\r"),
-              !remotePath.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { throw ActionError("Enter an absolute server folder without . or .. components") }
+        let (remotePath, conflict) = try Self.validatedActionOptions(action)
         let id = action.params["upload_credential_id"]?.stringValue ?? action.id
         guard !id.isEmpty else { throw ActionError("Upload credential identifier is missing") }
         let identity = action.params["upload_identity_path"]?.stringValue
         if let identity, !identity.isEmpty, (!identity.hasPrefix("/") || identity.contains("\0") || identity.contains("\n") || identity.contains("\r")) { throw ActionError("SSH key path must be absolute") }
-        let rawConflict = action.params[ActionParam.onConflict]?.stringValue ?? MoveConflictResolution.rename.rawValue
-        guard let conflict = MoveConflictResolution(rawValue: rawConflict), conflict != .discard else { throw ActionError("Invalid upload conflict policy") }
         self.protocolType = type; self.host = host.lowercased(); self.port = port; self.username = username
         self.remotePath = remotePath; self.credentialID = id; self.identityPath = identity?.isEmpty == false ? identity : nil
         self.conflict = conflict
@@ -124,6 +174,11 @@ public enum UploadCredentials {
             throw ActionError("Could not read upload credentials from Keychain (\(status))")
         }
         return try decode(data, configuration: configuration)
+    }
+    public static func delete(for id: String) throws {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: id]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw ActionError("Could not delete upload credentials from Keychain (\(status))") }
     }
 }
 

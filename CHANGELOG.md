@@ -12,7 +12,7 @@ All notable changes to Forel are documented here. Format loosely follows
 - Rules can use nested condition groups, calendar and relative date comparisons, content recognition, custom text/date/list/table values, script output attributes, file-change conditions, and same-folder ranking.
 - Rename patterns support per-folder numeric or alphabetic counters, including lowest-available numbering, and reusable captured values.
 - Added archive and unarchive actions, Finder reveal and aliases, notifications, pauses, Ignore, Automator workflows, and shell, AppleScript and JavaScript actions. Compatible Hazel Shortcut actions can be imported. Unarchive uses bounded extraction and rejects unsafe archive entries.
-- Upload actions support configured FTP, FTPS, SFTP and WebDAV destinations with credentials stored in Keychain.
+- Save reusable FTP, FTPS, SFTP and WebDAV servers in Settings, test connections, and select a saved server in upload actions. Passwords stay in Keychain, and rule exports exclude connection details.
 - Move and copy actions can preserve folder structure and choose how to handle existing files; sync supports one-way folder mirroring.
 - Incomplete Hazel imports report their unsupported parts and cannot run until the rule is recreated.
 - Rules can match last-opened dates and search file contents without regard to case or accents.

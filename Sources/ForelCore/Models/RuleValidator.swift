@@ -137,7 +137,14 @@ public enum RuleValidator {
                     return Issue(message: "Automator workflow requires an absolute path")
                 }
             case .upload:
-                do { _ = try UploadConfiguration(action: action) }
+                do {
+                    if action.params["upload_server_id"] == nil && action.params["upload_protocol"] == nil {
+                        throw ActionError("Choose a saved upload server")
+                    }
+                    if action.params["upload_server_id"] != nil {
+                        try UploadConfiguration.validateReference(action)
+                    } else { _ = try UploadConfiguration(action: action) }
+                }
                 catch { return Issue(message: "\(error)") }
             case .runHazelOSA:
                 do { _ = try ActionExecutor.osaConfiguration(action) }

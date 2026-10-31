@@ -19,6 +19,41 @@ enum WebDAVUpload {
         func get() -> (HTTPURLResponse?, Error?) { lock.lock(); defer { lock.unlock() }; return value }
     }
 
+    static func testConnection(configuration: UploadConfiguration, password: String?) throws {
+        guard !configuration.username.contains(":") else { throw ActionError("WebDAV user names cannot contain a colon") }
+        var allowed = CharacterSet.urlPathAllowed; allowed.remove(charactersIn: "/%?#")
+        let path = try configuration.effectiveRemotePath.split(separator: "/").map { part -> String in
+            guard part != ".", part != "..", let encoded = String(part).addingPercentEncoding(withAllowedCharacters: allowed) else { throw ActionError("Invalid WebDAV path") }
+            return encoded
+        }.joined(separator: "/")
+        var components = URLComponents()
+        components.scheme = configuration.protocolType == .webdavs ? "https" : "http"
+        components.host = configuration.host; components.port = configuration.port
+        components.percentEncodedPath = "/" + path + (path.isEmpty ? "" : "/")
+        guard let url = components.url else { throw ActionError("Invalid WebDAV server address") }
+        var request = URLRequest(url: url); request.httpMethod = "PROPFIND"
+        request.setValue("0", forHTTPHeaderField: "Depth")
+        if let password {
+            request.setValue("Basic " + Data("\(configuration.username):\(password)".utf8).base64EncodedString(), forHTTPHeaderField: "Authorization")
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 15; config.timeoutIntervalForResource = 20
+        config.httpShouldSetCookies = false; config.urlCredentialStorage = nil
+        let result = Response(), session = URLSession(configuration: config, delegate: result, delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        let task = session.dataTask(with: request); task.resume()
+        let deadline = Date().addingTimeInterval(20)
+        while result.done.wait(timeout: .now() + 0.2) == .timedOut {
+            if Task<Never, Never>.isCancelled { task.cancel(); throw ActionError("Connection test was cancelled") }
+            if Date() >= deadline { task.cancel(); throw ActionError("Connection test timed out") }
+        }
+        if Task<Never, Never>.isCancelled { throw ActionError("Connection test was cancelled") }
+        let (response, error) = result.get()
+        guard error == nil, let response, [200, 207].contains(response.statusCode) else {
+            throw ActionError("WebDAV connection test failed; check the server, credentials, and folder")
+        }
+    }
+
     static func run(path: String, configuration: UploadConfiguration, password: String?) throws {
         guard !configuration.username.contains(":") else { throw ActionError("WebDAV user names cannot contain a colon") }
         let fileManager = FileManager.default

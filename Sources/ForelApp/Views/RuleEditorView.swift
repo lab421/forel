@@ -1378,8 +1378,7 @@ private struct ActionRow: View {
     let onRequestUpgrade: (ProFeature) -> Void
     let onDelete: () -> Void
     @State private var showingOptions = false
-    @State private var uploadPassword = ""
-    @State private var uploadMessage = ""
+    @EnvironmentObject private var settingsNavigation: SettingsNavigation
     @State private var inspectedSource: String?
     @State private var inspectedBytes: String?
     @State private var inspectionMessage = ""
@@ -1571,53 +1570,34 @@ private struct ActionRow: View {
             GlassField(placeholder: "Absolute workflow path", text: paramBinding(ActionParam.workflowPath))
         case .upload:
             VStack(alignment: .leading, spacing: 6) {
-                Picker("Protocol", selection: paramBinding("upload_protocol", defaultValue: UploadProtocol.webdavs.rawValue)) {
-                    Text(UploadProtocol.webdav.label).tag(UploadProtocol.webdav.rawValue)
-                    Text(UploadProtocol.webdavs.label).tag(UploadProtocol.webdavs.rawValue)
-                    Text(UploadProtocol.sftp.label).tag(UploadProtocol.sftp.rawValue)
-                    Text(UploadProtocol.ftp.label).tag(UploadProtocol.ftp.rawValue)
-                    Text(UploadProtocol.ftpsExplicit.label).tag(UploadProtocol.ftpsExplicit.rawValue)
-                    Text(UploadProtocol.ftpsImplicit.label).tag(UploadProtocol.ftpsImplicit.rawValue)
+                Picker("Server", selection: paramBinding("upload_server_id")) {
+                    Text("Choose a server").tag("")
+                    if let id = action.params["upload_server_id"]?.stringValue, !id.isEmpty,
+                       !model.uploadServers.contains(where: { $0.id == id }) {
+                        Text("Missing server").tag(id)
+                    }
+                    ForEach(model.uploadServers, id: \.id) { server in
+                        Text(server.name).tag(server.id)
+                    }
                 }
-                .onChange(of: action.params["upload_protocol"]?.stringValue) { value in
-                    if [UploadProtocol.ftp.rawValue, UploadProtocol.ftpsExplicit.rawValue, UploadProtocol.ftpsImplicit.rawValue].contains(value) {
+                .onChange(of: action.params["upload_server_id"]?.stringValue) { id in
+                    if let server = model.uploadServers.first(where: { $0.id == id }),
+                       [.ftp, .ftpsExplicit, .ftpsImplicit].contains(server.protocolType) {
                         var params: [String: JSONValue] = [:]
                         if case .object(let existing) = action.params { params = existing }
                         params[ActionParam.onConflict] = .string(MoveConflictResolution.replace.rawValue)
                         action.params = .object(params)
                     }
                 }
-                if [UploadProtocol.ftp.rawValue, UploadProtocol.ftpsExplicit.rawValue, UploadProtocol.ftpsImplicit.rawValue].contains(action.params["upload_protocol"]?.stringValue) {
-                    Text("FTP can replace files and create new folders. Replacing an existing folder and safe no-overwrite uploads are unavailable.")
+                if model.uploadServers.isEmpty || (action.params["upload_server_id"]?.stringValue).map({ id in !id.isEmpty && !model.uploadServers.contains(where: { $0.id == id }) }) == true {
+                    Text(model.uploadServers.isEmpty ? "Add a server in Settings to use this action." : "This server is missing. Choose another server in Settings or below.")
                         .font(.caption).foregroundStyle(ForelTheme.secondaryText)
+                    Button("Open Servers Settings") {
+                        settingsNavigation.selectedCategory = .servers
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    }.buttonStyle(.link)
                 }
-                GlassField(placeholder: "Server hostname", text: paramBinding("upload_host"))
-                GlassField(placeholder: "Port (optional)", text: paramBinding("upload_port"))
-                GlassField(placeholder: "User name", text: paramBinding("upload_username"))
                 GlassField(placeholder: "Server folder, e.g. /uploads", text: paramBinding("upload_remote_path", defaultValue: "/"))
-                if action.params["upload_protocol"]?.stringValue == UploadProtocol.sftp.rawValue {
-                    GlassField(placeholder: "SSH private key path (optional)", text: paramBinding("upload_identity_path"))
-                    Text("The server's host key must already be trusted in your SSH known-hosts file.")
-                        .font(.caption).foregroundStyle(ForelTheme.secondaryText)
-                }
-                HStack {
-                    SecureField(action.params["upload_protocol"]?.stringValue == UploadProtocol.sftp.rawValue ? "Password or key passphrase" : "Password", text: $uploadPassword)
-                    Button("Save Password") {
-                        do {
-                            // A draft must never overwrite the credential still
-                            // referenced by a saved rule if editing is cancelled.
-                            let id = UUID().uuidString
-                            try UploadCredentials.save(uploadPassword, for: id, configuration: UploadConfiguration(action: action))
-                            var params: [String: JSONValue] = [:]
-                            if case .object(let existing) = action.params { params = existing }
-                            params["upload_credential_id"] = .string(id)
-                            action.params = .object(params)
-                            uploadPassword = ""
-                            uploadMessage = "Password saved in Keychain."
-                        } catch { uploadMessage = "\(error)" }
-                    }
-                }
-                if !uploadMessage.isEmpty { Text(uploadMessage).font(.caption).foregroundStyle(ForelTheme.secondaryText) }
             }
         case .runShortcut:
             ShortcutPicker(selection: paramBinding(ActionParam.shortcutName))
@@ -1737,7 +1717,7 @@ private struct ActionRow: View {
                     params[ActionParam.osaMode] = .string("embedded")
                     params[ActionParam.script] = .string("")
                 } else if newKind == .upload {
-                    params["upload_protocol"] = .string(UploadProtocol.webdavs.rawValue)
+                    params["upload_server_id"] = .string("")
                     params["upload_remote_path"] = .string("/")
                 }
                 action = Action(id: action.id, ruleId: action.ruleId, kind: newKind, params: .object(params), position: action.position)
@@ -1846,6 +1826,7 @@ private struct ActionRow: View {
 
 private struct ActionOptionsView: View {
     @Binding var action: Action
+    @EnvironmentObject private var model: AppModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1915,7 +1896,8 @@ private struct ActionOptionsView: View {
 
     private var conflictResolutionOptions: some View {
         let defaultResolution = action.kind == .importToLibrary ? MoveConflictResolution.skip.rawValue : MoveConflictResolution.rename.rawValue
-        let ftp = action.kind == .upload && [UploadProtocol.ftp.rawValue, UploadProtocol.ftpsExplicit.rawValue, UploadProtocol.ftpsImplicit.rawValue].contains(action.params["upload_protocol"]?.stringValue)
+        let protocolType = model.uploadServers.first { $0.id == action.params["upload_server_id"]?.stringValue }?.protocolType
+        let ftp = action.kind == .upload && protocolType.map { [.ftp, .ftpsExplicit, .ftpsImplicit].contains($0) } == true
         let options = MoveConflictResolution.allCases.filter {
             ($0 != .discard || action.kind == .moveToFolder) && ($0 != .rename || action.kind != .importToLibrary) && (!ftp || $0 == .replace)
         }.map(\.rawValue)

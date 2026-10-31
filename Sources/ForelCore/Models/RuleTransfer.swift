@@ -70,6 +70,7 @@ public enum RuleTransfer {
         let sanitized = rules.map { source in
             var rule = source
             rule.conditions = source.conditions.map { clearPDFCredentials($0, depth: 0) }
+            rule.actions = source.actions.map { clearUploadServer($0) }
             return rule
         }
         let export = NativeExport(format: "forel-rules", version: 1, rules: sanitized)
@@ -96,14 +97,26 @@ public enum RuleTransfer {
             var issues: [RuleTransferIssue] = []
             let rules = native.rules.map { source in
                 let needsPassword = source.conditions.contains { containsPDFPasswordCondition($0, depth: 0) }
+                let needsServer = source.actions.contains { $0.kind == .upload }
                 if needsPassword { issues.append(.init(ruleName: source.name, message: "Save the PDF password again before enabling this imported rule.")) }
+                if needsServer { issues.append(.init(ruleName: source.name, message: "Choose a saved upload server before enabling this imported rule.")) }
                 var copy = source
                 copy.conditions = source.conditions.map { clearPDFCredentials($0, depth: 0) }
-                return remap(copy, folderId: folderId, disabled: needsPassword)
+                copy.actions = source.actions.map { clearUploadServer($0) }
+                return remap(copy, folderId: folderId, disabled: needsPassword || needsServer)
             }
             return RuleImportResult(rules: rules, issues: issues)
         }
         return try importHazel(data: data, folderId: folderId)
+    }
+
+    private static func clearUploadServer(_ action: Action) -> Action {
+        guard action.kind == .upload, case .object(var params) = action.params else { return action }
+        let allowed = Set(["upload_remote_path", ActionParam.onConflict, ActionParam.folderStructure])
+        params = params.filter { allowed.contains($0.key) }
+        var copy = action
+        copy.params = .object(params)
+        return copy
     }
 
     private static func nativeJSONWithinLimits(_ data: Data) -> Bool {

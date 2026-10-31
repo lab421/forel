@@ -596,8 +596,9 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
     private func executeWithQuota(path: String, depth: Int, rules: [Rule], root: String, pro: Bool, date: Date? = nil, peerRecheckOnly: Bool = false, onRecurse: ((String) -> Void)? = nil) -> (matched: [String], history: [HistoryEntry], recurses: Bool)? {
         do {
+            let uploadServers = try db.withLock { try $0.loadUploadServers() }
             let result = try monthlyUsage.withFreePlan(isPro: pro, at: date ?? now()) { beforeAction in
-                let result = RuleEngine.runWithTraversal(path: path, depth: depth, rules: rules, batchId: UUID().uuidString, root: root, isPro: pro, platform: actionPlatform, lastOpened: lastOpened, matchState: matchState, counterStore: counterStore, now: date ?? now(), peerRecheckOnly: peerRecheckOnly, beforeAction: beforeAction, onRecurse: onRecurse)
+                let result = RuleEngine.runWithTraversal(path: path, depth: depth, rules: rules, batchId: UUID().uuidString, root: root, isPro: pro, platform: actionPlatform, lastOpened: lastOpened, matchState: matchState, counterStore: counterStore, uploadServers: uploadServers, now: date ?? now(), peerRecheckOnly: peerRecheckOnly, beforeAction: beforeAction, onRecurse: onRecurse)
                 return (result, result.history)
             }
             monthlyUsage.removeQuotaPendingFile(path)

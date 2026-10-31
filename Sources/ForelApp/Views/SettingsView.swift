@@ -76,6 +76,8 @@ struct SettingsView: View {
                     generalPane
                 case .permissions:
                     PermissionsSection()
+                case .servers:
+                    ServersSettingsView()
                 case .license:
                     LicenseSettingsView()
                         .environmentObject(license)
@@ -267,13 +269,14 @@ struct SettingsView: View {
 }
 
 enum SettingsCategory: CaseIterable, Identifiable {
-    case general, permissions, license, updates, about
+    case general, servers, permissions, license, updates, about
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .general: "General"
+        case .servers: "Servers"
         case .permissions: "Permissions"
         case .license: "License"
         case .updates: "Updates"
@@ -284,6 +287,7 @@ enum SettingsCategory: CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .general: "gearshape.fill"
+        case .servers: "server.rack"
         case .permissions: "lock.shield.fill"
         case .license: "key.fill"
         case .updates: "arrow.triangle.2.circlepath"
@@ -294,6 +298,7 @@ enum SettingsCategory: CaseIterable, Identifiable {
     var tint: Color {
         switch self {
         case .general: Color(red: 0.36, green: 0.34, blue: 0.90)
+        case .servers: Color(red: 0.25, green: 0.55, blue: 0.70)
         case .permissions: Color(red: 0.95, green: 0.55, blue: 0.13)
         case .license: Color(red: 0.20, green: 0.45, blue: 0.80)
         case .updates: Color(red: 0.20, green: 0.70, blue: 0.45)
