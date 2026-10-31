@@ -20,6 +20,7 @@ import Foundation
 public enum FileWatcherEvent: Equatable, Sendable {
     case pathArrived(String)
     case rescanSubtree(String)
+    case peerChanged(String)
 }
 
 /// Native FSEvents-based replacement for the Rust `notify` watcher. Watches a
@@ -136,7 +137,9 @@ public final class FileWatcher: @unchecked Sendable {
             return .rescanSubtree(path)
         }
 
-        return shouldReportEvent(path: path, flags: flags) ? .pathArrived(path) : nil
+        if shouldReportEvent(path: path, flags: flags) { return .pathArrived(path) }
+        let peerChange = flags & UInt32(kFSEventStreamEventFlagItemRemoved) != 0 || flags & UInt32(kFSEventStreamEventFlagItemModified) != 0
+        return peerChange && !SystemFileFilter.isExcluded((path as NSString).lastPathComponent) ? .peerChanged(path) : nil
     }
 
     static func shouldReportEvent(path: String, flags: FSEventStreamEventFlags) -> Bool {

@@ -29,15 +29,14 @@ public struct WatcherActivitySummary: Equatable, Sendable {
 public final class WatcherCoordinator: @unchecked Sendable {
     private let db: Database
     private let monthlyUsage: MonthlyFileUsageStore
-    private let watcher: FileWatcher
     private var isPro = false
     private let now: @Sendable () -> Date
     private var quotaRetryScheduled = false
-
-    public func setProAccess(_ enabled: Bool) {
-        db.withLock { _ in isPro = enabled }
-        processingQueue.async { [weak self] in self?.retryQuotaPendingFiles() }
-    }
+    private let watcher: FileWatcher
+    private let actionPlatform: any ActionPlatform
+    private let lastOpened: any LastOpenedMetadataProvider
+    private let matchState: any HazelMatchStateStore
+    private let counterStore: any FolderCounterStore
     /// FSEvents callbacks must return promptly. File operations can take an
     /// arbitrary amount of time, especially when moving across volumes or to
     /// a network share, so process their immutable event snapshots here
@@ -52,8 +51,59 @@ public final class WatcherCoordinator: @unchecked Sendable {
     private let settleInterval: TimeInterval
     /// Paths waiting to settle. Only touched on `processingQueue`.
     private var settling: [String: SettlingState] = [:]
+    private var peerSettling: [String: SettlingState] = [:]
+    private var peerGeneration: [String: UInt64] = [:]
     /// Folders currently watched. Only touched on `processingQueue`.
     private var watchedRoots: Set<String> = []
+    private var timeRecheckScheduled = false
+    private var nextTimeRecheck: Date?
+    private struct TraversalResult {
+        let recurses: Bool
+        let fingerprint: String?
+        let volumeId: Int64?
+        let fileId: Int64?
+        let rules: Data
+    }
+    private var hazelTraversalResults: [String: TraversalResult] = [:]
+    private var activeHazelTraversal: Set<String> = []
+
+    private func ruleSignature(_ rules: [Rule]) -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return (try? encoder.encode(rules)) ?? Data()
+    }
+
+    private func traversalDecision(_ path: String, rules: [Rule]) -> Bool? {
+        if activeHazelTraversal.contains(path) { return true }
+        guard let result = hazelTraversalResults[path], result.rules == ruleSignature(rules),
+              result.fingerprint == FileFingerprint.current(path) else { return nil }
+        let identity = FileFingerprint.identity(path)
+        guard result.volumeId == identity?.volumeId, result.fileId == identity?.fileId else { return nil }
+        return result.recurses
+    }
+
+    private func recordTraversal(_ path: String, recurses: Bool, rules: [Rule]) {
+        let identity = FileFingerprint.identity(path)
+        hazelTraversalResults[path] = TraversalResult(recurses: recurses, fingerprint: FileFingerprint.current(path), volumeId: identity?.volumeId, fileId: identity?.fileId, rules: ruleSignature(rules))
+    }
+
+    private func ensureTraversalAncestors(root: String, path: String, rules: [Rule]) {
+        guard rules.contains(where: { $0.enabled && $0.isHazelImported }) else { return }
+        let rootParts = (root as NSString).pathComponents
+        let pathParts = (path as NSString).pathComponents
+        guard pathParts.count > rootParts.count + 1, Array(pathParts.prefix(rootParts.count)) == rootParts else { return }
+        var ancestor = root
+        for component in pathParts[rootParts.count..<(pathParts.count - 1)] {
+            ancestor = (ancestor as NSString).appendingPathComponent(component)
+            if traversalDecision(ancestor, rules: rules) == nil {
+                guard let attributes = try? FileManager.default.attributesOfItem(atPath: ancestor),
+                      (attributes[.type] as? FileAttributeType) == .typeDirectory,
+                      let depth = RuleEngine.pathDepth(root: root, path: ancestor) else { return }
+                _ = handle(path: ancestor, depth: depth, rules: rules, watchedRoot: root, force: true)
+            }
+            guard traversalDecision(ancestor, rules: rules) == true else { return }
+        }
+    }
     /// A file that stays marked busy without changing is a stalled transfer.
     /// Nothing signals the marker being lifted, so keep checking, but less
     /// and less often, up to this interval.
@@ -61,13 +111,18 @@ public final class WatcherCoordinator: @unchecked Sendable {
     public var onRuleMatched: (@Sendable (String, String) -> Void)?
     public var onActivity: (@Sendable (WatcherActivitySummary) -> Void)?
     public var onVolumeUnavailable: (@Sendable (VolumeUnavailableEvent) -> Void)?
-    /// Called whenever an automatic run records history, failures included.
     public var onHistoryRecorded: (@Sendable () -> Void)?
     public var onMonthlyQuotaReached: (@Sendable () -> Void)?
     public var onProcessingError: (@Sendable (String) -> Void)?
-    /// Files to run the rules on again, by the /Volumes name of the disk or
-    /// share they wait for. Only touched on `processingQueue`; not persisted.
     var waitingForVolume: [String: Set<String>] = [:]
+
+    public func setProAccess(_ enabled: Bool) {
+        db.withLock { _ in isPro = enabled }
+        processingQueue.async { [weak self] in
+            self?.hazelTraversalResults.removeAll()
+            self?.retryQuotaPendingFiles()
+        }
+    }
 
     private struct SettlingState {
         var fingerprint: String?
@@ -81,12 +136,15 @@ public final class WatcherCoordinator: @unchecked Sendable {
         var hasDeferredDescendants = false
     }
 
-    public init(db: Database, monthlyUsage: MonthlyFileUsageStore = MonthlyFileUsageStore(),
-                settleInterval: TimeInterval = 1.0, now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(db: Database, monthlyUsage: MonthlyFileUsageStore = MonthlyFileUsageStore(), settleInterval: TimeInterval = 1.0, now: @escaping @Sendable () -> Date = { Date() }, actionPlatform: any ActionPlatform = MacActionPlatform(), lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata()) {
         self.db = db
         self.monthlyUsage = monthlyUsage
-        self.settleInterval = settleInterval
         self.now = now
+        self.settleInterval = settleInterval
+        self.actionPlatform = actionPlatform
+        self.lastOpened = lastOpened
+        self.matchState = DatabaseHazelMatchStateStore(db: db)
+        self.counterStore = DatabaseFolderCounterStore(db: db)
         var watcherRef: FileWatcher!
         watcherRef = FileWatcher(onEvent: { _ in })
         self.watcher = watcherRef
@@ -98,8 +156,51 @@ public final class WatcherCoordinator: @unchecked Sendable {
     public func add(_ path: String) {
         watcher.add(path)
         processingQueue.async { [weak self] in
-            self?.watchedRoots.insert(path)
-            self?.retryQuotaPendingFiles()
+            guard let self else { return }
+            self.watchedRoots.insert(path)
+            self.scheduleTimeRecheck()
+            self.retryQuotaPendingFiles()
+        }
+    }
+
+    private func scheduleTimeRecheck() {
+        guard !timeRecheckScheduled else { return }
+        guard !watchedRoots.isEmpty else { nextTimeRecheck = nil; return }
+        let now = Date()
+        nextTimeRecheck = Self.nextMinuteBoundary(after: now)
+        let due = nextTimeRecheck!
+        timeRecheckScheduled = true
+        processingQueue.asyncAfter(deadline: .now() + max(0, due.timeIntervalSinceNow)) { [weak self] in
+            guard let self else { return }
+            self.timeRecheckScheduled = false
+            // A delayed timer observes the current state and current time once;
+            // replaying missed minutes would apply old conditions to new files.
+            for root in self.watchedRoots.sorted() { self.recheckTimeSensitiveRules(root: root, now: Date()) }
+            self.scheduleTimeRecheck()
+        }
+    }
+
+    static func nextMinuteBoundary(after date: Date) -> Date {
+        Date(timeIntervalSince1970: (floor(date.timeIntervalSince1970 / 60) + 1) * 60)
+    }
+
+    /// Re-evaluate time-dependent rules even when the filesystem has
+    /// not emitted an event. Per-rule match state prevents repeated actions.
+    func recheckTimeSensitiveRules(root: String, now: Date = Date()) {
+        let pro = db.withLock { _ in isPro }
+        // Timer scans can be retried on the next tick after quota resets. Do
+        // not enqueue every scanned file as though it were a new arrival.
+        guard pro || !monthlyUsage.monthlyFileUsage(at: now).isExhausted else { return }
+        guard let (folder, rules) = db.withLock({ db -> (WatchedFolder, [Rule])? in
+            guard let folder = try? db.folderForPath(root), folder.path == root else { return nil }
+            return (folder, (try? db.executionRules(folderID: folder.id, isPro: pro)) ?? [])
+        }), rules.contains(where: { $0.enabled && RuleEngine.isTimeSensitive($0) }) else { return }
+        beginProcessing(root: root)
+        defer { endProcessing(root: root) }
+        RuleEngine.forEachRuleEntryExecuting(root: folder.path, rules: rules, isPro: pro, lastOpened: lastOpened) { entry, _, recurse in
+            guard pro || !self.monthlyUsage.monthlyFileUsage(at: now).isExhausted else { return false }
+            guard (try? self.db.withLock { try $0.folderForPath(entry.path) })?.id == folder.id else { return false }
+            return self.handle(path: entry.path, depth: entry.depth, rules: rules, watchedRoot: root, force: true, timedRecheck: true, now: now, onRecurse: recurse)
         }
     }
 
@@ -115,13 +216,18 @@ public final class WatcherCoordinator: @unchecked Sendable {
     /// would run once the transfer completes, long after watching stopped.
     /// Files that a still-watched nested folder covers keep waiting.
     private func stopSettling(under root: String) {
+        peerGeneration[root, default: 0] &+= 1
         watchedRoots.remove(root)
-        let isStillWatched: (String) -> Bool = { [watchedRoots] path in
+        keepWaiting { path in watchedRoots.contains { Self.isPath(path, under: $0) } }
+        hazelTraversalResults = hazelTraversalResults.filter { path, _ in
             !Self.isPath(path, under: root) || watchedRoots.contains { Self.isPath(path, under: $0) }
         }
-        settling = settling.filter { path, _ in isStillWatched(path) }
-        // Nor may they run once their disk or share comes back.
-        keepWaiting(where: isStillWatched)
+        settling = settling.filter { path, _ in
+            !Self.isPath(path, under: root) || watchedRoots.contains { Self.isPath(path, under: $0) }
+        }
+        peerSettling = peerSettling.filter { path, _ in
+            !Self.isPath(path, under: root) || watchedRoots.contains { Self.isPath(path, under: $0) }
+        }
     }
 
     private static func isPath(_ path: String, under root: String) -> Bool {
@@ -139,11 +245,15 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
     /// Test synchronization point for events already accepted by `enqueue`,
     /// including files still waiting to settle.
-    func waitForPendingEvents() {
-        while processingQueue.sync(execute: { !settling.isEmpty }) {
+    @discardableResult
+    func waitForPendingEvents(timeout: TimeInterval = 30) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while processingQueue.sync(execute: { !settling.isEmpty || !peerSettling.isEmpty }) {
+            guard Date() < deadline else { return false }
             Thread.sleep(forTimeInterval: max(settleInterval / 4, 0.01))
         }
         processingQueue.sync {}
+        return true
     }
 
     /// Processes `event`. Live watcher events wait for each file to settle
@@ -151,6 +261,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
     func handle(event: FileWatcherEvent, waitsForSettledFiles: Bool = false) {
         switch event {
         case .pathArrived(let path):
+            if !FileManager.default.fileExists(atPath: path) { recheckPeerRules(near: path); return }
             if waitsForSettledFiles {
                 awaitSettled(path)
             } else {
@@ -158,7 +269,43 @@ public final class WatcherCoordinator: @unchecked Sendable {
             }
         case .rescanSubtree(let path):
             handleRescanSubtree(root: path, waitsForSettledFiles: waitsForSettledFiles)
+        case .peerChanged(let path):
+            guard hasPeerRules(near: path) else { return }
+            if waitsForSettledFiles && FileManager.default.fileExists(atPath: path) { awaitPeerSettled(path) }
+            else { recheckPeerRules(near: path) }
         }
+    }
+
+    private func hasPeerRules(near path: String) -> Bool {
+        db.withLock { db in
+            guard let folder = try? db.folderForPath(path), let rules = try? db.executionRules(folderID: folder.id, isPro: self.isPro) else { return false }
+            return rules.contains { $0.enabled && RuleEngine.isPeerSensitive($0) }
+        }
+    }
+
+    private func awaitPeerSettled(_ path: String) {
+        guard settleInterval > 0 else { recheckPeerRules(near: path); return }
+        guard peerSettling[path] == nil else { return }
+        peerSettling[path] = SettlingState(fingerprint: FileReadiness.snapshot(path, includingContents: false)?.fingerprint, includesContents: false)
+        schedulePeerSettleCheck(path)
+    }
+    private func schedulePeerSettleCheck(_ path: String, after delay: TimeInterval? = nil) {
+        processingQueue.asyncAfter(deadline: .now() + (delay ?? settleInterval)) { [weak self] in self?.checkPeerSettled(path) }
+    }
+    private func checkPeerSettled(_ path: String) {
+        guard var state = peerSettling[path] else { return }
+        guard let snapshot = FileReadiness.snapshot(path, includingContents: false) else {
+            peerSettling[path] = nil; recheckPeerRules(near: path); return
+        }
+        if snapshot.fingerprint != state.fingerprint {
+            state.fingerprint = snapshot.fingerprint; state.stalledChecks = 0; peerSettling[path] = state
+            schedulePeerSettleCheck(path); return
+        }
+        if snapshot.isMarkedBusy {
+            state.stalledChecks += 1; peerSettling[path] = state
+            schedulePeerSettleCheck(path, after: min(settleInterval * pow(2, Double(min(state.stalledChecks, 16))), maxStalledInterval)); return
+        }
+        peerSettling[path] = nil; recheckPeerRules(near: path)
     }
 
     /// Runs rules on `path` once its fingerprint has stayed the same for a
@@ -204,6 +351,17 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
     private func checkSettled(_ path: String) {
         guard var state = settling[path] else { return }
+        // A rescan may have queued both a folder and its descendants. Wait
+        // for the folder's actual actions before deciding whether Hazel may
+        // process anything inside it.
+        var parent = (path as NSString).deletingLastPathComponent
+        while parent.count > 1 {
+            if settling[parent] != nil {
+                scheduleSettleCheck(path)
+                return
+            }
+            parent = (parent as NSString).deletingLastPathComponent
+        }
         guard let snapshot = FileReadiness.snapshot(path, includingContents: state.includesContents) else {
             settling[path] = nil
             return
@@ -224,21 +382,14 @@ public final class WatcherCoordinator: @unchecked Sendable {
         }
         settling[path] = nil
         handle(path: path)
-        // Contents a folder arrived with never get their own FSEvents events —
-        // they were created outside the watched tree — so a folder that
-        // settles must have its subtree walked, the way Run Now does. The
-        // includesContents snapshot already waited for everything inside to
-        // stop changing, so the entries can be evaluated right away.
-        if state.hasDeferredDescendants || (state.includesContents && isRealDirectory(path)) {
+        // Existing contents of an arriving folder may have no events of
+        // their own. A full-tree settling snapshot covers those contents;
+        // rescan only real folders so links cannot escape the watched tree.
+        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+        let isRealDirectory = (attributes?[.type] as? FileAttributeType) == .typeDirectory
+        if state.hasDeferredDescendants || (state.includesContents && isRealDirectory) {
             handleRescanSubtree(root: path, waitsForSettledFiles: false)
         }
-    }
-
-    private func isRealDirectory(_ path: String) -> Bool {
-        // Inspect the item itself: following a directory symlink would let a
-        // subtree scan apply this watched folder's rules outside its tree.
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path) else { return false }
-        return (attributes[.type] as? FileAttributeType) == .typeDirectory
     }
 
     public func isProcessing(in root: String) -> Bool {
@@ -247,7 +398,6 @@ public final class WatcherCoordinator: @unchecked Sendable {
         return activeProcessingRoots[root, default: 0] > 0
     }
 
-    /// `retrying` runs the rules even though the file hasn't changed.
     func handle(path: String, retrying: Bool = false) {
         // A duplicate/coalesced FSEvent for a path a prior call already
         // moved away — common with FSEvents — would otherwise be replanned
@@ -257,18 +407,67 @@ public final class WatcherCoordinator: @unchecked Sendable {
         guard FileManager.default.fileExists(atPath: path) else { return }
         guard retrying || hasPathChangedSinceLastEvaluation(path) else { return }
 
-        guard let (folder, rules, isPro) = db.withLock({ db -> (WatchedFolder, [Rule], Bool)? in
+        guard let (folder, rules) = db.withLock({ db -> (WatchedFolder, [Rule])? in
             guard let folder = try? db.folderForPath(path) else { return nil }
             let rules = (try? db.executionRules(folderID: folder.id, isPro: self.isPro)) ?? []
             guard !rules.isEmpty else { return nil }
-            return (folder, rules, self.isPro)
+            return (folder, rules)
         }) else { return }
+        defer { recheckPeerRules(near: path) }
 
         beginProcessing(root: folder.path)
         defer { endProcessing(root: folder.path) }
 
         guard let depth = RuleEngine.pathDepth(root: folder.path, path: path) else { return }
-        runAndRecord(path: path, depth: depth, rules: rules, watchedRoot: folder.path, isPro: isPro)
+        ensureTraversalAncestors(root: folder.path, path: path, rules: rules)
+        let pro = db.withLock { _ in isPro }
+        _ = handle(path: path, depth: depth, rules: rules, watchedRoot: folder.path, retrying: retrying, onRecurse: { target in
+            RuleEngine.forEachRuleEntryExecuting(root: folder.path, rules: rules, subtree: target, isPro: pro, lastOpened: self.lastOpened, ancestorDecision: { self.traversalDecision($0, rules: rules) ?? false }) { entry, _, recurse in
+                if entry.path == target { return true }
+                return self.handle(path: entry.path, depth: entry.depth, rules: rules, watchedRoot: folder.path, onRecurse: recurse)
+            }
+        })
+    }
+
+    private func recheckPeerRules(near path: String) {
+        guard let (folder, _) = db.withLock({ db -> (WatchedFolder, [Rule])? in
+            guard let folder = try? db.folderForPath(path) else { return nil }
+            let rules = ((try? db.executionRules(folderID: folder.id, isPro: self.isPro)) ?? []).filter { $0.enabled && RuleEngine.isPeerSensitive($0) }
+            return rules.isEmpty ? nil : (folder, rules)
+        }) else { return }
+        let parent = (path as NSString).deletingLastPathComponent
+        guard let peers = try? FileManager.default.contentsOfDirectory(atPath: parent), peers.count <= 10_000 else { return }
+        recheckPeerBatch(parent: parent, names: peers.sorted(), offset: 0, root: folder.path, folderId: folder.id, generation: peerGeneration[folder.path, default: 0])
+    }
+
+    private func recheckPeerBatch(parent: String, names: [String], offset: Int, root: String, folderId: String, generation: UInt64) {
+        guard peerGeneration[root, default: 0] == generation else { return }
+        let rules = db.withLock { (try? $0.executionRules(folderID: folderId, isPro: self.isPro)) ?? [] }
+        guard rules.contains(where: { $0.enabled && RuleEngine.isPeerSensitive($0) }) else { return }
+        beginProcessing(root: root); defer { endProcessing(root: root) }
+        let deadline = ProcessInfo.processInfo.systemUptime + 2
+        for index in offset..<names.count {
+            if ProcessInfo.processInfo.systemUptime > deadline {
+                processingQueue.async { [weak self] in self?.recheckPeerBatch(parent: parent, names: names, offset: index, root: root, folderId: folderId, generation: generation) }
+                return
+            }
+            let name = names[index]
+            if SystemFileFilter.isExcluded(name) { continue }
+            let peer = (parent as NSString).appendingPathComponent(name)
+            guard (try? db.withLock { try $0.folderForPath(peer) })?.id == folderId,
+                  let depth = RuleEngine.pathDepth(root: root, path: peer) else { continue }
+            // A peer-only event can be the first event after a restart. Recover
+            // each folder's actual Hazel decision before selecting its rules.
+            // Cached decisions avoid replaying folder actions for every peer.
+            ensureTraversalAncestors(root: root, path: peer, rules: rules)
+            guard peerGeneration[root, default: 0] == generation,
+                  FileManager.default.fileExists(atPath: peer),
+                  (try? db.withLock { try $0.folderForPath(peer) })?.id == folderId else { continue }
+            let pro = db.withLock { _ in isPro }
+            let eligible = RuleEngine.rulesForPath(root: root, path: peer, rules: rules, isPro: pro, lastOpened: lastOpened, recurseDecision: { self.traversalDecision($0, rules: rules) ?? false })
+            guard let result = executeWithQuota(path: peer, depth: depth, rules: eligible, root: root, pro: pro, peerRecheckOnly: true) else { continue }
+            record(matched: result.matched, history: result.history, path: peer, rules: rules, cacheOriginal: false)
+        }
     }
 
     private func beginProcessing(root: String) {
@@ -336,77 +535,84 @@ public final class WatcherCoordinator: @unchecked Sendable {
     }
 
     private func handleRescanSubtree(root: String, waitsForSettledFiles: Bool) {
-        guard FileManager.default.fileExists(atPath: root) else { return }
-        guard isRealDirectory(root) else {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir) else { return }
+        guard isDir.boolValue else {
             handle(event: .pathArrived(root), waitsForSettledFiles: waitsForSettledFiles)
             return
         }
 
-        guard let (folder, rules, isPro) = db.withLock({ db -> (WatchedFolder, [Rule], Bool)? in
+        guard let (folder, rules) = db.withLock({ db -> (WatchedFolder, [Rule])? in
             guard let folder = try? db.folderForPath(root) else { return nil }
             let rules = (try? db.executionRules(folderID: folder.id, isPro: self.isPro)) ?? []
             guard !rules.isEmpty else { return nil }
-            return (folder, rules, self.isPro)
+            return (folder, rules)
         }) else { return }
-        guard let rootDepth = RuleEngine.pathDepth(root: folder.path, path: root) else { return }
+        guard RuleEngine.pathDepth(root: folder.path, path: root) != nil else { return }
 
         beginProcessing(root: folder.path)
         defer { endProcessing(root: folder.path) }
+        ensureTraversalAncestors(root: folder.path, path: root, rules: rules)
 
         // A rescan can find files that are still being written just like a
         // live arrival can, so each one goes through the same wait.
-        let process: (String, Int) -> Void = { [self] path, depth in
-            if waitsForSettledFiles {
-                awaitSettled(path, includingContents: false)
-            } else {
-                handle(path: path, depth: depth, rules: rules, watchedRoot: folder.path, isPro: isPro)
+        let pro = db.withLock { _ in isPro }
+        if waitsForSettledFiles {
+            let hasHazelRules = rules.contains { $0.enabled && $0.isHazelImported }
+            RuleEngine.forEachRuleEntryExecuting(root: folder.path, rules: rules, subtree: root, isPro: pro, lastOpened: lastOpened, ancestorDecision: { self.traversalDecision($0, rules: rules) ?? false }) { entry, _, _ in
+                self.awaitSettled(entry.path, includingContents: hasHazelRules)
+                return false
+            }
+        } else {
+            RuleEngine.forEachRuleEntryExecuting(root: folder.path, rules: rules, subtree: root, isPro: pro, lastOpened: lastOpened, ancestorDecision: { self.traversalDecision($0, rules: rules) ?? false }) { entry, _, recurse in
+                self.handle(path: entry.path, depth: entry.depth, rules: rules, watchedRoot: folder.path, onRecurse: recurse)
             }
         }
-
-        let maxDepth = RuleEngine.maxRuleDepth(rules)
-        if root != folder.path, !SystemFileFilter.isExcluded((root as NSString).lastPathComponent) {
-            process(root, rootDepth)
-        }
-
-        let remainingDepth: Int?
-        if let maxDepth {
-            let rootChildDepth = root == folder.path ? 0 : rootDepth + 1
-            guard rootChildDepth <= maxDepth else { return }
-            remainingDepth = maxDepth - rootChildDepth
-        } else {
-            remainingDepth = nil
-        }
-
-        RuleEngine.forEachEntry(root: root, maxDepth: remainingDepth) { entry in
-            guard let depth = RuleEngine.pathDepth(root: folder.path, path: entry.path) else { return }
-            process(entry.path, depth)
-        }
     }
 
-    private func handle(path: String, depth: Int, rules: [Rule], watchedRoot: String, isPro: Bool) {
-        guard FileManager.default.fileExists(atPath: path) else { return }
-        guard hasPathChangedSinceLastEvaluation(path) else { return }
+    private func handle(path: String, depth: Int, rules: [Rule], watchedRoot: String, force: Bool = false, retrying: Bool = false, timedRecheck: Bool = false, now: Date? = nil, onRecurse: ((String) -> Void)? = nil) -> Bool {
+        guard FileManager.default.fileExists(atPath: path) else { return false }
+        var recoveringHazelDecision = force
+        if !force && !retrying && !hasPathChangedSinceLastEvaluation(path) {
+            if let cached = traversalDecision(path, rules: rules) { return cached }
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue,
+                  rules.contains(where: { $0.enabled && $0.isHazelImported }) else { return false }
+            recoveringHazelDecision = true
+        }
 
-        runAndRecord(path: path, depth: depth, rules: rules, watchedRoot: watchedRoot, isPro: isPro)
+        let pro = db.withLock { _ in isPro }
+        let eligibleRules = RuleEngine.rulesForPath(root: watchedRoot, path: path, rules: rules, isPro: pro, lastOpened: lastOpened, recurseDecision: { self.traversalDecision($0, rules: rules) ?? false })
+        let activeRules = timedRecheck ? eligibleRules.filter { $0.isHazelImported || RuleEngine.isTimeSensitive($0) } : recoveringHazelDecision ? eligibleRules.filter(\.isHazelImported) : eligibleRules
+        guard let result = executeWithQuota(path: path, depth: depth, rules: activeRules, root: watchedRoot, pro: pro, date: now, onRecurse: { target in
+            self.activeHazelTraversal.insert(target)
+            defer { self.activeHazelTraversal.remove(target) }
+            onRecurse?(target)
+        }) else { return false }
+        recordTraversal(path, recurses: result.recurses, rules: rules)
+        record(matched: result.matched, history: result.history, path: path, rules: rules)
+        return result.recurses
     }
 
-    private func runAndRecord(path: String, depth: Int, rules: [Rule], watchedRoot: String, isPro: Bool) {
+    private func executeWithQuota(path: String, depth: Int, rules: [Rule], root: String, pro: Bool, date: Date? = nil, peerRecheckOnly: Bool = false, onRecurse: ((String) -> Void)? = nil) -> (matched: [String], history: [HistoryEntry], recurses: Bool)? {
         do {
-            let result = try monthlyUsage.runWithFreePlan(path: path, depth: depth, rules: rules,
-                                               batchId: UUID().uuidString, root: watchedRoot, isPro: isPro, at: now())
+            let result = try monthlyUsage.withFreePlan(isPro: pro, at: date ?? now()) { beforeAction in
+                let result = RuleEngine.runWithTraversal(path: path, depth: depth, rules: rules, batchId: UUID().uuidString, root: root, isPro: pro, platform: actionPlatform, lastOpened: lastOpened, matchState: matchState, counterStore: counterStore, now: date ?? now(), peerRecheckOnly: peerRecheckOnly, beforeAction: beforeAction, onRecurse: onRecurse)
+                return (result, result.history)
+            }
             monthlyUsage.removeQuotaPendingFile(path)
-            record(matched: result.matched, history: result.history, path: path, rules: rules)
+            return result
         } catch FreePlanError.monthlyFileLimit {
             monthlyUsage.queueQuotaPendingFile(path)
             onMonthlyQuotaReached?()
             scheduleQuotaRetry()
+            return nil
         } catch {
             onProcessingError?(error.localizedDescription)
+            return nil
         }
     }
 
-    /// Kept in preferences so a restart does not lose files waiting for quota.
-    /// Only still-watched paths are resumed, including after a Pro activation.
     func retryQuotaPendingFiles() {
         guard !watchedRoots.isEmpty else { return }
         let pro = db.withLock { _ in isPro }
@@ -414,21 +620,13 @@ public final class WatcherCoordinator: @unchecked Sendable {
             scheduleQuotaRetry()
             return
         }
-        let paths = monthlyUsage.quotaPendingFiles()
-        for path in paths where watchedRoots.contains(where: { Self.isPath(path, under: $0) }) {
+        for path in monthlyUsage.quotaPendingFiles() where watchedRoots.contains(where: { Self.isPath(path, under: $0) }) {
             guard FileManager.default.fileExists(atPath: path) else {
                 monthlyUsage.removeQuotaPendingFile(path)
                 continue
             }
-            // A prior failure (e.g. a disconnected disk) may have cached the
-            // unchanged file before its retry hit the quota. It still needs
-            // another evaluation, through the normal settling checks.
-            do {
-                try db.withLock { try $0.deleteWatchedPathState(path) }
-            } catch {
-                onProcessingError?(error.localizedDescription)
-                continue
-            }
+            do { try db.withLock { try $0.deleteWatchedPathState(path) } }
+            catch { onProcessingError?(error.localizedDescription); continue }
             handle(event: .pathArrived(path), waitsForSettledFiles: true)
         }
     }
@@ -437,8 +635,6 @@ public final class WatcherCoordinator: @unchecked Sendable {
         guard !quotaRetryScheduled else { return }
         quotaRetryScheduled = true
         let period = MonthlyFileUsage(at: now())
-        // Recheck hourly too, so waking the Mac or changing its time zone
-        // cannot leave an obsolete reset deadline scheduled for a whole month.
         let delay = max(1, min(3600, period.resetsAt.timeIntervalSince(now())))
         processingQueue.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self else { return }
@@ -447,21 +643,16 @@ public final class WatcherCoordinator: @unchecked Sendable {
         }
     }
 
-    /// Persists what a run on `path` did and tells whoever listens.
-    private func record(matched: [String], history: [HistoryEntry], path: String, rules: [Rule]) {
-        for ruleName in matched {
-            onRuleMatched?(ruleName, path)
-        }
+    private func record(matched: [String], history: [HistoryEntry], path: String, rules: [Rule], cacheOriginal: Bool = true) {
+        for ruleName in matched { onRuleMatched?(ruleName, path) }
         if !history.isEmpty {
-            db.withLock { db in
-                try? db.insertHistoryEntries(history)
-            }
+            db.withLock { try? $0.insertHistoryEntries(history) }
             recordEvaluatedResultStates(history)
             notifyActivity(from: history)
             onHistoryRecorded?()
             waitForDisconnectedVolumes(history, path: path, rules: rules)
         }
-        recordEvaluatedState(path)
+        if cacheOriginal { recordEvaluatedState(path) }
     }
 
     private func notifyActivity(from history: [HistoryEntry]) {

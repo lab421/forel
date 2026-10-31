@@ -46,7 +46,7 @@ import Foundation
     }
 
     @Test func hasOptionsMatchesActionsThatExposeAnOptionsPopover() {
-        let expectedWithOptions: Set<ActionKind> = [.moveToFolder, .copyToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress]
+        let expectedWithOptions: Set<ActionKind> = [.moveToFolder, .copyToFolder, .runShortcut, .openApplication, .openDefault, .showInFinder, .rename, .importToLibrary, .uncompress, .upload]
         for kind in RuleSchema.actionKinds {
             #expect(kind.hasOptions == expectedWithOptions.contains(kind), "\(kind) hasOptions mismatch")
         }
@@ -78,21 +78,25 @@ import Foundation
     @Test func stringKindsMatchEveryDeclaredOperator() {
         let dir = TempDir()
         let file = dir.file("report.txt", contents: "the quarterly report")
-        let fixtures: [ConditionKind: [Operator: String]] = [
+        let blank = dir.file("blank.txt")
+        var fixtures: [ConditionKind: [Operator: String]] = [
             .name: [
                 .is: "report", .isNot: "nope", .contains: "epo", .doesNotContain: "zzz",
                 .startsWith: "rep", .endsWith: "ort", .matchesRegex: "^rep.*",
             ],
             .contents: [
                 .is: "the quarterly report", .isNot: "report", .contains: "quarter",
+                .containsInsensitive: "QUARTER",
                 .doesNotContain: "annual", .startsWith: "the", .endsWith: "report",
-                .matchesRegex: "quarterly\\s+report",
+                .matchesRegex: "quarterly\\s+report", .isBlank: "", .isNotBlank: "",
             ],
         ]
+        fixtures[.contentsWithoutOCR] = fixtures[.contents]
+        fixtures[.contentsWithOCR] = fixtures[.contents]
         for (kind, values) in fixtures {
             assertExhaustive(kind, values)
             for (op, value) in values {
-                #expect(ConditionEvaluator.evaluate(makeCondition(kind, op, value), path: file), "\(kind) \(op) should match")
+                #expect(ConditionEvaluator.evaluate(makeCondition(kind, op, value), path: op == .isBlank ? blank : file), "\(kind) \(op) should match")
             }
         }
     }
@@ -178,14 +182,21 @@ import Foundation
     @Test func dateKindsMatchEveryDeclaredOperator() throws {
         let dir = TempDir()
         let file = dir.file("old.txt", contents: "x")
-        let tenDaysAgo = Calendar.current.date(byAdding: .day, value: -10, to: Date())!
-        try FileManager.default.setAttributes([.modificationDate: tenDaysAgo, .creationDate: tenDaysAgo], ofItemAtPath: file)
+        let oldDate = Calendar.current.date(byAdding: .day, value: -60, to: Date())!
+        try FileManager.default.setAttributes([.modificationDate: oldDate, .creationDate: oldDate], ofItemAtPath: file)
 
         let fixtures: [Operator: String] = [
-            .before: dayString(daysFromNow: 1),     // file (10d ago) is before tomorrow
-            .after: dayString(daysFromNow: -20),    // file (10d ago) is after 20d ago
-            .olderThan: "5 days",                    // file (10d ago) is older than 5 days
-            .withinLast: "30 days",                  // file (10d ago) is within the last 30 days
+            .before: dayString(daysFromNow: 1),
+            .beforeToday: "",
+            .beforeThisWeek: "",
+            .beforeThisMonth: "",
+            .notThisWeek: "",
+            .notThisMonth: "",
+            .after: dayString(daysFromNow: -90),
+            .olderThan: "5 days",
+            .withinLast: "90 days",
+            .hazelWithinLast: "90 days",
+            .hazelNotWithinLast: "5 days",
         ]
         // createdAt and dateModified read real timestamps; dateAdded depends on
         // the volume and may be unavailable in a temp dir, so it's excluded here.
@@ -200,7 +211,10 @@ import Foundation
     // MARK: - Helpers
 
     private func assertExhaustive(_ kind: ConditionKind, _ fixtures: [Operator: String]) {
-        #expect(Set(fixtures.keys) == Set(kind.validOperators),
+        // Change operators require persistent state and are exercised through
+        // RuleEngine in ChangeConditionTests, not by the stateless evaluator.
+        let stateless = kind.validOperators.filter { $0 != .didChange && $0 != .didNotChange }
+        #expect(Set(fixtures.keys) == Set(stateless),
                 "\(kind) fixtures don't cover exactly its catalog operators — add engine support and a fixture")
     }
 

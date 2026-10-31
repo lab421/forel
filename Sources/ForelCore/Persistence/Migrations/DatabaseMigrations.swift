@@ -26,6 +26,13 @@ extension Database {
         (6, { try $0.migrateV6AddWatchedPathState() }),
         (7, { try $0.migrateV7AddHistoryResultIdentity() }),
         (8, { try $0.migrateV8AddHistoryPathIndexes() }),
+        (9, { try $0.migrateV9AddRuleImportError() }),
+        (10, { try $0.migrateV10AddHazelMode() }),
+        (11, { try $0.migrateV11AddHazelMatchState() }),
+        (12, { try $0.migrateV12AddFolderCounters() }),
+        (13, { try $0.migrateV13AddCounterReservations() }),
+        (14, { try $0.migrateV14AddChangeBaselines() }),
+        (15, { try $0.migrateV15AddConditionOrder() }),
     ]
 
     func runMigrations() throws {

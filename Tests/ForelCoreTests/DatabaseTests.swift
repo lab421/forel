@@ -450,4 +450,29 @@ import SQLite3
             _ = try Database(path: path)
         }
     }
+
+    @Test func versionEightRulesMigrateAndPersistImportErrors() throws {
+        let path = NSTemporaryDirectory().appending("forel-db-test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        var raw: OpaquePointer?
+        #expect(sqlite3_open(path, &raw) == SQLITE_OK)
+        let sql = """
+        CREATE TABLE watched_folders (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL,
+            priority INTEGER NOT NULL, created_at TEXT NOT NULL);
+        CREATE TABLE rules (id TEXT PRIMARY KEY, folder_id TEXT NOT NULL, name TEXT NOT NULL, enabled INTEGER NOT NULL,
+            condition_match TEXT NOT NULL, recursion_depth INTEGER NOT NULL, priority INTEGER NOT NULL, created_at TEXT NOT NULL);
+        INSERT INTO watched_folders VALUES ('folder', '/tmp/example', 1, 0, '2026-01-01');
+        INSERT INTO rules VALUES ('rule', 'folder', 'existing', 0, 'all', 0, 0, '2026-01-01');
+        PRAGMA user_version = 8;
+        """
+        #expect(sqlite3_exec(raw, sql, nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(raw)
+        let db = try Database(path: path)
+        var rule = try #require(db.listRules(folderId: "folder").first)
+        #expect(rule.name == "existing")
+        #expect(rule.importError == nil)
+        rule.importError = "Unsupported action"
+        try db.updateRule(rule)
+        #expect(try db.listRules(folderId: "folder").first?.importError == "Unsupported action")
+    }
 }

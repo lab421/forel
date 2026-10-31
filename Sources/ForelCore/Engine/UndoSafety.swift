@@ -60,9 +60,32 @@ public enum UndoChecker {
             guard FileManager.default.fileExists(atPath: copy) else {
                 return .unsafe(reason: "The copy Forel created no longer exists.")
             }
-        case .addTags, .removeTags, .color:
+        case .archive(let original, let trashed, let archive, let trashFingerprint, let archiveFingerprint):
+            guard !FileManager.default.fileExists(atPath: original),
+                  ActionExecutor.archiveUndoFingerprint(trashed, contents: false) == trashFingerprint,
+                  ActionExecutor.archiveUndoFingerprint(archive, contents: true) == archiveFingerprint else {
+                return .unsafe(reason: "The original or archive has changed, so it cannot be restored safely.")
+            }
+            if let mismatch = identityMismatchReason(entry, currentPath: archive) { return .unsafe(reason: mismatch) }
+        case .addTags, .removeTags, .color, .fileFlag, .finderComment:
             guard FileManager.default.fileExists(atPath: entry.resultPath) else {
                 return .unsafe(reason: "The file no longer exists at its expected location.")
+            }
+        case .tagColors(let path, _, let after, _, let afterLabel):
+            guard FileManager.default.fileExists(atPath: path) else { return .unsafe(reason: "The file no longer exists at its expected location.") }
+            guard (try? ActionExecutor.finderLabel(path)) == afterLabel,
+                  (try? FinderTags.readChecked(path).filter { FinderTags.tagColor($0) != nil }) == after else {
+                return .unsafe(reason: "Finder color tags or the label changed since the action ran.")
+            }
+        case .tagState(let path, _, let after, _, let afterLabel):
+            guard FileManager.default.fileExists(atPath: path), (try? ActionExecutor.finderLabel(path)) == afterLabel,
+                  (try? FinderTags.readChecked(path)) == after else { return .unsafe(reason: "Finder tags or the label changed since the action ran.") }
+        case .finderLabel(let path, _):
+            guard FileManager.default.fileExists(atPath: path) else {
+                return .unsafe(reason: "The file no longer exists at its expected location.")
+            }
+            guard (try? FinderTags.hasExistingTags(path)) == false else {
+                return .unsafe(reason: "Finder tags were added or cannot be inspected, so the label cannot be safely restored.")
             }
         }
 
@@ -94,7 +117,8 @@ public enum UndoChecker {
     private static func restoreTarget(_ entry: HistoryEntry) -> String? {
         switch Undo.fromJSON(entry.undo) {
         case .move(let from, _): return from
-        case .addTags(let path, _), .removeTags(let path, _), .color(let path, _): return path
+        case .archive(let original, _, _, _, _): return original
+        case .addTags(let path, _), .removeTags(let path, _), .color(let path, _), .finderLabel(let path, _), .fileFlag(let path, _, _), .finderComment(let path, _), .tagColors(let path, _, _, _, _), .tagState(let path, _, _, _, _): return path
         case .copy, .none: return nil
         }
     }

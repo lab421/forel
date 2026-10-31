@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import Foundation
+import CryptoKit
 
 public struct ScopedPath: Sendable {
     public let path: String
@@ -45,15 +46,17 @@ public struct ConditionPreview: Sendable {
     public let operator_: Operator
     public let value: String
     public let matched: Bool
+    public let known: Bool
     /// Optional secondary line shown in the Dry Run — e.g. for `contents`, which
     /// extraction strategy was used ("PDF text") or why nothing was read.
     public let detail: String?
 
-    public init(kind: ConditionKind, operator_: Operator, value: String, matched: Bool, detail: String? = nil) {
+    public init(kind: ConditionKind, operator_: Operator, value: String, matched: Bool, detail: String? = nil, known: Bool = true) {
         self.kind = kind
         self.operator_ = operator_
         self.value = value
         self.matched = matched
+        self.known = known
         self.detail = detail
     }
 }
@@ -64,7 +67,6 @@ public struct ActionPreview: Hashable, Sendable {
     public let sourcePath: String
     public let targetPath: String?
     public let status: DryRunStatus
-    /// Why the action is expected to fail when it runs, if already known.
     public let warning: String?
 
     public init(kind: ActionKind, description: String, sourcePath: String, targetPath: String?, status: DryRunStatus, warning: String? = nil) {
@@ -112,9 +114,14 @@ public enum RuleEngine {
     /// status) with `previewFile` by going through `ActionExecutor.plan`
     /// first, then acting on it — so Dry Run, Run Now, and the watcher can
     /// never see a different outcome for the same file and rules.
-    public static func run(path: String, depth: Int, rules: [Rule], batchId: String, root: String? = nil, isPro: Bool = true) -> (matched: [String], history: [HistoryEntry]) {
+    public static func run(path: String, depth: Int, rules: [Rule], batchId: String, root: String? = nil, isPro: Bool = true, platform: any ActionPlatform = MacActionPlatform(), lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata(), matchState: (any HazelMatchStateStore)? = nil, counterStore: (any FolderCounterStore)? = nil, now: Date = Date(), forceRunPreviouslyMatched: Bool = false, beforeAction: (() throws -> Void)? = nil) -> (matched: [String], history: [HistoryEntry]) {
+        let result = runWithTraversal(path: path, depth: depth, rules: rules, batchId: batchId, root: root, isPro: isPro, platform: platform, lastOpened: lastOpened, matchState: matchState, counterStore: counterStore, now: now, forceRunPreviouslyMatched: forceRunPreviouslyMatched, beforeAction: beforeAction)
+        return (result.matched, result.history)
+    }
+
+    public static func runWithTraversal(path: String, depth: Int, rules: [Rule], batchId: String, root: String? = nil, isPro: Bool = true, platform: any ActionPlatform = MacActionPlatform(), lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata(), matchState: (any HazelMatchStateStore)? = nil, counterStore: (any FolderCounterStore)? = nil, now: Date = Date(), forceRunPreviouslyMatched: Bool = false, peerRecheckOnly: Bool = false, beforeAction: (() throws -> Void)? = nil, onRecurse: ((String) -> Void)? = nil) -> (matched: [String], history: [HistoryEntry], recurses: Bool) {
         guard !SystemFileFilter.isExcluded((path as NSString).lastPathComponent), !FileReadiness.isMarkedBusy(path) else {
-            return ([], [])
+            return ([], [], false)
         }
 
         struct PendingFile {
@@ -126,6 +133,7 @@ public enum RuleEngine {
 
         var matched: [String] = []
         var history: [HistoryEntry] = []
+        var recurses = false
         var pending = [PendingFile(path: path, depth: depth, startRuleIndex: 0, blockedRuleIds: [])]
         // A folder is only walked for busy items once a rule actually wants
         // to act on it; doing so for every scanned entry would read the whole
@@ -141,18 +149,80 @@ public enum RuleEngine {
             for ruleIndex in target.startRuleIndex..<rules.count {
                 let rule = rules[ruleIndex]
                 guard !blockedRuleIds.contains(rule.id) else { continue }
-                guard rule.enabled, isPro || FreePlan.requiredFeature(for: rule) == nil,
-                      ruleMatches(rule, path: currentPath, depth: currentDepth, allowOCR: isPro) else { continue }
+                guard rule.enabled, (isPro || FreePlan.requiredFeature(for: rule) == nil), ruleInScope(rule, depth: currentDepth) else { continue }
+                if peerRecheckOnly && !isPeerSensitive(rule) && !rule.isHazelImported { continue }
+                if let error = rule.importError {
+                    history.append(HistoryEntry(batchId: batchId, ruleId: rule.id, ruleName: rule.name,
+                                                actionKind: .importError, originalPath: currentPath, resultPath: currentPath,
+                                                undo: Undo.none.toJSON(), reversible: false, status: .failed,
+                                                message: "Incomplete Hazel import: \(error)"))
+                    break
+                }
+                let hasChange = ChangeCondition.containsChange(rule.conditions)
+                let hasDidChange = ChangeCondition.containsDidChange(rule.conditions, negated: rule.conditionMatch == .none)
+                let tracksState = rule.isHazelImported || isTimeSensitive(rule) || isPeerSensitive(rule) || hasChange
+                let itemKey = tracksState ? matchState?.itemKey(path: currentPath) : nil
+                let signature = conditionSignature(rule)
+                let oldState: HazelMatchState?
+                do { oldState = try itemKey.flatMap { try matchState?.state(ruleId: rule.id, itemKey: $0) } }
+                catch {
+                    history.append(HistoryEntry(batchId: batchId, ruleId: rule.id, ruleName: rule.name, actionKind: .importError, originalPath: currentPath, resultPath: currentPath, undo: Undo.none.toJSON(), reversible: false, status: .failed, message: "Could not read rule match state: \(error)"))
+                    break
+                }
+                var conditionAttributes: [String: JSONValue] = [:]
+                let tracker = ChangeTracker(state: matchState, ruleId: rule.id)
+                if peerRecheckOnly && !isPeerSensitive(rule) && rule.isHazelImported && hasScriptCondition(rule) {
+                    history.append(HistoryEntry(batchId: batchId, ruleId: rule.id, ruleName: rule.name, actionKind: .importError, originalPath: currentPath, resultPath: currentPath, undo: Undo.none.toJSON(), reversible: false, status: .skipped, message: "Peer recheck needs an earlier rule’s script condition; run rules now to evaluate it."))
+                    break
+                }
+                do {
+                    if hasChange && tracker == nil { throw ActionError("Change conditions require a persistent watched-folder state store") }
+                    let matched = try ruleMatches(rule, path: currentPath, depth: currentDepth, lastOpened: lastOpened, lastMatched: oldState?.lastMatched, now: now, attributes: &conditionAttributes, tracker: tracker, allowOCR: isPro)
+                    if let tracker { try tracker.commit(tracker.seeds) }
+                    guard matched else {
+                        if let tracker { try tracker.commit(tracker.stableUpdates) }
+                        if tracksState, let itemKey, let oldState, oldState.matched {
+                            try matchState?.setState(HazelMatchState(conditionSignature: signature, matched: false, lastMatched: oldState.lastMatched), ruleId: rule.id, itemKey: itemKey)
+                        }
+                        continue
+                    }
+                } catch {
+                    history.append(HistoryEntry(batchId: batchId, ruleId: rule.id, ruleName: rule.name, actionKind: .runHazelOSA, originalPath: currentPath, resultPath: currentPath, undo: Undo.none.toJSON(), reversible: false, status: .failed, message: "Condition failed: \(error)"))
+                    break
+                }
+                if peerRecheckOnly && !isPeerSensitive(rule) {
+                    if rule.actions.allSatisfy({ $0.kind == .hazelContinue }) && !rule.actions.isEmpty { continue }
+                    if rule.actions.contains(where: { $0.kind == .hazelContinue }) {
+                        history.append(HistoryEntry(batchId: batchId, ruleId: rule.id, ruleName: rule.name, actionKind: .importError, originalPath: currentPath, resultPath: currentPath, undo: Undo.none.toJSON(), reversible: false, status: .skipped, message: "Peer recheck needs an earlier continuing rule’s actions; run rules now to evaluate them."))
+                    }
+                    break
+                }
+                if !hasDidChange, !forceRunPreviouslyMatched, tracksState, oldState?.matched == true, oldState?.conditionSignature == signature,
+                   (rule.isHazelImported || oldState?.fingerprint == FileFingerprint.current(currentPath)) {
+                    if oldState?.recurses == true, let onRecurse, isRealDirectory(currentPath) {
+                        onRecurse(currentPath)
+                        recurses = true
+                    }
+                    continue
+                }
                 if !checkedBusyContents {
                     checkedBusyContents = true
-                    if FileReadiness.containsBusyItem(path) { return ([], []) }
+                    if FileReadiness.containsBusyItem(path) { return ([], [], false) }
                 }
 
-                let result = runActions(rule, path: currentPath, batchId: batchId)
+                let result = runActions(rule, path: currentPath, batchId: batchId, platform: platform, watchedRoot: root, counterStore: counterStore, initialAttributes: conditionAttributes, beforeAction: beforeAction, onRecurse: onRecurse)
                 history.append(contentsOf: result.history)
+                recurses = recurses || result.recurses
                 matched.append(rule.name)
+                if tracksState, let itemKey, result.history.allSatisfy({ $0.status == .applied || $0.status == .skipped }) {
+                    do {
+                        if let tracker { try tracker.commit(tracker.updates) }
+                        try matchState?.setState(HazelMatchState(conditionSignature: signature, matched: true, lastMatched: now, recurses: result.recurses, fingerprint: FileFingerprint.current(result.finalPath)), ruleId: rule.id, itemKey: itemKey)
+                    }
+                    catch { history.append(HistoryEntry(batchId: batchId, ruleId: rule.id, ruleName: rule.name, actionKind: .importError, originalPath: currentPath, resultPath: result.finalPath, undo: Undo.none.toJSON(), reversible: false, status: .failed, message: "Could not save rule match state: \(error)")) }
+                }
 
-                for copiedPath in result.copiedPaths {
+                for copiedPath in (rule.isHazelImported && !result.continues ? [] : result.copiedPaths) {
                     let copiedDepth: Int
                     if let root {
                         guard let depth = pathDepth(root: root, path: copiedPath) else { continue }
@@ -175,7 +245,7 @@ public enum RuleEngine {
                 // skipped/blocked conflict), later actions in this rule and
                 // later rules in this pass were written assuming it had, so
                 // stop here regardless of whether it ran.
-                if result.isTerminal { break }
+                if result.isTerminal || (rule.isHazelImported && (!result.continues || (root != nil && pathDepth(root: root!, path: result.finalPath) == nil))) { break }
 
                 // A non-terminal action (e.g. rename) can still change the
                 // file's path; follow it so the next rule in the chain sees
@@ -189,10 +259,10 @@ public enum RuleEngine {
                 }
             }
         }
-        return (matched, history)
+        return (matched, history, recurses)
     }
 
-    public static func previewFile(path: String, depth: Int, rules: [Rule], isPro: Bool = true) -> FilePreview? {
+    public static func previewFile(path: String, depth: Int, rules: [Rule], root: String? = nil, isPro: Bool = true, lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata(), matchState: (any HazelMatchStateStore)? = nil, counterStore: (any FolderCounterStore)? = nil, now: Date = Date(), onRecurse: ((String) -> Void)? = nil) -> FilePreview? {
         guard !SystemFileFilter.isExcluded((path as NSString).lastPathComponent), !FileReadiness.isMarkedBusy(path) else {
             return nil
         }
@@ -217,16 +287,38 @@ public enum RuleEngine {
             for ruleIndex in target.startRuleIndex..<rules.count {
                 let rule = rules[ruleIndex]
                 guard !blockedRuleIds.contains(rule.id) else { continue }
-                guard rule.enabled, isPro || FreePlan.requiredFeature(for: rule) == nil,
-                      ruleInScope(rule, depth: currentDepth) else { continue }
-                let conditions = conditionPreviews(rule, path: currentPath, allowOCR: isPro)
-                guard conditionResultsMatch(conditions.map(\.matched), rule.conditionMatch) else { continue }
+                guard rule.enabled, (isPro || FreePlan.requiredFeature(for: rule) == nil), ruleInScope(rule, depth: currentDepth) else { continue }
+                if let error = rule.importError {
+                    matchedRules.append(RulePreview(ruleId: rule.id, ruleName: rule.name, conditions: [],
+                        actions: [ActionPreview(kind: .importError, description: "Incomplete Hazel import: \(error)",
+                                                sourcePath: currentPath, targetPath: nil, status: .blocked)]))
+                    break
+                }
+                var conditionAttributes: [String: JSONValue] = [:]
+                let tracker = ChangeTracker(state: matchState, ruleId: rule.id)
+                let conditions: [ConditionPreview]
+                let oldState: HazelMatchState?
+                do {
+                    oldState = try matchState.flatMap { try $0.state(ruleId: rule.id, itemKey: $0.itemKey(path: currentPath)) }
+                    conditions = try conditionPreviews(rule, path: currentPath, depth: currentDepth, lastOpened: lastOpened, lastMatched: oldState?.lastMatched, now: now, attributes: &conditionAttributes, tracker: tracker, allowOCR: isPro)
+                }
+                catch {
+                    matchedRules.append(RulePreview(ruleId: rule.id, ruleName: rule.name, conditions: [], actions: [ActionPreview(kind: .runHazelOSA, description: "Condition failed: \(error)", sourcePath: currentPath, targetPath: nil, status: .blocked)]))
+                    break
+                }
+                guard conditionResultsMatch(conditions.map { $0.known ? $0.matched : nil }, rule.conditionMatch) else { continue }
+                if !ChangeCondition.containsDidChange(rule.conditions, negated: rule.conditionMatch == .none), rule.isHazelImported, oldState?.matched == true, oldState?.conditionSignature == conditionSignature(rule) {
+                    if oldState?.recurses == true, let onRecurse, isRealDirectory(currentPath) { onRecurse(currentPath) }
+                    matchedRules.append(RulePreview(ruleId: rule.id, ruleName: rule.name, conditions: conditions,
+                        actions: [ActionPreview(kind: .ignore, description: "Already matched; waiting for conditions to change", sourcePath: currentPath, targetPath: nil, status: .wouldSkip)]))
+                    continue
+                }
                 if !checkedBusyContents {
                     checkedBusyContents = true
                     if FileReadiness.containsBusyItem(path) { return nil }
                 }
 
-                let result = previewActions(rule, path: currentPath)
+                let result = previewActions(rule, path: currentPath, watchedRoot: root, counterStore: counterStore, initialAttributes: conditionAttributes, onRecurse: onRecurse)
                 matchedRules.append(
                     RulePreview(
                         ruleId: rule.id,
@@ -236,7 +328,7 @@ public enum RuleEngine {
                     )
                 )
 
-                for copiedPath in result.copiedPaths {
+                for copiedPath in (rule.isHazelImported && !result.continues ? [] : result.copiedPaths) {
                     pending.append(
                         PendingFile(
                             path: copiedPath,
@@ -247,7 +339,7 @@ public enum RuleEngine {
                     )
                 }
 
-                if result.isTerminal { break }
+                if result.isTerminal || (rule.isHazelImported && (!result.continues || (root != nil && pathDepth(root: root!, path: result.finalPath) == nil))) { break }
 
                 if result.finalPath != currentPath {
                     currentPath = result.finalPath
@@ -263,12 +355,49 @@ public enum RuleEngine {
         return FilePreview(path: path, name: (path as NSString).lastPathComponent, rules: matchedRules)
     }
 
-    private static func conditionPreviews(_ rule: Rule, path: String, allowOCR: Bool) -> [ConditionPreview] {
-        rule.conditions.map { condition in
+    private static func conditionPreviews(_ rule: Rule, path: String, depth: Int, lastOpened: any LastOpenedMetadataProvider, lastMatched: Date?, now: Date, attributes: inout [String: JSONValue], tracker: ChangeTracker? = nil, allowOCR: Bool = true) throws -> [ConditionPreview] {
+        guard rule.conditions.filter({ $0.kind == .peerRanking }).count <= 1 else { throw ActionError("Only one peer ranking condition is supported in a group") }
+        var decided = false
+        return try rule.conditions.map { condition in
+            if needsOrderedConditions(rule) && decided {
+                return ConditionPreview(kind: condition.kind, operator_: condition.operator, value: condition.displayValue, matched: false, detail: "Not evaluated")
+            }
+            let preview: ConditionPreview = try {
+            if ChangeCondition.isChange(condition) {
+                let value = try tracker?.evaluate(condition, path: path)
+                return ConditionPreview(kind: condition.kind, operator_: condition.operator, value: "", matched: value ?? false, detail: value == nil ? "Persistent state is unavailable" : nil, known: value != nil)
+            }
+            if condition.kind == .peerRanking {
+                let filters = rule.conditionMatch == .all ? rule.conditions.filter { $0.kind != .peerRanking } : []
+                let value = try ConditionEvaluator.evaluatePeerRanking(condition, path: path, depth: depth, lastOpened: lastOpened, now: now, filters: filters, allowOCR: allowOCR)
+                return ConditionPreview(kind: condition.kind, operator_: condition.operator, value: condition.displayValue, matched: value ?? false, detail: value == nil ? "Peer metadata was unavailable or the scan exceeded its limit." : nil, known: value != nil)
+            }
+            if condition.kind == .conditionGroup, let group = ConditionGroup.decode(condition.value) {
+                let target: String
+                switch group.target {
+                case .current: target = "this item"
+                case .parent: target = "the enclosing folder"
+                case .anySibling: target = "any sibling"
+                case .allSiblings: target = "all siblings"
+                case .anyChild: target = "any contained item"
+                case .allChildren: target = "all contained items"
+                }
+                let detail = group.conditions.map { $0.kind.label }.joined(separator: ", ")
+                let result = try ConditionEvaluator.evaluateWithContext(condition, path: path, depth: depth, lastOpened: lastOpened, lastMatched: lastMatched, now: now, attributes: &attributes, change: tracker.map { tracker in { condition, path, negated in try tracker.evaluate(condition, path: path, negated: negated != (rule.conditionMatch == .none)) } }, allowOCR: allowOCR)
+                return ConditionPreview(kind: condition.kind, operator_: condition.operator,
+                                        value: "\(group.match.rawValue.capitalized) conditions on \(target)",
+                                        matched: result ?? false,
+                                        detail: detail.isEmpty ? nil : detail, known: result != nil)
+            }
+            if condition.kind == .hazelScriptCondition {
+                let matched = try ConditionEvaluator.evaluateWithContext(condition, path: path, depth: depth, lastOpened: lastOpened, lastMatched: lastMatched, now: now, attributes: &attributes, allowOCR: allowOCR) ?? false
+                return ConditionPreview(kind: condition.kind, operator_: condition.operator, value: "Script condition", matched: matched, detail: "Executed during Dry Run")
+            }
             // `contents` runs the extraction pipeline once and reports which
             // strategy was used, so the Dry Run can show what was actually read.
-            if condition.kind == .contents {
+            if condition.kind == .contents || condition.kind == .contentsWithoutOCR || condition.kind == .contentsWithOCR || condition.kind == .contentsWithPassword {
                 let result = ConditionEvaluator.evaluateContents(condition, path: path, allowOCR: allowOCR)
+                let available = rule.conditionMatch == .none || condition.kind == .contentsWithPassword ? try ConditionEvaluator.evaluateWithContext(condition, path: path, depth: depth, lastOpened: lastOpened, lastMatched: lastMatched, now: now, requireAvailable: true, attributes: &attributes, allowOCR: allowOCR) : result.matched
                 let detail: String
                 if let message = result.message {
                     detail = "\(result.strategy.label) — \(message)"
@@ -278,25 +407,30 @@ public enum RuleEngine {
                 return ConditionPreview(
                     kind: condition.kind,
                     operator_: condition.operator,
-                    value: condition.value,
-                    matched: result.matched,
-                    detail: detail
+                    value: condition.displayValue,
+                    matched: available ?? false,
+                    detail: detail, known: available != nil
                 )
             }
+            let available = try ConditionEvaluator.evaluateWithContext(condition, path: path, depth: depth, lastOpened: lastOpened, lastMatched: lastMatched, now: now, requireAvailable: rule.conditionMatch == .none, attributes: &attributes, allowOCR: allowOCR)
             return ConditionPreview(
                 kind: condition.kind,
                 operator_: condition.operator,
-                value: condition.value,
-                matched: ConditionEvaluator.evaluate(condition, path: path, allowOCR: allowOCR)
+                value: condition.displayValue,
+                matched: available ?? false, known: available != nil
             )
+            }()
+            if preview.known && (rule.conditionMatch == .all && !preview.matched || rule.conditionMatch != .all && preview.matched) { decided = true }
+            return preview
         }
     }
 
-    private static func conditionResultsMatch(_ results: [Bool], _ match: ConditionMatch) -> Bool {
+    private static func conditionResultsMatch(_ results: [Bool?], _ match: ConditionMatch) -> Bool {
         if results.isEmpty { return true }
         switch match {
-        case .all: return results.allSatisfy { $0 }
-        case .any: return results.contains(true)
+        case .all: return results.allSatisfy { $0 == true }
+        case .any: return results.contains { $0 == true }
+        case .none: return results.allSatisfy { $0 == false }
         }
     }
 
@@ -308,27 +442,93 @@ public enum RuleEngine {
     /// `.any` are order-independent. Used by `run`, which only needs a
     /// yes/no answer; `previewFile` keeps the original order and evaluates
     /// every condition on purpose, to show each one's result in the Dry Run.
-    private static func ruleMatches(_ rule: Rule, path: String, depth: Int, allowOCR: Bool) -> Bool {
+    private struct ConditionSignature: Encodable {
+        let mode: ConditionMatch
+        let conditions: [Condition]
+    }
+
+    public static func isTimeSensitive(_ rule: Rule) -> Bool {
+        func sensitive(_ condition: Condition) -> Bool {
+            if condition.kind == .conditionGroup, let group = ConditionGroup.decode(condition.value) {
+                return group.conditions.contains(where: sensitive)
+            }
+            if condition.kind == .currentTime || condition.kind == .dateLastMatched || condition.kind == .dateComparison { return true }
+            guard [.createdAt, .dateModified, .dateAdded, .dateLastOpened].contains(condition.kind) else { return false }
+            return condition.operator.usesRelativeDateValue || [.beforeToday, .beforeThisWeek, .beforeThisMonth, .notThisWeek, .notThisMonth].contains(condition.operator)
+        }
+        return rule.conditions.contains(where: sensitive)
+    }
+
+    public static func isPeerSensitive(_ rule: Rule) -> Bool {
+        func sensitive(_ condition: Condition) -> Bool {
+            if condition.kind == .peerRanking { return true }
+            guard condition.kind == .conditionGroup, let group = ConditionGroup.decode(condition.value) else { return false }
+            return group.conditions.contains(where: sensitive)
+        }
+        return rule.conditions.contains(where: sensitive)
+    }
+
+    private static func hasScriptCondition(_ rule: Rule) -> Bool {
+        func contains(_ condition: Condition) -> Bool {
+            if condition.kind == .hazelScriptCondition { return true }
+            guard condition.kind == .conditionGroup, let group = ConditionGroup.decode(condition.value) else { return false }
+            return group.conditions.contains(where: contains)
+        }
+        return rule.conditions.contains(where: contains)
+    }
+
+    private static func conditionSignature(_ rule: Rule) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        guard let encoded = try? encoder.encode(ConditionSignature(mode: rule.conditionMatch, conditions: rule.conditions)) else { return "" }
+        return SHA256.hash(data: encoded).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func needsOrderedConditions(_ rule: Rule) -> Bool {
+        func dependsOnOrder(_ condition: Condition) -> Bool {
+            if condition.kind == .hazelScriptCondition || condition.kind == .scriptAttribute || condition.kind == .customTableMatch || condition.kind == .customDateMatch || condition.kind == .customTextMatch || condition.kind == .dateComparison { return true }
+            if condition.kind == .conditionGroup, let group = ConditionGroup.decode(condition.value) {
+                return group.conditions.contains(where: dependsOnOrder)
+            }
+            return false
+        }
+        return rule.isHazelImported || rule.conditions.contains(where: dependsOnOrder)
+    }
+
+    private static func ruleMatches(_ rule: Rule, path: String, depth: Int, lastOpened: any LastOpenedMetadataProvider, lastMatched: Date? = nil, now: Date = Date(), attributes: inout [String: JSONValue], tracker: ChangeTracker? = nil, allowOCR: Bool = true) throws -> Bool {
+        guard rule.conditions.filter({ $0.kind == .peerRanking }).count <= 1 else { throw ActionError("Only one peer ranking condition is supported in a group") }
         guard ruleInScope(rule, depth: depth) else { return false }
         if rule.conditions.isEmpty { return true }
 
-        let ordered = rule.conditions.sorted { evaluationCost($0.kind) < evaluationCost($1.kind) }
-        switch rule.conditionMatch {
-        case .all:
-            return ordered.allSatisfy { ConditionEvaluator.evaluate($0, path: path, allowOCR: allowOCR) }
-        case .any:
-            return ordered.contains { ConditionEvaluator.evaluate($0, path: path, allowOCR: allowOCR) }
+        let ordered = needsOrderedConditions(rule)
+            ? rule.conditions : rule.conditions.sorted { evaluationCost($0.kind) < evaluationCost($1.kind) }
+        var unknown = false
+        for condition in ordered {
+            let result: Bool?
+            if ChangeCondition.isChange(condition) { result = try tracker?.evaluate(condition, path: path, negated: rule.conditionMatch == .none) }
+            else if condition.kind == .peerRanking {
+                let filters = rule.conditionMatch == .all ? rule.conditions.filter { $0.kind != .peerRanking } : []
+                result = try ConditionEvaluator.evaluatePeerRanking(condition, path: path, depth: depth, lastOpened: lastOpened, now: now, filters: filters, allowOCR: allowOCR)
+            } else {
+                result = try ConditionEvaluator.evaluateWithContext(condition, path: path, depth: depth, lastOpened: lastOpened, lastMatched: lastMatched, now: now, requireAvailable: rule.conditionMatch == .none, attributes: &attributes, change: tracker.map { tracker in { condition, path, negated in try tracker.evaluate(condition, path: path, negated: negated != (rule.conditionMatch == .none)) } }, allowOCR: allowOCR)
+            }
+            guard let result else { unknown = true; continue }
+            if rule.conditionMatch == .all && !result { return false }
+            if rule.conditionMatch == .any && result { return true }
+            if rule.conditionMatch == .none && result { return false }
         }
+        return !unknown && rule.conditionMatch != .any
     }
 
     /// Relative cost of evaluating a condition, used only to order evaluation so
     /// the cheap checks can short-circuit before the expensive ones. `contents`
     /// can read/parse the whole file (and run OCR), so it is always evaluated last.
     private static func evaluationCost(_ kind: ConditionKind) -> Int {
-        kind == .contents ? 1 : 0
+        (kind == .contents || kind == .contentsWithoutOCR || kind == .contentsWithOCR || kind == .contentsWithPassword) ? 1 : 0
     }
 
     private static func ruleInScope(_ rule: Rule, depth: Int) -> Bool {
+        if rule.isHazelImported { return true }
         guard let limit = rule.recursionDepth else { return true }
         if limit >= 0 { return depth <= Int(limit) }
         return depth == 0
@@ -381,7 +581,7 @@ public enum RuleEngine {
     }
 
     public static func maxRuleDepth(_ rules: [Rule]) -> Int? {
-        let enabledRules = rules.filter(\.enabled)
+        let enabledRules = rules.filter { $0.enabled && !$0.isHazelImported }
         guard !enabledRules.isEmpty else { return 0 }
         if enabledRules.contains(where: { $0.recursionDepth == nil }) { return nil }
         return enabledRules.compactMap { rule in
@@ -389,22 +589,165 @@ public enum RuleEngine {
         }.max()
     }
 
+    /// Rules for an individual watcher event: imported rules can reach a
+    /// descendant only if every intervening folder permits Hazel recursion.
+    public static func rulesForPath(root: String, path: String, rules: [Rule], isPro: Bool = true, lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata(), recurseDecision: ((String) -> Bool?)? = nil) -> [Rule] {
+        guard let depth = pathDepth(root: root, path: path), depth > 0 else { return rules }
+        let rootParts = (root as NSString).standardizingPath as NSString
+        let pathParts = ((path as NSString).standardizingPath as NSString).pathComponents
+        let rootCount = rootParts.pathComponents.count
+        var ancestor = rootParts as String
+        for component in pathParts[rootCount..<(pathParts.count - 1)] {
+            ancestor = (ancestor as NSString).appendingPathComponent(component)
+            guard isRealDirectory(ancestor), recurseDecision?(ancestor) ?? hazelCanDescend(path: ancestor, depth: pathDepth(root: root, path: ancestor) ?? 0, rules: rules, lastOpened: lastOpened, isPro: isPro) else {
+                return rules.filter { !$0.isHazelImported }
+            }
+        }
+        return rules
+    }
+
+    private static func isRealDirectory(_ path: String) -> Bool {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              (attrs[.type] as? FileAttributeType) == .typeDirectory else { return false }
+        return true
+    }
+
+    private static func hazelCanDescend(path: String, depth: Int, rules: [Rule], lastOpened: any LastOpenedMetadataProvider, isPro: Bool) -> Bool {
+        for rule in rules where rule.enabled && rule.isHazelImported && (isPro || FreePlan.requiredFeature(for: rule) == nil) {
+            if rule.importError != nil { return false }
+            var attributes: [String: JSONValue] = [:]
+            guard (try? ruleMatches(rule, path: path, depth: depth, lastOpened: lastOpened, attributes: &attributes, allowOCR: isPro)) == true else { continue }
+            let result = previewActions(rule, path: path)
+            if result.actions.contains(where: { $0.kind == .hazelRecurse && $0.status == .wouldRun }) { return true }
+            if result.isTerminal || !result.continues { return false }
+        }
+        return false
+    }
+
+    /// Stream entries in directory order so actions on a folder happen before
+    /// scanning it. Native scope and Hazel's per-folder decisions coexist.
+    public static func forEachRuleEntry(root: String, rules: [Rule], subtree: String? = nil, isPro: Bool = true, lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata(), _ visit: @escaping (ScopedPath, [Rule]) -> Void) {
+        forEachRuleEntryInner(root: root, rules: rules, subtree: subtree, isPro: isPro, lastOpened: lastOpened, ancestorDecision: nil) { entry, active, _ in
+            visit(entry, active)
+            return nil
+        }
+    }
+
+    public static func forEachRuleEntryExecuting(root: String, rules: [Rule], subtree: String? = nil, isPro: Bool = true, lastOpened: any LastOpenedMetadataProvider = SpotlightLastOpenedMetadata(), ancestorDecision: ((String) -> Bool?)? = nil, _ visit: @escaping (ScopedPath, [Rule], @escaping (String) -> Void) -> Bool) {
+        forEachRuleEntryInner(root: root, rules: rules, subtree: subtree, isPro: isPro, lastOpened: lastOpened, ancestorDecision: ancestorDecision) { entry, active, recurse in visit(entry, active, recurse) }
+    }
+
+    private static func forEachRuleEntryInner(root: String, rules: [Rule], subtree: String?, isPro: Bool, lastOpened: any LastOpenedMetadataProvider, ancestorDecision: ((String) -> Bool?)?, _ visit: @escaping (ScopedPath, [Rule], @escaping (String) -> Void) -> Bool?) {
+        let nativeDepth = maxRuleDepth(rules)
+        func contains(_ root: String, _ path: String) -> Bool {
+            let a = (root as NSString).pathComponents
+            let b = (path as NSString).pathComponents
+            return b.count >= a.count && Array(b.prefix(a.count)) == a
+        }
+        func walk(_ directory: String, _ depth: Int, _ hazelAllowed: Bool) {
+            guard let children = try? FileManager.default.contentsOfDirectory(atPath: directory) else { return }
+            for child in children.sorted() where !SystemFileFilter.isExcluded(child) {
+                let path = (directory as NSString).appendingPathComponent(child)
+                if let subtree, !contains(subtree, path) && !contains(path, subtree) { continue }
+                let activeRules = hazelAllowed ? rules : rules.filter { !$0.isHazelImported }
+                var descendHazel = false
+                var traversed = false
+                if subtree == nil || contains(subtree!, path) {
+                    let recurse: (String) -> Void = { target in
+                        guard !traversed, isRealDirectory(target) else { return }
+                        traversed = true
+                        walk(target, depth + 1, true)
+                    }
+                    if let actual = visit(ScopedPath(path: path, depth: depth), activeRules, recurse) {
+                        descendHazel = hazelAllowed && actual && !traversed
+                    } else {
+                        descendHazel = hazelAllowed && isRealDirectory(path) && hazelCanDescend(path: path, depth: depth, rules: rules, lastOpened: lastOpened, isPro: isPro)
+                    }
+                } else {
+                    descendHazel = hazelAllowed && isRealDirectory(path) && (ancestorDecision?(path) ?? hazelCanDescend(path: path, depth: depth, rules: rules, lastOpened: lastOpened, isPro: isPro))
+                }
+                guard isRealDirectory(path) else { continue }
+                let descendNative = nativeDepth == nil || depth < nativeDepth!
+                if !traversed && (descendHazel || descendNative) { walk(path, depth + 1, descendHazel) }
+            }
+        }
+        guard isRealDirectory(root) else { return }
+        walk(root, 0, true)
+    }
+
     /// Runs one rule's actions against `path` in order, deciding each one
     /// the exact same way `previewActions` would (via `ActionExecutor.plan`)
     /// before acting on it — the single place preview and execution can
     /// never disagree.
-    private static func runActions(_ rule: Rule, path: String, batchId: String) -> (history: [HistoryEntry], copiedPaths: [String], finalPath: String, isTerminal: Bool) {
+    private static func runActions(_ rule: Rule, path: String, batchId: String, platform: any ActionPlatform, watchedRoot: String?, counterStore: (any FolderCounterStore)?, initialAttributes: [String: JSONValue], beforeAction: (() throws -> Void)?, onRecurse: ((String) -> Void)?) -> (history: [HistoryEntry], copiedPaths: [String], finalPath: String, isTerminal: Bool, continues: Bool, recurses: Bool) {
         let sorted = rule.actions.sorted { $0.position < $1.position }
 
         var history: [HistoryEntry] = []
         var copiedPaths: [String] = []
         var current = path
         var stoppedOnTerminal = false
+        var terminalAfterRule = false
+        let haltOnFailure = rule.isHazelImported || sorted.contains { $0.kind == .runHazelAppleScript || $0.kind == .runHazelShellScript || $0.kind == .runHazelOSA || $0.kind == .runWorkflow || $0.kind == .upload || $0.kind == .syncToFolder }
+        var continues = false
+        var recurses = false
+        var hazelContext = sorted.contains { $0.params["hazel_pattern_tokens"] != nil || $0.kind == .runHazelOSA } ? HazelPatternContext(path: path, actions: sorted) : nil
+        hazelContext?.attributes = initialAttributes
+        hazelContext?.ruleName = rule.name
 
-        for action in sorted {
+        actionsLoop: for action in sorted {
+            if stoppedOnTerminal { break }
+            if !rule.isHazelImported && (action.kind == .hazelRecurse || action.kind == .hazelContinue) {
+                history.append(HistoryEntry(batchId: batchId, ruleId: rule.id, ruleName: rule.name, actionKind: action.kind, originalPath: current, resultPath: current, undo: Undo.none.toJSON(), reversible: false, status: .failed, message: "Enable Hazel rule ordering to use this action."))
+                stoppedOnTerminal = true
+                break
+            }
+            if action.kind == .hazelContinue { continues = true; continue }
+            if action.kind == .hazelRecurse {
+                guard isRealDirectory(current) else {
+                    history.append(HistoryEntry(batchId: batchId, ruleId: rule.id, ruleName: rule.name, actionKind: action.kind, originalPath: current, resultPath: current, undo: Undo.none.toJSON(), reversible: false, status: .failed, message: "Cannot run rules on contents of an item that is not a folder."))
+                    stoppedOnTerminal = true
+                    break
+                }
+                guard let onRecurse else {
+                    history.append(HistoryEntry(batchId: batchId, ruleId: rule.id, ruleName: rule.name, actionKind: action.kind, originalPath: current, resultPath: current, undo: Undo.none.toJSON(), reversible: false, status: .failed, message: "Running rules on folder contents requires a folder scan.") )
+                    stoppedOnTerminal = true
+                    break
+                }
+                recurses = true
+                onRecurse(current)
+                continue
+            }
             let original = current
+            var reservation: FolderCounterReservation?
+            var counterCommitted = false
+            defer {
+                if let reservation, !counterCommitted {
+                    do { try counterStore?.rollback(reservation) }
+                    catch {
+                        history.append(HistoryEntry(batchId: batchId, ruleId: rule.id, ruleName: rule.name, actionKind: action.kind, originalPath: original, resultPath: original, undo: Undo.none.toJSON(), reversible: false, status: .failed, message: "Could not roll back folder counter: \(error)"))
+                        stoppedOnTerminal = true
+                    }
+                }
+            }
             do {
-                let actionPlan = try ActionExecutor.plan(action, path: current)
+                if actionUsesCounter(action) {
+                    guard let counterStore else { throw ActionError("A folder counter store is required for this action") }
+                    let reserved: FolderCounterReservation
+                    if counterUsesLowest(action) {
+                        guard action.kind == .rename else { throw ActionError("Lowest-available counters require a Rename action") }
+                        reserved = try counterStore.reserveLowest(folderId: rule.folderId) { value in
+                            var candidateContext = hazelContext
+                            candidateContext?.counterValue = value
+                            guard let target = try ActionExecutor.plan(action, path: current, contextPath: path, hazelContext: candidateContext, watchedRoot: watchedRoot).targetPath else {
+                                throw ActionError("Cannot determine the counter destination")
+                            }
+                            return URL(fileURLWithPath: target).standardizedFileURL.path
+                        }
+                    } else { reserved = try counterStore.reserve(folderId: rule.folderId) }
+                    reservation = reserved
+                    hazelContext?.counterValue = reserved.value
+                }
+                let actionPlan = try ActionExecutor.plan(action, path: current, contextPath: path, hazelContext: hazelContext, watchedRoot: watchedRoot)
 
                 switch actionPlan.status {
                 case .wouldSkip:
@@ -442,6 +785,13 @@ public enum RuleEngine {
                             message: "A file already exists at the destination."
                         )
                     )
+                    if haltOnFailure || terminalFileAction(action.kind) { stoppedOnTerminal = true; break actionsLoop }
+                case .blocked:
+                    history.append(HistoryEntry(batchId: batchId, ruleId: rule.id, ruleName: rule.name,
+                                                actionKind: action.kind, originalPath: original, resultPath: original,
+                                                undo: Undo.none.toJSON(), reversible: false, status: .failed,
+                                                message: actionPlan.description))
+                    if haltOnFailure || terminalFileAction(action.kind) { stoppedOnTerminal = true; break actionsLoop }
                 case .needsConfirmation:
                     history.append(
                         HistoryEntry(
@@ -456,12 +806,19 @@ public enum RuleEngine {
                             status: .needsConfirmation
                         )
                     )
+                    if haltOnFailure || terminalFileAction(action.kind) { stoppedOnTerminal = true; break actionsLoop }
                 case .wouldRun:
-                    let applied = try ActionExecutor.execute(action, path: current)
+                    try beforeAction?()
+                    let applied = try ActionExecutor.execute(action, path: current, contextPath: path, hazelContext: hazelContext, platform: platform, watchedRoot: watchedRoot)
+                    if let reservation {
+                        try counterStore?.commit(reservation)
+                        counterCommitted = true
+                    }
+                    hazelContext?.attributes.merge(applied.outputAttributes) { _, new in new }
                     let resultPath: String
                     if let copiedPath = applied.copiedPath {
                         resultPath = copiedPath
-                        copiedPaths.append(copiedPath)
+                        if !rule.isHazelImported { copiedPaths.append(copiedPath) }
                     } else {
                         resultPath = applied.newPath
                     }
@@ -480,14 +837,22 @@ public enum RuleEngine {
                             resultFileId: resultIdentity?.fileId
                         )
                     )
-                    current = applied.newPath
+                    current = rule.isHazelImported ? (applied.copiedPath ?? applied.newPath) : applied.newPath
+                    if rule.isHazelImported && action.kind == .moveToTrash { terminalAfterRule = true }
+                    if applied.stopsActionChain { stoppedOnTerminal = true; break actionsLoop }
                 }
 
-                if shouldStopActionChain(after: action, plan: actionPlan) {
+                let continuesAfterTrash = rule.isHazelImported && action.kind == .moveToTrash && actionPlan.status == .wouldRun
+                if (!continuesAfterTrash && shouldStopActionChain(after: action, plan: actionPlan)) || (rule.isHazelImported && action.kind == .copyToFolder && actionPlan.status == .wouldSkip) {
                     stoppedOnTerminal = true
                     break
                 }
             } catch {
+                if error as? FreePlanError == .monthlyFileLimit {
+                    history.append(HistoryEntry(batchId: batchId, ruleId: rule.id, ruleName: rule.name, actionKind: action.kind, originalPath: original, resultPath: original, undo: Undo.none.toJSON(), reversible: false, status: .failed, message: FreePlanError.monthlyFileLimit.localizedDescription))
+                    stoppedOnTerminal = true
+                    break
+                }
                 history.append(
                     HistoryEntry(
                         batchId: batchId,
@@ -502,22 +867,87 @@ public enum RuleEngine {
                         message: String(describing: error)
                     )
                 )
+                if action.kind == .setFinderLabel || terminalFileAction(action.kind) || haltOnFailure ||
+                    (action.kind == .moveToFolder && action.params[ActionParam.discardDuplicates]?.boolValue == true) {
+                    stoppedOnTerminal = true
+                    break
+                }
             }
         }
-        return (history, copiedPaths, current, stoppedOnTerminal)
+        return (history, copiedPaths, current, stoppedOnTerminal || terminalAfterRule, continues, recurses)
     }
 
-    private static func previewActions(_ rule: Rule, path: String) -> (actions: [ActionPreview], copiedPaths: [String], finalPath: String, isTerminal: Bool) {
+    private static func actionUsesCounter(_ action: Action) -> Bool {
+        (action.params[HazelPattern.tokensKey]?.arrayValue ?? []).contains { $0["type"]?.stringValue == "counter" }
+    }
+
+    private static func counterUsesLowest(_ action: Action) -> Bool {
+        (action.params[HazelPattern.tokensKey]?.arrayValue ?? []).contains { $0["type"]?.stringValue == "counter" && $0["allocation"]?.stringValue == "lowest" }
+    }
+
+    private static func previewActions(_ rule: Rule, path: String, watchedRoot: String? = nil, counterStore: (any FolderCounterStore)? = nil, initialAttributes: [String: JSONValue] = [:], onRecurse: ((String) -> Void)? = nil) -> (actions: [ActionPreview], copiedPaths: [String], finalPath: String, isTerminal: Bool, continues: Bool) {
         let sorted = rule.actions.sorted { $0.position < $1.position }
 
         var actions: [ActionPreview] = []
         var copiedPaths: [String] = []
         var current = path
         var stoppedOnTerminal = false
+        var terminalAfterRule = false
+        let haltOnFailure = rule.isHazelImported || sorted.contains { $0.kind == .runHazelAppleScript || $0.kind == .runHazelShellScript || $0.kind == .runHazelOSA || $0.kind == .runWorkflow || $0.kind == .upload || $0.kind == .syncToFolder }
+        var continues = false
+        var hazelContext = sorted.contains { $0.params["hazel_pattern_tokens"] != nil || $0.kind == .runHazelOSA } ? HazelPatternContext(path: path, actions: sorted) : nil
+        hazelContext?.attributes = initialAttributes
+        hazelContext?.ruleName = rule.name
 
         for action in sorted {
+            if action.kind == .hazelContinue || action.kind == .hazelRecurse {
+                if !rule.isHazelImported {
+                    actions.append(ActionPreview(kind: action.kind, description: "Enable Hazel rule ordering to use this action.", sourcePath: current, targetPath: nil, status: .blocked))
+                    stoppedOnTerminal = true
+                    break
+                }
+                if action.kind == .hazelContinue { continues = true }
+                if action.kind == .hazelRecurse && !isRealDirectory(current) && !isRealDirectory(path) {
+                    actions.append(ActionPreview(kind: action.kind, description: "Cannot run rules on contents of an item that is not a folder.", sourcePath: current, targetPath: nil, status: .blocked))
+                    stoppedOnTerminal = true
+                    break
+                }
+                if action.kind == .hazelRecurse { onRecurse?(FileManager.default.fileExists(atPath: current) ? current : path) }
+                actions.append(ActionPreview(kind: action.kind, description: action.kind == .hazelContinue ? "Continue matching rules" : "Run rules on folder contents", sourcePath: current, targetPath: nil, status: .wouldRun))
+                continue
+            }
+            var previewReservation: FolderCounterReservation?
+            var previewCommitted = false
+            defer {
+                if let previewReservation, !previewCommitted, let previewStore = counterStore as? PreviewFolderCounterStore {
+                    try? previewStore.rollback(previewReservation)
+                }
+            }
             do {
-                let plan = try ActionExecutor.plan(action, path: current)
+                if actionUsesCounter(action) {
+                    guard let counterStore else { throw ActionError("A folder counter store is required for this action") }
+                    if counterUsesLowest(action) {
+                        guard action.kind == .rename else { throw ActionError("Lowest-available counters require a Rename action") }
+                        let previewStore = (counterStore as? PreviewFolderCounterStore) ?? PreviewFolderCounterStore(underlying: counterStore)
+                        let reservation = try previewStore.reserveLowest(folderId: rule.folderId) { value in
+                            var candidateContext = hazelContext
+                            candidateContext?.counterValue = value
+                            guard let target = try ActionExecutor.plan(action, path: current, contextPath: path, hazelContext: candidateContext, watchedRoot: watchedRoot).targetPath else {
+                                throw ActionError("Cannot determine the counter destination")
+                            }
+                            return URL(fileURLWithPath: target).standardizedFileURL.path
+                        }
+                        if counterStore is PreviewFolderCounterStore { previewReservation = reservation }
+                        hazelContext?.counterValue = reservation.value
+                    } else if let previewStore = counterStore as? PreviewFolderCounterStore {
+                        let reservation = try previewStore.reserve(folderId: rule.folderId)
+                        previewReservation = reservation
+                        hazelContext?.counterValue = reservation.value
+                    } else {
+                        hazelContext?.counterValue = try counterStore.nextValue(folderId: rule.folderId)
+                    }
+                }
+                let plan = try ActionExecutor.plan(action, path: current, contextPath: path, hazelContext: hazelContext, watchedRoot: watchedRoot)
                 actions.append(
                     ActionPreview(
                         kind: plan.kind,
@@ -529,14 +959,22 @@ public enum RuleEngine {
                     )
                 )
 
-                if plan.status == .wouldRun {
-                    if let copiedPath = plan.copiedPath {
-                        copiedPaths.append(copiedPath)
-                    }
-                    current = plan.finalPath
+                if (haltOnFailure || terminalFileAction(action.kind)) && [.blocked, .blockedByConflict, .needsConfirmation].contains(plan.status) {
+                    stoppedOnTerminal = true
+                    break
                 }
 
-                if shouldStopActionChain(after: action, plan: plan) {
+                if plan.status == .wouldRun {
+                    previewCommitted = true
+                    if let copiedPath = plan.copiedPath {
+                        if !rule.isHazelImported { copiedPaths.append(copiedPath) }
+                    }
+                    current = rule.isHazelImported ? (plan.copiedPath ?? plan.finalPath) : plan.finalPath
+                    if rule.isHazelImported && action.kind == .moveToTrash { terminalAfterRule = true }
+                }
+
+                let continuesAfterTrash = rule.isHazelImported && action.kind == .moveToTrash && plan.status == .wouldRun
+                if (!continuesAfterTrash && shouldStopActionChain(after: action, plan: plan)) || (rule.isHazelImported && action.kind == .copyToFolder && plan.status == .wouldSkip) {
                     stoppedOnTerminal = true
                     break
                 }
@@ -547,17 +985,26 @@ public enum RuleEngine {
                         description: "Preview unavailable: \(error)",
                         sourcePath: current,
                         targetPath: nil,
-                        status: .wouldSkip
+                        status: (action.kind == .setFinderLabel || terminalFileAction(action.kind) || haltOnFailure) ? .blocked : .wouldSkip
                     )
                 )
+                if action.kind == .setFinderLabel || terminalFileAction(action.kind) || haltOnFailure {
+                    stoppedOnTerminal = true
+                    break
+                }
             }
         }
 
-        return (actions, copiedPaths, current, stoppedOnTerminal)
+        return (actions, copiedPaths, current, stoppedOnTerminal || terminalAfterRule, continues)
     }
 
     private static func shouldStopActionChain(after action: Action, plan: ActionPlan) -> Bool {
+        if plan.stopsActionChain { return true }
         guard plan.isTerminal else { return false }
         return action.kind != .moveToFolder || plan.status != .wouldRun
+    }
+
+    private static func terminalFileAction(_ kind: ActionKind) -> Bool {
+        kind == .moveToTrash || kind == .delete || kind == .moveToFolder
     }
 }

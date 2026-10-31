@@ -648,7 +648,7 @@ import Foundation
             makeAction(.rename, .object(["pattern": .string("final.txt")]), position: 1),
         ]
 
-        let result = RuleEngine.run(path: zip, depth: 0, rules: [rule], batchId: "batch")
+        let result = RuleEngine.run(path: zip, depth: 0, rules: [rule], batchId: "batch", platform: TemporaryTrashPlatform())
 
         #expect(result.history.map(\.actionKind) == [.uncompress, .rename])
         #expect(result.history.allSatisfy { $0.status == .applied })

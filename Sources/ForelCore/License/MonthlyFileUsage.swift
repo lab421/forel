@@ -45,21 +45,41 @@ public final class MonthlyFileUsageStore: @unchecked Sendable {
     public func runWithFreePlan(path: String, depth: Int, rules: [Rule], batchId: String,
                                 root: String? = nil, isPro: Bool, at date: Date = Date(),
                                 calendar: Calendar = .current) throws -> (matched: [String], history: [HistoryEntry]) {
-        if isPro {
-            return RuleEngine.run(path: path, depth: depth, rules: rules, batchId: batchId, root: root, isPro: true)
+        try withFreePlan(isPro: isPro, at: date, calendar: calendar) { beforeAction in
+            let result = RuleEngine.run(path: path, depth: depth, rules: rules, batchId: batchId, root: root, isPro: isPro, beforeAction: beforeAction)
+            return (result, result.history)
         }
+    }
+
+    /// Reserve lazily, immediately before this file's first action. The lock is
+    /// never held while evaluating rules or synchronously processing children.
+    public func withFreePlan<T>(isPro: Bool, at date: Date = Date(), calendar: Calendar = .current,
+                                operation: (_ beforeAction: @escaping () throws -> Void) -> (T, [HistoryEntry])) throws -> T {
+        if isPro { return operation({}).0 }
         let period = MonthlyFileUsage(at: date, calendar: calendar)
         try withLock {
             let pending = reservations[period.month, default: 0]
             guard processed(in: period.month) + pending < FreePlan.monthlyFileLimit else {
                 throw FreePlanError.monthlyFileLimit
             }
-            reservations[period.month] = pending + 1
         }
-        let result = RuleEngine.run(path: path, depth: depth, rules: rules, batchId: batchId, root: root, isPro: false)
+        var reserved = false
+        var rejected = false
+        let (result, history) = operation {
+            guard !reserved else { return }
+            do {
+                try self.withLock {
+                    let pending = self.reservations[period.month, default: 0]
+                    guard self.processed(in: period.month) + pending < FreePlan.monthlyFileLimit else { throw FreePlanError.monthlyFileLimit }
+                    self.reservations[period.month] = pending + 1
+                }
+                reserved = true
+            } catch { rejected = true; throw error }
+        }
         withLock {
+            guard reserved else { return }
             defer { reservations[period.month, default: 0] -= 1 }
-            if result.history.contains(where: { $0.status == .applied }) {
+            if history.contains(where: { $0.status == .applied }) {
                 let count = processed(in: period.month) + 1
                 if let preferences {
                     preferences.set(count, forKey: countKey(for: period.month))
@@ -68,6 +88,7 @@ public final class MonthlyFileUsageStore: @unchecked Sendable {
                 }
             }
         }
+        if rejected { throw FreePlanError.monthlyFileLimit }
         return result
     }
 

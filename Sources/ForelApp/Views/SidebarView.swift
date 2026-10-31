@@ -22,6 +22,8 @@ struct SidebarView: View {
     @EnvironmentObject var model: AppModel
     @State private var draggedFolderId: String?
     @State private var insertionIndex: Int?
+    @State private var folderToReset: WatchedFolder?
+    @State private var showResetCounter = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -112,6 +114,12 @@ struct SidebarView: View {
         .padding(16)
         .frame(minWidth: 250)
         .background(ForelTheme.background)
+        .alert("Reset Folder Counter?", isPresented: $showResetCounter, presenting: folderToReset) { folder in
+            Button("Reset Counter", role: .destructive) { model.resetFolderCounter(folder) }
+            Button("Cancel", role: .cancel) {}
+        } message: { folder in
+            Text("The next counter value for \((folder.path as NSString).lastPathComponent) will be 1. Existing filenames will not change.")
+        }
     }
 
     private func folderDropTarget(_ index: Int) -> some View {
@@ -204,6 +212,7 @@ struct SidebarView: View {
             }
             Divider()
             Button("Change path of folder…") { changeFolder(folder) }
+            Button("Reset Counter…") { folderToReset = folder; showResetCounter = true }
             Button("Remove", role: .destructive) { model.removeFolder(folder) }
         }
     }

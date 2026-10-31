@@ -18,6 +18,15 @@ import Foundation
 import Darwin
 @testable import ForelCore
 
+func testTrashDirectory() -> String? {
+    #if !DEBUG
+    return nil
+    #else
+    guard let path = ProcessInfo.processInfo.environment["FOREL_TEST_TRASH_DIRECTORY"] else { return nil }
+    return try? TestingTrash.validate(path)
+    #endif
+}
+
 final class TempDir {
     let path: String
 

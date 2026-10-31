@@ -31,7 +31,7 @@ extension ISO8601DateFormatter {
 /// `~/Library/Application Support/com.lab421.forel/forel.db` (migrated
 /// automatically from the legacy `com.forel.app` location) keeps working.
 public final class Database: @unchecked Sendable {
-    public static let currentSchemaVersion: Int64 = 8
+    public static let currentSchemaVersion: Int64 = 15
 
     private let handle: OpaquePointer
     private let lock = NSLock()
@@ -42,6 +42,7 @@ public final class Database: @unchecked Sendable {
             throw SQLiteError("failed to open database at \(path)")
         }
         self.handle = db
+        sqlite3_busy_timeout(db, 5_000)
         try initSchema()
     }
 
@@ -120,7 +121,9 @@ public final class Database: @unchecked Sendable {
                 condition_match  TEXT NOT NULL DEFAULT 'all',
                 recursion_depth  INTEGER NOT NULL DEFAULT 0,
                 priority         INTEGER NOT NULL DEFAULT 0,
-                created_at       TEXT NOT NULL
+                created_at       TEXT NOT NULL,
+                import_error     TEXT,
+                is_hazel_imported INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS conditions (
@@ -474,7 +477,7 @@ public final class Database: @unchecked Sendable {
     public func listRules(folderId: String) throws -> [Rule] {
         let stmt = try statement(
             """
-            SELECT id, folder_id, name, enabled, condition_match, recursion_depth, priority, created_at
+            SELECT id, folder_id, name, enabled, condition_match, recursion_depth, priority, created_at, import_error, is_hazel_imported
             FROM rules WHERE folder_id=?1 ORDER BY priority, created_at
             """
         )
@@ -488,10 +491,12 @@ public final class Database: @unchecked Sendable {
                     folderId: stmt.columnText(1),
                     name: stmt.columnText(2),
                     enabled: stmt.columnBool(3),
-                    conditionMatch: stmt.columnText(4) == "any" ? .any : .all,
+                    conditionMatch: ConditionMatch(rawValue: stmt.columnText(4)) ?? .all,
                     recursionDepth: depth >= 0 ? depth : nil,
                     priority: stmt.columnInt64(6),
-                    createdAt: stmt.columnText(7)
+                    createdAt: stmt.columnText(7),
+                    importError: stmt.columnTextOrNil(8),
+                    isHazelImported: stmt.columnBool(9)
                 )
             )
         }
@@ -541,21 +546,23 @@ public final class Database: @unchecked Sendable {
     private func insertRuleRows(_ rule: Rule, priority: Int64) throws {
         let stmt = try statement(
             """
-            INSERT INTO rules (id, folder_id, name, enabled, condition_match, recursion_depth, priority, created_at)
-            VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
+            INSERT INTO rules (id, folder_id, name, enabled, condition_match, recursion_depth, priority, created_at, import_error, is_hazel_imported)
+            VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
             """
         )
         stmt.bind(1, rule.id)
         stmt.bind(2, rule.folderId)
         stmt.bind(3, rule.name)
         stmt.bind(4, bool: rule.enabled)
-        stmt.bind(5, rule.conditionMatch == .any ? "any" : "all")
+        stmt.bind(5, rule.conditionMatch.rawValue)
         stmt.bind(6, rule.recursionDepth ?? -1)
         stmt.bind(7, priority)
         stmt.bind(8, rule.createdAt)
+        stmt.bind(9, rule.importError)
+        stmt.bind(10, bool: rule.isHazelImported)
         try stmt.runToCompletion()
 
-        for condition in rule.conditions { try insertCondition(condition) }
+        for (position, condition) in rule.conditions.enumerated() { try insertCondition(condition, position: position) }
         for action in rule.actions { try insertAction(action) }
     }
 
@@ -576,17 +583,8 @@ public final class Database: @unchecked Sendable {
             guard sources.count == ruleIDs.count else { throw RuleCopyError.missingRules }
             for source in sources {
                 try FreePlan.validate(source, isPro: isPro)
-                var copy = Rule(
-                    folderId: toFolderID, name: source.name, enabled: source.enabled,
-                    conditionMatch: source.conditionMatch, recursionDepth: source.recursionDepth,
-                    priority: try nextRulePriority(folderId: toFolderID)
-                )
-                copy.conditions = source.conditions.map {
-                    Condition(ruleId: copy.id, kind: $0.kind, operator: $0.operator, value: $0.value)
-                }
-                copy.actions = source.actions.map {
-                    Action(ruleId: copy.id, kind: $0.kind, params: $0.params, position: $0.position)
-                }
+                var copy = RuleTransfer.remapForCopy(source, folderId: toFolderID)
+                copy.priority = try nextRulePriority(folderId: toFolderID)
                 try insertRuleRows(copy, priority: copy.priority)
                 copies.append(copy)
             }
@@ -597,14 +595,16 @@ public final class Database: @unchecked Sendable {
     public func updateRule(_ rule: Rule) throws {
         try transaction {
             let stmt = try statement(
-                "UPDATE rules SET name=?1, enabled=?2, condition_match=?3, recursion_depth=?4, priority=?5 WHERE id=?6"
+                "UPDATE rules SET name=?1, enabled=?2, condition_match=?3, recursion_depth=?4, priority=?5, import_error=?6, is_hazel_imported=?7 WHERE id=?8"
             )
             stmt.bind(1, rule.name)
             stmt.bind(2, bool: rule.enabled)
-            stmt.bind(3, rule.conditionMatch == .any ? "any" : "all")
+            stmt.bind(3, rule.conditionMatch.rawValue)
             stmt.bind(4, rule.recursionDepth ?? -1)
             stmt.bind(5, rule.priority)
-            stmt.bind(6, rule.id)
+            stmt.bind(6, rule.importError)
+            stmt.bind(7, bool: rule.isHazelImported)
+            stmt.bind(8, rule.id)
             try stmt.runToCompletion()
 
             let deleteConditions = try statement("DELETE FROM conditions WHERE rule_id=?1")
@@ -615,7 +615,7 @@ public final class Database: @unchecked Sendable {
             deleteActions.bind(1, rule.id)
             try deleteActions.runToCompletion()
 
-            for condition in rule.conditions { try insertCondition(condition) }
+            for (position, condition) in rule.conditions.enumerated() { try insertCondition(condition, position: position) }
             for action in rule.actions { try insertAction(action) }
         }
     }
@@ -659,7 +659,7 @@ public final class Database: @unchecked Sendable {
     // MARK: - Conditions
 
     private func listConditions(ruleId: String) throws -> [Condition] {
-        let stmt = try statement("SELECT id, rule_id, kind, operator, value FROM conditions WHERE rule_id=?1")
+        let stmt = try statement("SELECT id, rule_id, kind, operator, value FROM conditions WHERE rule_id=?1 ORDER BY position, rowid")
         stmt.bind(1, ruleId)
         var conditions: [Condition] = []
         while try stmt.step() {
@@ -676,13 +676,14 @@ public final class Database: @unchecked Sendable {
         return conditions
     }
 
-    private func insertCondition(_ condition: Condition) throws {
-        let stmt = try statement("INSERT INTO conditions (id, rule_id, kind, operator, value) VALUES (?1,?2,?3,?4,?5)")
+    private func insertCondition(_ condition: Condition, position: Int) throws {
+        let stmt = try statement("INSERT INTO conditions (id, rule_id, kind, operator, value, position) VALUES (?1,?2,?3,?4,?5,?6)")
         stmt.bind(1, condition.id)
         stmt.bind(2, condition.ruleId)
         stmt.bind(3, condition.kind.rawValue)
         stmt.bind(4, condition.operator.rawValue)
         stmt.bind(5, condition.value)
+        stmt.bind(6, Int64(position))
         try stmt.runToCompletion()
     }
 

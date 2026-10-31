@@ -169,7 +169,7 @@ import Testing
 
         try "complete".write(toFile: child, atomically: false, encoding: .utf8)
         try FileManager.default.setAttributes([.creationDate: Date()], ofItemAtPath: child)
-        coordinator.waitForPendingEvents()
+        #expect(coordinator.waitForPendingEvents())
         #expect(!FileManager.default.fileExists(atPath: incoming))
         let resultChild = (resultPath as NSString).appendingPathComponent("Nested/data.bin")
         #expect(try String(contentsOfFile: resultChild, encoding: .utf8) == "complete")
