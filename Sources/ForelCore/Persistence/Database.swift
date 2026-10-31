@@ -523,6 +523,21 @@ public final class Database: @unchecked Sendable {
         }
     }
 
+    /// Imports a complete batch or none of it, enforcing the same destination
+    /// and feature restrictions as creating or copying rules in the UI.
+    public func importRules(_ rules: [Rule], toFolderID folderID: String, isPro: Bool) throws {
+        try transaction {
+            let folders = try listFolders()
+            guard folders.contains(where: { $0.id == folderID }) else { throw SQLiteError("The destination folder no longer exists.") }
+            guard FreePlan.allows(folderID: folderID, folders: folders, isPro: isPro) else { throw FreePlanError.proFolder }
+            for rule in rules {
+                guard rule.folderId == folderID else { throw SQLiteError("An imported rule has an invalid destination folder.") }
+                try FreePlan.validate(rule, isPro: isPro)
+                try insertRuleRows(rule, priority: try nextRulePriority(folderId: folderID))
+            }
+        }
+    }
+
     private func insertRuleRows(_ rule: Rule, priority: Int64) throws {
         let stmt = try statement(
             """

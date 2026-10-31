@@ -6,6 +6,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- Rules can now be imported and exported as `.forelrules` files named after their watched folder.
 - Copy one or more rules to another watched folder without recreating their conditions and actions.
 - Date conditions now support hours, with an "is not in the last" option for excluding recently added, created, or modified files.
 - Move to folder and Copy to folder destinations now accept {year}, {month}, and {day} date tokens (e.g. ~/Archive/{year}/{month}), resolved from each file's creation date. The destination field can now also be typed into.
