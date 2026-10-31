@@ -1,0 +1,445 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "2012_IITSEC_Booth_1149.hazelrules",
+      "rule": "Go into subfolders",
+      "status": "full_scenario",
+      "test": "PublicScriptRuntimeTests.originalRecursiveRulesGatePreviewManualAndWatcher",
+      "details": "Original predicates and recurse action checked by preview/manual traversal callbacks and watcher processing of a tagged child."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "2012_IITSEC_Booth_1149.hazelrules",
+      "rule": "Duplicate Everything",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelSyncRulesRunOnTemporaryFilesAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Desktop.hazelrules",
+      "rule": "Move screenshots to /pictures/screenshots",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelScreenshotRuleWaitsForOldModificationDateAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Desktop.hazelrules",
+      "rule": "Old files to temp",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelLastOpenedMoveRulesRunAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Downloads.hazelrules",
+      "rule": "Move Statements to Dropbox",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelStatementContentConditionsRunAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Downloads.hazelrules",
+      "rule": "Downloaded Documents to Dropbox",
+      "status": "full_scenario",
+      "test": "HazelDuplicateTests.realHazelDuplicateOptionDistinguishesContentsAndStopsAfterTrash",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Downloads.hazelrules",
+      "rule": "Remove old DMG files",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelTrashRulesRunEndToEndInAnIsolatedHome",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Downloads.hazelrules",
+      "rule": "Newly Added Files",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelLabelRulesRunOnUntaggedFilesAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Downloads.hazelrules",
+      "rule": "No Longer New Files",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelLabelRulesRunOnUntaggedFilesAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Downloads.hazelrules",
+      "rule": "Old Files",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelTrashRulesRunEndToEndInAnIsolatedHome",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Expenses.hazelrules",
+      "rule": "Sync Expenses",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelSyncRulesRunOnTemporaryFilesAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Incoming Documents.hazelrules",
+      "rule": "Export old documents to evernote and delete",
+      "status": "script_substitution",
+      "test": "HazelAppleScriptTests.publicRulesRunWithHarmlessScriptSubstituted",
+      "details": "Original predicates and non-script actions; harmless compiled script substituted, temporary destinations."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "MANUALS_ALL.hazelrules",
+      "rule": "Sync all manuals",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelSyncRulesRunOnTemporaryFilesAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Production_spreadsheets_&_Schedules.hazelrules",
+      "rule": "Sync Excel Spreadsheets",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelSyncRulesRunOnTemporaryFilesAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Spreadsheets.hazelrules",
+      "rule": "Copy PO Spreadsheets",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelSyncRulesRunOnTemporaryFilesAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Statements.hazelrules",
+      "rule": "File Citi Statement",
+      "status": "script_substitution",
+      "test": "HazelAppleScriptTests.publicRulesRunWithHarmlessScriptSubstituted",
+      "details": "Original predicates and non-script actions; harmless compiled script substituted, temporary destinations."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Statements.hazelrules",
+      "rule": "File Discover Statement",
+      "status": "script_substitution",
+      "test": "HazelAppleScriptTests.publicRulesRunWithHarmlessScriptSubstituted",
+      "details": "Original predicates and non-script actions; harmless compiled script substituted, temporary destinations."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Statements.hazelrules",
+      "rule": "File Sharebuilder Statement",
+      "status": "script_substitution",
+      "test": "HazelAppleScriptTests.publicRulesRunWithHarmlessScriptSubstituted",
+      "details": "Original predicates and non-script actions; harmless compiled script substituted, temporary destinations."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Statements.hazelrules",
+      "rule": "File Schwab Statement",
+      "status": "script_substitution",
+      "test": "HazelAppleScriptTests.publicRulesRunWithHarmlessScriptSubstituted",
+      "details": "Original predicates and non-script actions; harmless compiled script substituted, temporary destinations."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Statements.hazelrules",
+      "rule": "File LendingClub Statement",
+      "status": "script_substitution",
+      "test": "HazelAppleScriptTests.publicRulesRunWithHarmlessScriptSubstituted",
+      "details": "Original predicates and non-script actions; harmless compiled script substituted, temporary destinations."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Statements.hazelrules",
+      "rule": "File BBT Statement",
+      "status": "script_substitution",
+      "test": "HazelAppleScriptTests.publicRulesRunWithHarmlessScriptSubstituted",
+      "details": "Original predicates and non-script actions; harmless compiled script substituted, temporary destinations."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "Statements.hazelrules",
+      "rule": "File Kaiser Payment Confirmation",
+      "status": "script_substitution",
+      "test": "HazelAppleScriptTests.publicRulesRunWithHarmlessScriptSubstituted",
+      "details": "Original predicates and non-script actions; harmless compiled script substituted, temporary destinations."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "To Evernote.hazelrules",
+      "rule": "Push to !! Work Incoming",
+      "status": "script_substitution",
+      "test": "HazelAppleScriptTests.publicRulesRunWithHarmlessScriptSubstituted",
+      "details": "Original predicates and non-script actions; harmless compiled script substituted, temporary destinations."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "VOISUS_TESTING.hazelrules",
+      "rule": "Voisus_Testing Sync",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelSyncRulesRunOnTemporaryFilesAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "tmp.hazelrules",
+      "rule": "Delete old files",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelTrashRulesRunEndToEndInAnIsolatedHome",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS",
+      "file": "tmp.hazelrules",
+      "rule": "Color_to_be_deleted",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelLabelRulesRunOnUntaggedFilesAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS_2",
+      "file": "Desktop.hazelrules",
+      "rule": "Delete screenshots",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelTrashRulesRunEndToEndInAnIsolatedHome",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS_2",
+      "file": "Desktop.hazelrules",
+      "rule": "Move old files",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelLastOpenedMoveRulesRunAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS_2",
+      "file": "Downloads.hazelrules",
+      "rule": "Old Files",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelTrashRulesRunEndToEndInAnIsolatedHome",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS_2",
+      "file": "Movies.hazelrules",
+      "rule": "Seen",
+      "status": "metadata_substitution",
+      "test": "HazelLastOpenedProviderTests.realMoviesSeenRuleRunsWithInjectedLastOpenedDates",
+      "details": "Original rule across preview/manual/watcher with injected last-opened metadata and temporary destination."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS_2",
+      "file": "Movies.hazelrules",
+      "rule": "Recursive rule",
+      "status": "full_scenario",
+      "test": "PublicScriptRuntimeTests.originalRecursiveRulesGatePreviewManualAndWatcher",
+      "details": "Original predicates and recurse action checked by preview/manual traversal callbacks and watcher processing of a tagged child."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS_2",
+      "file": "OldDekstop.hazelrules",
+      "rule": "Delete old",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.realHazelTrashRulesRunEndToEndInAnIsolatedHome",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_CORPUS_3",
+      "file": "Screen Shots.hazelrules",
+      "rule": "Move, Rename, and Add to Clipboard Screen Shots",
+      "status": "predicate_and_script_substitution",
+      "test": "PublicScriptRuntimeTests.screenshotRuleRunsFullChainWithHarmlessClipboardSubstitute",
+      "details": "All actions in preview/manual/watcher; harmless clipboard script and PNG extension predicate substituted when host Finder-kind metadata is unavailable."
+    },
+    {
+      "source": "FOREL_HAZEL_BJANGO",
+      "file": "Hazel Rules/Auto @2x, then move.hazelrules",
+      "rule": "Auto @2x, then move",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.bjangoImageRenameAndMoveActionsWorkAfterReview",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_BJANGO",
+      "file": "Hazel Rules/Auto @3x, then move.hazelrules",
+      "rule": "Auto @3x, then move",
+      "status": "full_scenario",
+      "test": "RuleTransferTests.bjangoImageRenameAndMoveActionsWorkAfterReview",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_BJANGO",
+      "file": "Hazel Rules/Move into subfolders if # exists.hazelrules",
+      "rule": "Move into subfolders if # exists",
+      "status": "full_scenario",
+      "test": "HazelPatternTests.bjangoExportRunsInPreviewManualAndWatcher",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_INSTALLER",
+      "file": "Applications.hazelrules",
+      "rule": "Archive OS X installer application",
+      "status": "script_substitution",
+      "test": "PublicScriptRuntimeTests.installerRuleUsesHarmlessExternalExecutableSubstitute",
+      "details": "Original predicates and action in preview/manual/watcher, with harmless external executable substitute."
+    },
+    {
+      "source": "FOREL_HAZEL_OPEN_URL",
+      "file": "to-open-url.hazelrules",
+      "rule": "Open URL",
+      "status": "script_substitution",
+      "test": "PublicScriptRuntimeTests.mountAndOpenURLRulesUseInjectedSafeEffectsAcrossPaths",
+      "details": "Original predicates and all three actions in preview/manual/watcher; harmless shell substitute, injected notification, dedicated test Trash. Failed Trash prevents notification."
+    },
+    {
+      "source": "FOREL_HAZEL_PHOTOS",
+      "file": "google_photos.hazelrules",
+      "rule": "Recursive Search",
+      "status": "full_scenario",
+      "test": "PublicScriptRuntimeTests.originalRecursiveRulesGatePreviewManualAndWatcher",
+      "details": "Original predicates and recurse action checked by preview/manual traversal callbacks and watcher processing of a tagged child."
+    },
+    {
+      "source": "FOREL_HAZEL_PHOTOS",
+      "file": "google_photos.hazelrules",
+      "rule": "Move images and videos to photos folder",
+      "status": "script_substitution",
+      "test": "PublicScriptRuntimeTests.photoRuleRunsChainWithHarmlessDateScript",
+      "details": "Original predicates and all actions in preview/manual/watcher, harmless date script, temporary destination and database counter."
+    },
+    {
+      "source": "FOREL_HAZEL_TICKLER",
+      "file": "Downloads.hazelrules",
+      "rule": "Tickler files",
+      "status": "full_scenario",
+      "test": "HazelPatternTests.ticklerWordAndNumberCapturesSurviveMoves",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_TICKLER",
+      "file": "tickler.hazelrules",
+      "rule": "Scan folders for files to bring forward",
+      "status": "full_scenario",
+      "test": "PublicScriptRuntimeTests.originalRecursiveRulesGatePreviewManualAndWatcher",
+      "details": "Original predicates and recurse action checked by preview/manual traversal callbacks and watcher processing of a tagged child."
+    },
+    {
+      "source": "FOREL_HAZEL_TICKLER",
+      "file": "tickler.hazelrules",
+      "rule": "Move files",
+      "status": "clock_substitution",
+      "test": "PublicScriptRuntimeTests.ticklerMoveRuleRunsReviewedConditionAcrossPaths",
+      "details": "Original predicates including hash-checked reviewed date shell, all actions, preview/manual/watcher; clock injected and destination temporary."
+    },
+    {
+      "source": "FOREL_HAZEL_UNZIP",
+      "file": "download.hazelrules",
+      "rule": "Monitoring SubFolders",
+      "status": "full_scenario",
+      "test": "PublicScriptRuntimeTests.originalRecursiveRulesGatePreviewManualAndWatcher",
+      "details": "Original predicates and recurse action checked by preview/manual traversal callbacks and watcher processing of a tagged child."
+    },
+    {
+      "source": "FOREL_HAZEL_UNZIP",
+      "file": "download.hazelrules",
+      "rule": "Mount",
+      "status": "full_scenario",
+      "test": "PublicScriptRuntimeTests.mountAndOpenURLRulesUseInjectedSafeEffectsAcrossPaths",
+      "details": "Original predicates and actions in preview/manual/watcher with injected open and dedicated test Trash."
+    },
+    {
+      "source": "FOREL_HAZEL_UNZIP",
+      "file": "download.hazelrules",
+      "rule": "unZip(7z)",
+      "status": "script_substitution",
+      "test": "PublicScriptRuntimeTests.unzipRuleUsesHarmlessScriptAcrossPaths",
+      "details": "Original ZIP predicates in preview/manual/watcher; harmless script substituted for external 7z/Finder automation; no downloaded script executed."
+    },
+    {
+      "source": "FOREL_HAZEL_TUXPEOPLE",
+      "file": "files/Hazel/hazelrules/Desktop.hazelrules",
+      "rule": "Screenshots aufräumen",
+      "status": "full_scenario",
+      "test": "HazelAdditionalPublicRulesTests.publicGermanScreenshotRuleRunsAcrossExecutionPaths",
+      "details": "Original supported predicates and actions across preview, manual and watcher; temporary destinations or isolated Trash as applicable."
+    },
+    {
+      "source": "FOREL_HAZEL_TUXPEOPLE",
+      "file": "files/Hazel/hazelrules/Desktop.hazelrules",
+      "rule": "Alte Files nach old verschieben",
+      "status": "full_scenario",
+      "test": "HazelAdditionalPublicRulesTests.otherSupportedPublicRulesRunAcrossExecutionPaths",
+      "details": "Original predicates and actions across preview/manual/watcher, temporary destination or isolated Trash."
+    },
+    {
+      "source": "FOREL_HAZEL_TUXPEOPLE",
+      "file": "files/Hazel/hazelrules/Downloads-old.hazelrules",
+      "rule": "Alte Dateien aus old in den Papierkorb legen",
+      "status": "full_scenario",
+      "test": "HazelAdditionalPublicRulesTests.otherSupportedPublicRulesRunAcrossExecutionPaths",
+      "details": "Original predicates and actions across preview/manual/watcher, temporary destination or isolated Trash."
+    },
+    {
+      "source": "FOREL_HAZEL_TUXPEOPLE",
+      "file": "files/Hazel/hazelrules/Downloads.hazelrules",
+      "rule": "Alte Files nach old verschieben",
+      "status": "full_scenario",
+      "test": "HazelAdditionalPublicRulesTests.otherSupportedPublicRulesRunAcrossExecutionPaths",
+      "details": "Original predicates and actions across preview/manual/watcher, temporary destination or isolated Trash."
+    },
+    {
+      "source": "FOREL_HAZEL_TUXPEOPLE",
+      "file": "files/Hazel/hazelrules/iCloudDownloads-old.hazelrules",
+      "rule": "Alte Dateien aus old in den Papierkorb legen",
+      "status": "full_scenario",
+      "test": "HazelCalendarMonthTests.publicMonthRulesRunAcrossExecutionPaths",
+      "details": "Original calendar-month predicates and actions checked in preview, manual and watcher using temporary destinations or isolated Trash."
+    },
+    {
+      "source": "FOREL_HAZEL_TUXPEOPLE",
+      "file": "files/Hazel/hazelrules/iCloudDownloads.hazelrules",
+      "rule": "Move old files away",
+      "status": "full_scenario",
+      "test": "HazelCalendarMonthTests.publicMonthRulesRunAcrossExecutionPaths",
+      "details": "Original calendar-month predicates and actions checked in preview, manual and watcher using temporary destinations or isolated Trash."
+    },
+    {
+      "source": "FOREL_HAZEL_HEIC",
+      "file": "Downloads-HEIC2jpg.hazelrules",
+      "rule": "HEIC",
+      "status": "dependency_error",
+      "test": "PublicScriptRuntimeTests.originalHEICRenameThenMissingConverterStopsTrashWhenEncoderAvailable",
+      "details": "Generated HEIC EXIF date exercises original rename and reviewed missing-converter script; failure stops Trash. Falls back to separate script/Trash component test if encoder or date metadata unavailable."
+    },
+    {
+      "source": "FOREL_HAZEL_WRAPPED",
+      "file": "modules/home/programs/hazel-backup/16777230-36143.hazelrules",
+      "rule": "FLAC dequarentine",
+      "status": "host_dependent_component",
+      "test": "HazelShellScriptTests.reviewedQuarantineScriptRunsOnIsolatedFixtures",
+      "details": "Original reviewed action on isolated xattr fixture; original FLAC type predicate may not match on this host."
+    },
+    {
+      "source": "FOREL_HAZEL_WRAPPED",
+      "file": "modules/home/programs/hazel-backup/16777230-36143.hazelrules",
+      "rule": "Subfolder Search",
+      "status": "full_scenario",
+      "test": "PublicScriptRuntimeTests.originalRecursiveRulesGatePreviewManualAndWatcher",
+      "details": "Original predicates and recurse action checked by preview/manual traversal callbacks and watcher processing of a tagged child."
+    }
+  ]
+}

@@ -44,6 +44,7 @@ final class AppModel: ObservableObject {
     @Published var folders: [WatchedFolder] = []
     @Published var selectedFolderId: String?
     @Published var rules: [Rule] = []
+    @Published private(set) var uploadServers: [UploadServer] = []
     @Published private(set) var ruleRunStats: [RuleRunStats] = []
     @Published var history: [HistoryEntry] = []
     @Published var historyTotalCount: Int = 0
@@ -68,6 +69,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isPreviewing = false
     @Published var previewResult: PreviewResult?
     @Published var proUpgrade: ProUpgradeContext?
+    @Published var showHazelImportAssistant = false
     @Published private var ruleExpansionPreferences = RuleExpansionPreferences()
     @Published private(set) var licenseAccessIsLimited = true
     var isPro: Bool { !licenseAccessIsLimited }
@@ -109,11 +111,21 @@ final class AppModel: ObservableObject {
     /// activity. A burst of files makes one bump, not one per file.
     @Published private(set) var watcherHistoryRevision = 0
     private var watcherHistoryRevisionTask: Task<Void, Never>?
+    private let hazelAppURL: URL?
 
     init() throws {
         let appSupportRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let appSupport = appSupportRoot.appendingPathComponent("com.lab421.forel", isDirectory: true)
-        Self.migrateLegacyAppSupportDirectoryIfNeeded(root: appSupportRoot, newDirectory: appSupport)
+        #if DEBUG
+        let debugPath = ProcessInfo.processInfo.environment["FOREL_DEBUG_APP_SUPPORT"].flatMap { path -> String? in
+            guard !path.isEmpty, (path as NSString).isAbsolutePath else { return nil }
+            return path
+        }
+        #else
+        let debugPath: String? = nil
+        #endif
+        let appSupport = debugPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? appSupportRoot.appendingPathComponent("com.lab421.forel", isDirectory: true)
+        if debugPath == nil { Self.migrateLegacyAppSupportDirectoryIfNeeded(root: appSupportRoot, newDirectory: appSupport) }
         try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         let dbPath = appSupport.appendingPathComponent("forel.db").path
 
@@ -122,6 +134,7 @@ final class AppModel: ObservableObject {
         self.monthlyUsage = monthlyUsage
         let db = try Database(path: dbPath)
         self.db = db
+        self.hazelAppURL = Self.locateHazel()
         self.coordinator = WatcherCoordinator(db: db, monthlyUsage: monthlyUsage)
         self.coordinator.onActivity = { [weak self] summary in
             Task { @MainActor in
@@ -150,7 +163,7 @@ final class AppModel: ObservableObject {
         // surprises before they've configured anything. Once they've explicitly
         // set this either way, that choice persists.
         let storedPaused = db.withLock { db in try? db.getSetting("paused") }
-        self.paused = storedPaused.map { $0 == "1" } ?? true
+        self.paused = debugPath != nil || (storedPaused.map { $0 == "1" } ?? true)
 
         let storedAccent = db.withLock { db in (try? db.getSetting("accent_color")) ?? nil }
         let preset = storedAccent.flatMap(AccentPreset.init(rawValue:)) ?? .default
@@ -170,6 +183,9 @@ final class AppModel: ObservableObject {
 
         coordinator.setProAccess(isPro)
         reloadFolders()
+        reloadUploadServers()
+        let hazelPromptSeen = db.withLock { db in (try? db.getSetting("hazel_import_prompt_seen")) == "1" }
+        showHazelImportAssistant = !hazelPromptSeen && folders.isEmpty && hazelAppURL != nil
         startHistoryCleanupTimer()
         observeVolumeMounts()
     }
@@ -201,6 +217,13 @@ final class AppModel: ObservableObject {
     private func volumeDidMount(atPath mountPoint: String) {
         volumeNotifier.volumeConnected((mountPoint as NSString).lastPathComponent)
         coordinator.volumeDidMount(atPath: mountPoint)
+    }
+
+    private static func locateHazel() -> URL? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.noodlesoft.Hazel")
+            ?? ["/Applications/Hazel.app", "/Applications/Setapp/Hazel.app"]
+                .map(URL.init(fileURLWithPath:))
+                .first(where: { FileManager.default.fileExists(atPath: $0.path) })
     }
 
     /// Forel's bundle identifier moved from `com.forel.app` (`.app` isn't a
@@ -378,6 +401,10 @@ final class AppModel: ObservableObject {
         reloadRuleRunStats()
     }
 
+    func reloadUploadServers() {
+        uploadServers = db.withLock { db in (try? db.loadUploadServers()) ?? [] }
+    }
+
     func reloadHistory() {
         loadHistoryPage(reset: true)
         reloadRuleRunStats()
@@ -503,6 +530,17 @@ final class AppModel: ObservableObject {
         reloadFolders()
     }
 
+    func resetFolderCounter(_ folder: WatchedFolder) {
+        guard !isRunningNow, !isPreviewing, !coordinator.isProcessing(in: folder.path) else {
+            showNotice(title: "Folder is busy", message: "Wait for this folder's current processing to finish before resetting its counter.")
+            return
+        }
+        do {
+            try DatabaseFolderCounterStore(db: db).reset(folderId: folder.id)
+            showNotice(title: "Counter reset", message: "The next counter value for this folder will be 1.")
+        } catch { showError(error) }
+    }
+
     func updateFolderPath(_ folder: WatchedFolder, path: String) {
         guard !isRunningNow && !isPreviewing else {
             showNotice(
@@ -573,6 +611,10 @@ final class AppModel: ObservableObject {
             proUpgrade = .folders
             return false
         }
+        if rule.enabled, hasMissingUploadServer(rule) {
+            showError("Choose an available saved server for each upload action before enabling this rule.")
+            return false
+        }
         do {
             try db.withLock { db in
                 let existing = try db.listRules(folderId: rule.folderId)
@@ -583,6 +625,7 @@ final class AppModel: ObservableObject {
                 }
             }
             reloadRules()
+            reloadUploadServers()
             return true
         } catch { showError(error); return false }
     }
@@ -593,6 +636,7 @@ final class AppModel: ObservableObject {
         }
         selectedFolderId = toFolderID
         reloadRules()
+        reloadUploadServers()
     }
 
     func deleteRule(_ rule: Rule) {
@@ -601,7 +645,70 @@ final class AppModel: ObservableObject {
         reloadRules()
     }
 
+    func exportRules(to url: URL) {
+        guard let folderId = selectedFolderId else { return }
+        do {
+            let data = try RuleTransfer.exportForel(rules)
+            try data.write(to: url, options: .atomic)
+            showRunNowMessage(RunNowMessage(text: "Exported \(rules.count) rule\(rules.count == 1 ? "" : "s")", hasFailures: false, folderId: folderId))
+        } catch {
+            showError(error)
+        }
+    }
+
+    @discardableResult
+    func importRules(from url: URL) -> Bool {
+        guard let folderId = selectedFolderId else { return false }
+        guard selectedFolderIsAllowed else { proUpgrade = .folders; return false }
+        do {
+            let result = try RuleTransfer.importRules(from: RuleTransfer.readFile(at: url), folderId: folderId)
+            try db.withLock { try $0.importRules(result.rules, toFolderID: folderId, isPro: isPro) }
+            reloadRules()
+            reloadUploadServers()
+            if result.issues.isEmpty {
+                showRunNowMessage(RunNowMessage(text: "Imported \(result.rules.count) rule\(result.rules.count == 1 ? "" : "s")", hasFailures: false, folderId: folderId))
+            } else {
+                alertTitle = "Imported with review needed"
+                errorMessage = "Imported \(result.rules.count) rule\(result.rules.count == 1 ? "" : "s"). Review the affected rules before enabling them.\n\n"
+                    + result.issues.map { "\($0.ruleName): \($0.message)" }.joined(separator: "\n")
+            }
+            return true
+        } catch FreePlanError.proFolder {
+            proUpgrade = .folders
+            return false
+        } catch FreePlanError.feature(let feature) {
+            proUpgrade = .feature(feature)
+            return false
+        } catch {
+            showError(error)
+            return false
+        }
+    }
+
+    func openHazel() {
+        guard let hazelAppURL else { return }
+        NSWorkspace.shared.openApplication(at: hazelAppURL, configuration: .init()) { _, error in
+            if let error {
+                Task { @MainActor in self.showError(error) }
+            }
+        }
+    }
+
+    func finishHazelImportAssistant() {
+        db.withLock { db in try? db.setSetting("hazel_import_prompt_seen", "1") }
+        showHazelImportAssistant = false
+    }
+
     func toggleRule(_ rule: Rule, enabled: Bool) {
+        if enabled, hasMissingUploadServer(rule) {
+            showError("Choose an available saved server for each upload action before enabling this rule.")
+            return
+        }
+        if enabled, let error = rule.importError {
+            alertTitle = "Cannot enable incomplete import"
+            errorMessage = "Recreate this rule to replace its unsupported parts.\n\n\(error)"
+            return
+        }
         if enabled, !isPro {
             guard FreePlan.allows(folderID: rule.folderId, folders: folders, isPro: false) else {
                 proUpgrade = .folders
@@ -615,6 +722,14 @@ final class AppModel: ObservableObject {
         do { try db.withLock { db in try db.toggleRule(rule.id, enabled: enabled) } }
         catch { showError(error) }
         reloadRules()
+    }
+
+    private func hasMissingUploadServer(_ rule: Rule) -> Bool {
+        rule.actions.contains { action in
+            guard action.kind == .upload else { return false }
+            guard let id = action.params["upload_server_id"]?.stringValue, !id.isEmpty else { return true }
+            return !uploadServers.contains { $0.id == id }
+        }
     }
 
     func reorderRules(_ ruleIds: [String]) {
@@ -636,26 +751,31 @@ final class AppModel: ObservableObject {
         isRunningNow = true
         let isPro = self.isPro
         let usage = monthlyUsage
+        let matchState = DatabaseHazelMatchStateStore(db: db)
+        let counterStore = DatabaseFolderCounterStore(db: db)
+        let uploadServers = self.uploadServers
         Task {
             defer { isRunningNow = false }
             let result = await Task.detached(priority: .userInitiated) {
-                let maxDepth = RuleEngine.maxRuleDepth(folderRules)
-                let entries = RuleEngine.walkEntries(root: folder.path, maxDepth: maxDepth)
                 let batchId = UUID().uuidString
                 var allHistory: [HistoryEntry] = []
                 var limitReached = false
                 var errorMessage: String?
-                for entry in entries {
+                RuleEngine.forEachRuleEntryExecuting(root: folder.path, rules: folderRules, isPro: isPro) { entry, activeRules, recurse in
+                    guard !limitReached, errorMessage == nil else { return false }
                     do {
-                        let result = try usage.runWithFreePlan(path: entry.path, depth: entry.depth, rules: folderRules,
-                                                                 batchId: batchId, root: folder.path, isPro: isPro)
+                        let result = try usage.withFreePlan(isPro: isPro) { beforeAction in
+                            let result = RuleEngine.runWithTraversal(path: entry.path, depth: entry.depth, rules: activeRules, batchId: batchId, root: folder.path, isPro: isPro, matchState: matchState, counterStore: counterStore, uploadServers: uploadServers, forceRunPreviouslyMatched: true, beforeAction: beforeAction, onRecurse: recurse)
+                            return (result, result.history)
+                        }
                         allHistory.append(contentsOf: result.history)
+                        return result.recurses
                     } catch FreePlanError.monthlyFileLimit {
                         limitReached = true
-                        break
+                        return false
                     } catch {
                         errorMessage = error.localizedDescription
-                        break
+                        return false
                     }
                 }
                 return (history: allHistory, limitReached: limitReached, error: errorMessage)
@@ -729,25 +849,28 @@ final class AppModel: ObservableObject {
             return
         }
         let matchLimit = previewMatchLimit
+        let matchState = DatabaseHazelMatchStateStore(db: db)
+        let counterStore = PreviewFolderCounterStore(underlying: DatabaseFolderCounterStore(db: db))
+        let uploadServers = self.uploadServers
         isPreviewing = true
         let isPro = self.isPro
         Task {
             defer { isPreviewing = false }
             previewResult = await Task.detached(priority: .userInitiated) {
-                let maxDepth = RuleEngine.maxRuleDepth(folderRules)
                 var filesScanned = 0
                 var matches: [FilePreview] = []
                 var reachedMatchLimit = false
-                RuleEngine.forEachEntry(root: folder.path, maxDepth: maxDepth) { entry in
+                RuleEngine.forEachRuleEntryExecuting(root: folder.path, rules: folderRules, isPro: isPro) { entry, activeRules, recurse in
                     filesScanned += 1
-                    guard let match = RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: folderRules, isPro: isPro) else {
-                        return
-                    }
+                    var didRecurse = false
+                    let match = RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: activeRules, root: folder.path, isPro: isPro, matchState: matchState, counterStore: counterStore, uploadServers: uploadServers, onRecurse: { target in didRecurse = true; recurse(target) })
+                    guard let match else { return didRecurse }
                     if matches.count < matchLimit {
                         matches.append(match)
                     } else {
                         reachedMatchLimit = true
                     }
+                    return didRecurse
                 }
                 return PreviewResult(
                     filesScanned: filesScanned,
@@ -843,7 +966,11 @@ final class AppModel: ObservableObject {
     }
 
     private func showError(_ error: any Error) {
-        showError("\(error)")
+        if let description = (error as? any LocalizedError)?.errorDescription, !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            showError(description)
+        } else {
+            showError(String(describing: error))
+        }
     }
 
     private func showError(_ message: String) {

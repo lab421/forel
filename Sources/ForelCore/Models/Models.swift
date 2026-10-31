@@ -60,19 +60,45 @@ public struct WatchedPathState: Codable, Equatable, Sendable {
 public enum ConditionMatch: String, Codable, Equatable, Sendable {
     case all
     case any
+    case none
 }
 
 public enum ConditionKind: String, Codable, Equatable, Sendable {
     case name
+    case anyFile = "any_file"
+    case nameInsensitive = "name_insensitive"
+    case fullName = "full_name"
+    case fullNameInsensitive = "full_name_insensitive"
+    case locked
+    case subfileCount = "subfile_count"
+    case conditionGroup = "condition_group"
+    case spotlightAttribute = "spotlight_attribute"
+    case scriptAttribute = "script_attribute"
+    case customTableMatch = "custom_table_match"
+    case customDateMatch = "custom_date_match"
+    case customTextMatch = "custom_text_match"
+    case dateComparison = "date_comparison"
+    case peerRanking = "peer_ranking"
+    case currentTime = "current_time"
+    case hazelScriptCondition = "hazel_script_condition"
     case extension_ = "extension"
+    case extensionInsensitive = "extension_insensitive"
     case kind
+    case contentType = "content_type"
     case sizeBytes = "size_bytes"
+    case subfolderDepth = "subfolder_depth"
     case tags
     case colorLabel = "color_label"
+    case finderComment = "finder_comment"
     case contents
+    case contentsWithoutOCR = "contents_without_ocr"
+    case contentsWithOCR = "contents_with_ocr"
+    case contentsWithPassword = "contents_with_password"
     case createdAt = "created_at"
     case dateModified = "date_modified"
     case dateAdded = "date_added"
+    case dateLastOpened = "date_last_opened"
+    case dateLastMatched = "date_last_matched"
     case downloadedFromWebsite = "downloaded_from_website"
     case downloadedWithApp = "downloaded_with_app"
     case rawWhereFromMetadata = "raw_where_from_metadata"
@@ -83,19 +109,33 @@ public enum ConditionKind: String, Codable, Equatable, Sendable {
 }
 
 public enum Operator: String, Codable, Equatable, Sendable {
+    case didChange = "did_change"
+    case didNotChange = "did_not_change"
     case `is`
     case isNot = "is_not"
     case contains
+    case containsInsensitive = "contains_insensitive"
     case doesNotContain = "does_not_contain"
+    case isBlank = "is_blank"
+    case isNotBlank = "is_not_blank"
     case startsWith = "starts_with"
     case endsWith = "ends_with"
     case matchesRegex = "matches_regex"
     case greaterThan = "greater_than"
     case lessThan = "less_than"
     case before
+    case beforeToday = "before_today"
+    case beforeThisWeek = "before_this_week"
+    case beforeThisMonth = "before_this_month"
+    case notThisWeek = "not_this_week"
+    case notThisMonth = "not_this_month"
+    case afterLastModified = "after_last_modified"
+    case beforeLastModified = "before_last_modified"
     case after
     case olderThan = "older_than"
     case withinLast = "within_last"
+    case hazelWithinLast = "hazel_within_last"
+    case hazelNotWithinLast = "hazel_not_within_last"
 
     public init(dbValue: String) {
         self = Operator(rawValue: dbValue) ?? .is
@@ -121,17 +161,37 @@ public struct Condition: Codable, Equatable, Sendable {
 public enum ActionKind: String, Codable, Equatable, Sendable {
     case moveToFolder = "move_to_folder"
     case copyToFolder = "copy_to_folder"
+    case syncToFolder = "sync_to_folder"
+    case importError = "import_error"
     case rename
     case moveToTrash = "move_to_trash"
     case delete
     case addTag = "add_tag"
     case removeTag = "remove_tag"
     case setColorLabel = "set_color_label"
+    case setFinderLabel = "set_finder_label"
+    case setLocked = "set_locked"
+    case setExtensionHidden = "set_extension_hidden"
+    case setFinderComment = "set_finder_comment"
     case runScript = "run_script"
+    case runHazelShellScript = "run_hazel_shell_script"
+    case runHazelAppleScript = "run_hazel_applescript"
+    case runHazelOSA = "run_hazel_osa"
+    case runWorkflow = "run_workflow"
+    case upload
+    case hazelContinue = "hazel_continue"
+    case hazelRecurse = "hazel_recurse"
     case runShortcut = "run_shortcut"
     case openApplication = "open_application"
+    case openDefault = "open_default"
     case importToLibrary = "import_to_library"
     case uncompress
+    case archive
+    case showInFinder = "show_in_finder"
+    case makeAlias = "make_alias"
+    case pause
+    case ignore
+    case displayNotification = "display_notification"
 
     public init(dbValue: String) {
         self = ActionKind(rawValue: dbValue) ?? .moveToFolder
@@ -188,6 +248,9 @@ public struct Rule: Codable, Equatable, Sendable {
     public var recursionDepth: Int64?
     public var conditions: [Condition]
     public var actions: [Action]
+    /// An incomplete imported rule must never execute its remaining parts.
+    public var importError: String?
+    public var isHazelImported: Bool
     public var priority: Int64
     public var createdAt: String
 
@@ -201,7 +264,9 @@ public struct Rule: Codable, Equatable, Sendable {
         conditions: [Condition] = [],
         actions: [Action] = [],
         priority: Int64 = 0,
-        createdAt: String = ISO8601DateFormatter.forelUTC.string(from: Date())
+        createdAt: String = ISO8601DateFormatter.forelUTC.string(from: Date()),
+        importError: String? = nil,
+        isHazelImported: Bool = false
     ) {
         self.id = id
         self.folderId = folderId
@@ -211,8 +276,30 @@ public struct Rule: Codable, Equatable, Sendable {
         self.recursionDepth = recursionDepth
         self.conditions = conditions
         self.actions = actions
+        self.importError = importError
+        self.isHazelImported = isHazelImported
         self.priority = priority
         self.createdAt = createdAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, folderId, name, enabled, conditionMatch, recursionDepth, conditions, actions, importError, isHazelImported, priority, createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        folderId = try c.decode(String.self, forKey: .folderId)
+        name = try c.decode(String.self, forKey: .name)
+        enabled = try c.decode(Bool.self, forKey: .enabled)
+        conditionMatch = try c.decode(ConditionMatch.self, forKey: .conditionMatch)
+        recursionDepth = try c.decodeIfPresent(Int64.self, forKey: .recursionDepth)
+        conditions = try c.decode([Condition].self, forKey: .conditions)
+        actions = try c.decode([Action].self, forKey: .actions)
+        importError = try c.decodeIfPresent(String.self, forKey: .importError)
+        isHazelImported = try c.decodeIfPresent(Bool.self, forKey: .isHazelImported) ?? false
+        priority = try c.decode(Int64.self, forKey: .priority)
+        createdAt = try c.decode(String.self, forKey: .createdAt)
     }
 }
 

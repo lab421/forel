@@ -21,6 +21,9 @@ import Testing
     @Test func excludesKnownNoisySystemFiles() {
         #expect(SystemFileFilter.isExcluded(".DS_Store"))
         #expect(SystemFileFilter.isExcluded(".forel-uncompress-123456"))
+        #expect(SystemFileFilter.isExcluded(".forel-replace-550E8400-E29B-41D4-A716-446655440000"))
+        #expect(!SystemFileFilter.isExcluded(".forel-replace-not-a-staging-file"))
+        #expect(SystemFileFilter.isExcluded(".forel-archive-12345678-1234-1234-1234-123456789ABC.zip"))
         #expect(SystemFileFilter.isExcluded("._report.pdf")) // AppleDouble resource fork
         #expect(SystemFileFilter.isExcluded("~$budget.docx")) // Office lock file
     }
@@ -68,5 +71,6 @@ import Testing
         #expect(!SystemFileFilter.isExcluded("Icon.png"))
         #expect(!SystemFileFilter.isExcluded("backup.icloud"))
         #expect(!SystemFileFilter.isExcluded(".env"))
+        #expect(!SystemFileFilter.isExcluded(".forel-archive-not-a-uuid.zip"))
     }
 }

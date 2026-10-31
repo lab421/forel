@@ -16,6 +16,7 @@
 
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import ForelCore
 
 struct RuleListView: View {
@@ -77,8 +78,14 @@ struct RuleListView: View {
             if model.paused, model.selectedFolderId != nil {
                 pausedBanner
             }
-            if !model.rules.isEmpty {
+            if model.selectedFolderId != nil {
                 actionBar
+                if hasActiveConditionScripts {
+                    Label("Preview runs condition scripts, which can change files.", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(ForelTheme.secondaryText)
+                        .textSelection(.enabled)
+                }
             }
             if !selectedRuleIDs.isEmpty {
                 HStack {
@@ -151,6 +158,18 @@ struct RuleListView: View {
         .padding(16)
         .frame(minWidth: 460)
         .background(ForelTheme.background)
+    }
+
+    private var hasActiveConditionScripts: Bool {
+        func containsScript(_ condition: Condition, depth: Int) -> Bool {
+            if condition.kind == .hazelScriptCondition { return true }
+            guard depth < 16, condition.kind == .conditionGroup,
+                  let group = ConditionGroup.decode(condition.value) else { return false }
+            return group.conditions.contains { containsScript($0, depth: depth + 1) }
+        }
+        return model.rules.contains { rule in
+            rule.enabled && rule.importError == nil && rule.conditions.contains { containsScript($0, depth: 0) }
+        }
     }
 
     private func editorHeight(for availableHeight: CGFloat) -> CGFloat {
@@ -266,8 +285,45 @@ struct RuleListView: View {
             .disabled(!model.selectedFolderIsAllowed || model.isPreviewing)
             .opacity(model.selectedFolderIsAllowed ? 1 : 0.45)
 
+            Menu {
+                Button("Import Rules…", action: importRules)
+                    .disabled(!model.selectedFolderIsAllowed)
+                Button("Export Rules…", action: exportRules)
+                    .disabled(model.rules.isEmpty)
+            } label: {
+                Label("Import / Export", systemImage: "arrow.left.arrow.right")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(model.selectedFolderId == nil)
+
             Spacer()
         }
+    }
+
+    private func importRules() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "forelrules") ?? .json,
+            UTType(filenameExtension: "hazelrules") ?? .data,
+        ]
+        panel.prompt = "Import"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.importRules(from: url)
+    }
+
+    private func exportRules() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "forelrules") ?? .json]
+        // Rules are exported per watched folder; naming the file after it keeps
+        // exports of different folders from all proposing the same filename.
+        let folderName = selectedFolder.map { ($0.path as NSString).lastPathComponent } ?? ""
+        panel.nameFieldStringValue = folderName.isEmpty ? "Forel Rules.forelrules" : "Forel Rules - \(folderName).forelrules"
+        panel.prompt = "Export"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.exportRules(to: url)
     }
 
     private var pausedBanner: some View {
@@ -517,6 +573,7 @@ private struct RuleCopyRequest: Identifiable {
 }
 
 private struct RuleDetails: View {
+    @EnvironmentObject private var model: AppModel
     let rule: Rule
 
     var body: some View {
@@ -541,7 +598,7 @@ private struct RuleDetails: View {
             RuleDetailRow(
                 icon: condition.kind.iconSystemName,
                 badge: condition.kind.label,
-                title: "\(condition.operator.label) \(condition.value)",
+                title: "\(condition.operator.label) \(condition.displayValue)",
                 detail: nil
             )
         }
@@ -628,6 +685,10 @@ private struct RuleDetails: View {
             return ("to folder", action.params[ActionParam.destination]?.stringValue)
         case .copyToFolder:
             return ("to folder", action.params[ActionParam.destination]?.stringValue)
+        case .syncToFolder:
+            return ("sync to folder", action.params[ActionParam.destination]?.stringValue)
+        case .importError:
+            return ("unsupported import", nil)
         case .rename:
             return ("to \(action.params[ActionParam.pattern]?.stringValue ?? "")", action.params[ActionParam.cleanFileName]?.boolValue == true ? "clean file name" : nil)
         case .moveToTrash:
@@ -638,13 +699,36 @@ private struct RuleDetails: View {
             return ("add \(tagList(action))", nil)
         case .removeTag:
             return ("remove \(tagList(action))", nil)
-        case .setColorLabel:
+        case .setColorLabel, .setFinderLabel:
             let color = action.params[ActionParam.color]?.stringValue ?? ""
             return (color.isEmpty ? "clear color label" : "set to \(color)", nil)
+        case .setLocked:
+            return (action.params[ActionParam.enabled]?.boolValue == false ? "unlock file" : "lock file", nil)
+        case .setExtensionHidden:
+            return (action.params[ActionParam.enabled]?.boolValue == false ? "show extension" : "hide extension", nil)
+        case .setFinderComment:
+            return ("set Finder comment", action.params[ActionParam.comment]?.stringValue)
         case .runScript:
             let script = action.params[ActionParam.script]?.stringValue ?? ""
             let firstLine = script.split(separator: "\n").first.map(String.init) ?? ""
             return (firstLine.isEmpty ? "run script" : firstLine, nil)
+        case .runHazelShellScript:
+            return ("run imported shell script", action.params[ActionParam.shell]?.stringValue)
+        case .hazelContinue:
+            return ("continue matching rules", nil)
+        case .hazelRecurse:
+            return ("run rules on folder contents", nil)
+        case .runHazelAppleScript:
+            return ("run imported AppleScript", "review in Hazel")
+        case .runHazelOSA:
+            return ("run script", action.params[ActionParam.osaLanguage]?.stringValue ?? "AppleScript")
+        case .runWorkflow:
+            return ("run Automator workflow", action.params[ActionParam.workflowPath]?.stringValue)
+        case .upload:
+            let serverID = action.params["upload_server_id"]?.stringValue
+            let serverName = model.uploadServers.first { $0.id == serverID }?.name ?? "Missing server"
+            let folder = action.params["upload_remote_path"]?.stringValue ?? "/"
+            return ("upload to \(serverName)", folder)
         case .runShortcut:
             let name = action.params[ActionParam.shortcutName]?.stringValue ?? ""
             return (name.isEmpty ? "run shortcut" : name, ActionExecutor.shortcutInputMode(action).label)
@@ -659,6 +743,13 @@ private struct RuleDetails: View {
             return ("import to \(library)", playlist.isEmpty ? nil : playlist)
         case .uncompress:
             return ("uncompress ZIP", MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
+        case .archive: return ("archive as ZIP", nil)
+        case .openDefault: return ("open with default application", nil)
+        case .showInFinder: return ("show in Finder", nil)
+        case .makeAlias: return ("make alias", action.params[ActionParam.destination]?.stringValue)
+        case .pause: return ("pause", action.params[ActionParam.durationSeconds]?.stringValue)
+        case .ignore: return ("ignore", nil)
+        case .displayNotification: return ("display notification", action.params[ActionParam.notificationText]?.stringValue)
         }
     }
 
@@ -856,6 +947,7 @@ private extension ActionPreview {
         case .wouldRun: return "Would run"
         case .wouldSkip: return "Would skip"
         case .blockedByConflict: return "Blocked by conflict"
+        case .blocked: return "Unsupported import"
         case .needsConfirmation: return "Needs confirmation"
         }
     }
@@ -866,6 +958,7 @@ private extension ActionPreview {
         case .wouldRun: return "arrow.turn.down.right"
         case .wouldSkip: return "minus.circle"
         case .blockedByConflict: return "exclamationmark.triangle.fill"
+        case .blocked: return "exclamationmark.triangle.fill"
         case .needsConfirmation: return "questionmark.circle.fill"
         }
     }
@@ -876,6 +969,7 @@ private extension ActionPreview {
         case .wouldRun: return ForelTheme.accent
         case .wouldSkip: return ForelTheme.secondaryText
         case .blockedByConflict: return .orange
+        case .blocked: return .orange
         case .needsConfirmation: return .purple
         }
     }

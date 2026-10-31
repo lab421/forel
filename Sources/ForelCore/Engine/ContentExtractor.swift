@@ -48,6 +48,7 @@ public enum ContentStrategy: String, Sendable {
     case iWork
     case spotlight
     case imageOCR
+    case imageWithoutOCR
     case none
 
     /// Human-readable label shown in the Dry Run details.
@@ -64,6 +65,7 @@ public enum ContentStrategy: String, Sendable {
         case .iWork: return "iWork document"
         case .spotlight: return "Spotlight"
         case .imageOCR: return "Image OCR"
+        case .imageWithoutOCR: return "Image without text recognition"
         case .none: return "No readable content"
         }
     }
@@ -113,7 +115,7 @@ public enum ContentExtractor {
     /// Runs the ordered extraction pipeline for `path`, dispatching on the file
     /// extension. Always returns a result; unsupported or empty files yield
     /// `text: nil` with `strategy: .none`.
-    public static func extract(path: String, allowOCR: Bool = true) -> ContentExtraction {
+    public static func extract(path: String, allowOCR: Bool = true, useOCR: Bool = true, forceOCR: Bool = false, pdfPassword: String? = nil) -> ContentExtraction {
         let ext = (path as NSString).pathExtension.lowercased()
         let size = fileSize(path)
 
@@ -122,7 +124,7 @@ public enum ContentExtractor {
         }
         switch ext {
         case "pdf":
-            return extractPDF(path: path, size: size, allowOCR: allowOCR)
+            return extractPDF(path: path, size: size, allowOCR: allowOCR, useOCR: useOCR, forceOCR: forceOCR, password: pdfPassword)
         case "rtf":
             return extractAttributed(path: path, documentType: .rtf, strategy: .rtf)
         case "rtfd":
@@ -140,10 +142,8 @@ public enum ContentExtractor {
             return extractIWork(path: path, size: size)
         default:
             if imageExtensions.contains(ext) {
-                guard allowOCR else {
-                    return ContentExtraction(text: nil, strategy: .imageOCR, message: "Text recognition in images requires Forel Pro.")
-                }
-                return extractImageOCR(path: path, size: size)
+                if useOCR && !allowOCR { return ContentExtraction(text: nil, strategy: .imageOCR, message: "Text recognition in images requires Forel Pro.") }
+                return extractImageOCR(path: path, size: size, useOCR: useOCR)
             }
             if spotlightFallbackExtensions.contains(ext) {
                 // No in-process extractor; the evaluator may still try a
@@ -193,6 +193,8 @@ public enum ContentExtractor {
         value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "*", with: "\\*")
+            .replacingOccurrences(of: "?", with: "\\?")
     }
 
     /// Asks Spotlight whether the file's indexed text contains `term`. Returns
@@ -248,34 +250,45 @@ public enum ContentExtractor {
 
     // MARK: - PDF
 
-    private static func extractPDF(path: String, size: UInt64, allowOCR: Bool) -> ContentExtraction {
+    private static func extractPDF(path: String, size: UInt64, allowOCR: Bool, useOCR: Bool, forceOCR: Bool, password: String?) -> ContentExtraction {
         if size > pdfMaxBytes {
             return ContentExtraction(text: nil, strategy: .none, message: "PDF exceeds the 100 MB limit.")
         }
         guard let doc = PDFDocument(url: URL(fileURLWithPath: path)) else {
             return ContentExtraction(text: nil, strategy: .none, message: "Could not open PDF.")
         }
-        let text = pdfText(from: doc)
+        if doc.isLocked, let password { _ = doc.unlock(withPassword: password) }
+        guard !doc.isLocked else { return ContentExtraction(text: nil, strategy: .none, message: "PDF is password-protected.") }
+        guard doc.pageCount > 0, doc.pageCount <= pdfMaxPages else {
+            return ContentExtraction(text: nil, strategy: .none, message: "PDF pages could not be fully read.")
+        }
+        if forceOCR && useOCR {
+            guard allowOCR else { return ContentExtraction(text: nil, strategy: .pdfOCR, message: "Text recognition in scanned PDFs requires Forel Pro.") }
+            guard let ocr = pdfOCRText(from: doc) else { return ContentExtraction(text: nil, strategy: .none, message: "PDF text recognition did not complete.") }
+            return ContentExtraction(text: ocr, strategy: .pdfOCR)
+        }
+        guard let text = pdfText(from: doc) else { return ContentExtraction(text: nil, strategy: .none, message: "PDF pages could not be fully read.") }
         if !text.isEmpty {
             return ContentExtraction(text: text, strategy: .pdfText)
         }
-        // No text layer — likely a scanned PDF. OCR the rendered pages.
-        guard allowOCR else {
-            return ContentExtraction(text: nil, strategy: .pdfOCR, message: "Text recognition in scanned PDFs requires Forel Pro.")
+        if !useOCR {
+            return ContentExtraction(text: "", strategy: .pdfText)
         }
-        let ocr = pdfOCRText(from: doc)
-        if !ocr.isEmpty {
+        // No text layer — likely a scanned PDF. OCR the rendered pages.
+        guard allowOCR else { return ContentExtraction(text: nil, strategy: .pdfOCR, message: "Text recognition in scanned PDFs requires Forel Pro.") }
+        if let ocr = pdfOCRText(from: doc) {
             return ContentExtraction(text: ocr, strategy: .pdfOCR)
         }
-        return ContentExtraction(text: nil, strategy: .none, message: "PDF has no readable text.")
+        return ContentExtraction(text: nil, strategy: .none, message: "PDF text recognition did not complete.")
     }
 
     /// Concatenates the text layer of a PDF document, up to the page limit.
-    private static func pdfText(from doc: PDFDocument) -> String {
+    private static func pdfText(from doc: PDFDocument) -> String? {
         let pageCount = min(doc.pageCount, pdfMaxPages)
         var parts: [String] = []
         for index in 0..<pageCount {
-            if let page = doc.page(at: index), let text = page.string {
+            guard let page = doc.page(at: index) else { return nil }
+            if let text = page.string {
                 parts.append(text)
             }
         }
@@ -285,13 +298,14 @@ public enum ContentExtractor {
     /// OCRs a scanned PDF by rendering each page to a bitmap and running Vision,
     /// up to a tighter page limit since this is far more expensive than reading
     /// a text layer.
-    private static func pdfOCRText(from doc: PDFDocument) -> String {
-        let pageCount = min(doc.pageCount, pdfOCRMaxPages)
+    private static func pdfOCRText(from doc: PDFDocument) -> String? {
+        guard doc.pageCount > 0, doc.pageCount <= pdfOCRMaxPages else { return nil }
+        let pageCount = doc.pageCount
         var parts: [String] = []
         for index in 0..<pageCount {
             guard let page = doc.page(at: index),
                   let cgImage = renderPDFPage(page),
-                  let text = recognizeText(in: cgImage) else { continue }
+                  let text = recognizeText(in: cgImage) else { return nil }
             parts.append(text)
         }
         return parts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -452,8 +466,7 @@ public enum ContentExtractor {
         guard let pdfData = iWorkPreviewPDF(path: path), let doc = PDFDocument(data: pdfData) else {
             return ContentExtraction(text: nil, strategy: .none, message: "iWork preview not available.")
         }
-        let text = pdfText(from: doc)
-        if text.isEmpty {
+        guard let text = pdfText(from: doc), !text.isEmpty else {
             return ContentExtraction(text: nil, strategy: .none, message: "iWork preview has no readable text.")
         }
         return ContentExtraction(text: text, strategy: .iWork)
@@ -486,7 +499,7 @@ public enum ContentExtractor {
 
     // MARK: - Image OCR
 
-    private static func extractImageOCR(path: String, size: UInt64) -> ContentExtraction {
+    private static func extractImageOCR(path: String, size: UInt64, useOCR: Bool) -> ContentExtraction {
         if size > ocrImageMaxBytes {
             return ContentExtraction(text: nil, strategy: .none, message: "Image exceeds the 25 MB OCR limit.")
         }
@@ -495,6 +508,7 @@ public enum ContentExtractor {
               let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             return ContentExtraction(text: nil, strategy: .none, message: "Could not open image.")
         }
+        if !useOCR { return ContentExtraction(text: "", strategy: .imageWithoutOCR, message: "Text recognition is disabled.") }
         if cgImage.width > ocrMaxDimension || cgImage.height > ocrMaxDimension {
             return ContentExtraction(text: nil, strategy: .none, message: "Image is too large for OCR.")
         }
@@ -505,7 +519,7 @@ public enum ContentExtractor {
     }
 
     /// Runs on-device Vision text recognition on a bitmap, returning the joined
-    /// lines or `nil` when nothing is recognized (or OCR is unavailable). Shared
+    /// lines, an empty string when no text is recognized, or `nil` on failure. Shared
     /// by image and scanned-PDF extraction. Times out after 30 seconds to avoid
     /// hanging the caller when the Vision framework is unresponsive.
     private static func recognizeText(in cgImage: CGImage) -> String? {
@@ -515,10 +529,8 @@ public enum ContentExtractor {
         nonisolated(unsafe) let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
 
         let semaphore = DispatchSemaphore(value: 0)
-        // Safe despite the `unsafe` in the name: the semaphore wait below
-        // blocks until the background closure signals, so there's no actual
-        // concurrent access — just the compiler unable to see that VNRequest
-        // types aren't Sendable for a reason that applies here.
+        // A successful wait synchronizes the result read with the background
+        // closure. On timeout, return without accessing its mutable result.
         nonisolated(unsafe) var resultText: String?
         DispatchQueue.global(qos: .userInitiated).async {
             guard (try? handler.perform([request])) != nil, let observations = request.results else {
@@ -529,10 +541,10 @@ public enum ContentExtractor {
                 .compactMap { $0.topCandidates(1).first?.string }
                 .joined(separator: "\n")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            resultText = text.isEmpty ? nil : text
+            resultText = text
             semaphore.signal()
         }
-        _ = semaphore.wait(timeout: .now() + 30)
+        guard semaphore.wait(timeout: .now() + 30) == .success else { return nil }
         return resultText
     }
 

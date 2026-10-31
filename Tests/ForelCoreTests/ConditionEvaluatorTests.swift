@@ -20,6 +20,112 @@ import Darwin
 @testable import ForelCore
 
 @Suite struct ConditionEvaluatorTests {
+    @Test func nameIgnoringCaseAndAccentsHandlesAllOperators() {
+        let directory = TempDir()
+        let file = directory.file("Résumé Draft.txt")
+        for (op, value, expected) in [
+            (Operator.is, "resume draft", true), (.isNot, "resume draft", false),
+            (.contains, "SUME", true), (.doesNotContain, "SUME", false),
+            (.startsWith, "resume", true), (.endsWith, "DRAFT", true),
+            (.isNot, "another", true), (.doesNotContain, "missing", true),
+        ] {
+            #expect(ConditionEvaluator.evaluate(makeCondition(.nameInsensitive, op, value), path: file) == expected)
+        }
+    }
+
+    @Test func extensionIgnoringCaseAndAccentsUsesOnlyTheFinalExtension() {
+        let directory = TempDir()
+        let image = directory.file("Screen Shot.PŃG")
+        let archive = directory.file("Screen Shot.png.zip")
+        let matches = makeCondition(.extensionInsensitive, .is, ".png")
+        let excludes = makeCondition(.extensionInsensitive, .isNot, "png")
+        #expect(ConditionEvaluator.evaluate(matches, path: image))
+        #expect(!ConditionEvaluator.evaluate(matches, path: archive))
+        #expect(!ConditionEvaluator.evaluate(excludes, path: image))
+        #expect(ConditionEvaluator.evaluate(excludes, path: archive))
+    }
+
+    @Test func contentContainsCanIgnoreCaseAndAccents() {
+        let directory = TempDir()
+        let file = directory.file("statement.txt", contents: "Payment at Café, reference 1234-5678")
+        #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .containsInsensitive, "CAFE"), path: file))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .containsInsensitive, "234-567"), path: file))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .containsInsensitive, "missing"), path: file))
+    }
+
+    @Test func contentTypeMatchesUTTypeConformance() {
+        let directory = TempDir()
+        let png = directory.file("image.png")
+        let text = directory.file("notes.txt")
+        let image = makeCondition(.contentType, .is, "public.image")
+        let notImage = makeCondition(.contentType, .isNot, "public.image")
+        let folder = makeCondition(.contentType, .is, "public.folder")
+        #expect(ConditionEvaluator.evaluate(image, path: png))
+        #expect(!ConditionEvaluator.evaluate(image, path: text))
+        #expect(!ConditionEvaluator.evaluate(notImage, path: png))
+        #expect(ConditionEvaluator.evaluate(notImage, path: text))
+        #expect(ConditionEvaluator.evaluate(folder, path: directory.path))
+        #expect(!ConditionEvaluator.evaluate(folder, path: png))
+    }
+
+    @Test func importedVolumeAndFinderAliasKindsMatchTheirTypes() throws {
+        let directory = TempDir()
+        let file = directory.file("original.txt")
+        let alias = URL(fileURLWithPath: directory.path).appendingPathComponent("alias")
+        let bookmark = try URL(fileURLWithPath: file).bookmarkData(options: .suitableForBookmarkFile)
+        try URL.writeBookmarkData(bookmark, to: alias)
+        let volume = makeCondition(.contentType, .is, "hazelkind:Volume")
+        let notVolume = makeCondition(.contentType, .isNot, "hazelkind:Volume")
+        let finderAlias = makeCondition(.contentType, .is, "com.apple.alias-file")
+        let notAlias = makeCondition(.contentType, .isNot, "com.apple.alias-file")
+        #expect(ConditionEvaluator.evaluate(volume, path: "/"))
+        #expect(!ConditionEvaluator.evaluate(volume, path: file))
+        #expect(ConditionEvaluator.evaluate(notVolume, path: file))
+        #expect(ConditionEvaluator.evaluate(finderAlias, path: alias.path))
+        #expect(!ConditionEvaluator.evaluate(notAlias, path: alias.path))
+        #expect(ConditionEvaluator.evaluate(notAlias, path: file))
+    }
+
+    @Test func dateAddedConditionReadsMetadataWithoutAlignmentCrash() {
+        let directory = TempDir()
+        let file = directory.file("new.txt")
+        let condition = makeCondition(.dateAdded, .withinLast, "1 day")
+        #expect(ConditionEvaluator.evaluate(condition, path: file))
+    }
+
+    @Test func lastOpenedComparisonUsesTheExactModificationTime() {
+        let condition = makeCondition(.dateLastOpened, .afterLastModified, "")
+        let modified = Date(timeIntervalSince1970: 1_700_000_000)
+        #expect(ConditionEvaluator.matchLastOpened(condition, opened: modified.addingTimeInterval(1), modified: modified))
+        #expect(!ConditionEvaluator.matchLastOpened(condition, opened: modified, modified: modified))
+        #expect(!ConditionEvaluator.matchLastOpened(condition, opened: modified.addingTimeInterval(-1), modified: modified))
+        #expect(!ConditionEvaluator.matchLastOpened(condition, opened: .distantPast, modified: modified))
+        #expect(!ConditionEvaluator.matchLastOpened(condition, opened: modified, modified: nil))
+    }
+
+    @Test func calendarDateConditionsRespectPeriodBoundaries() throws {
+        let directory = TempDir()
+        let file = directory.file("date.txt")
+        for (component, before, outside) in [
+            (Calendar.Component.weekOfYear, Operator.beforeThisWeek, Operator.notThisWeek),
+            (.month, .beforeThisMonth, .notThisMonth),
+        ] {
+            let period = try #require(Calendar.current.dateInterval(of: component, for: Date()))
+            let beforeCondition = makeCondition(.dateModified, before, "")
+            let outsideCondition = makeCondition(.dateModified, outside, "")
+            for (date, matchesBefore, matchesOutside) in [
+                (period.start.addingTimeInterval(-1), true, true),
+                (period.start, false, false),
+                (period.end.addingTimeInterval(-1), false, false),
+                (period.end, false, true),
+            ] {
+                try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: file)
+                #expect(ConditionEvaluator.evaluate(beforeCondition, path: file) == matchesBefore)
+                #expect(ConditionEvaluator.evaluate(outsideCondition, path: file) == matchesOutside)
+            }
+        }
+    }
+
     @Test func sizeConditionComparesParsedThresholds() throws {
         let dir = TempDir()
         let file = dir.file("data.bin", contents: "1234567890")

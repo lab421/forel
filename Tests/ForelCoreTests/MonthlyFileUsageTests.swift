@@ -297,7 +297,7 @@ import Testing
             let db = try Database(path: path)
             try db.insertFolder(folder)
             try db.insertRule(rule)
-            #expect(try db.userVersion() == 8)
+            #expect(try db.userVersion() == Database.currentSchemaVersion)
             let usageStore = MonthlyFileUsageStore(preferences: preferences.defaults)
             let result = try usageStore.runWithFreePlan(path: dir.file("input.txt"), depth: 0, rules: [rule],
                                                        batchId: "quota", isPro: false)
@@ -305,8 +305,8 @@ import Testing
             #expect(usageStore.monthlyFileUsage().processed == 1)
         }
         let reopened = try Database(path: path)
-        #expect(Database.currentSchemaVersion == 8)
-        #expect(try reopened.userVersion() == 8)
+        #expect(Database.currentSchemaVersion == 15)
+        #expect(try reopened.userVersion() == Database.currentSchemaVersion)
         #expect(try reopened.listRules(folderId: folder.id).first?.id == rule.id)
         #expect(try reopened.listHistory().first?.status == .applied)
         let quotaTables = try reopened.statement("SELECT name FROM sqlite_master WHERE name IN ('monthly_file_usage', 'quota_pending_files')")

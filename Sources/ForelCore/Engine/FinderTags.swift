@@ -24,6 +24,28 @@ import Darwin
 enum FinderTags {
     static let xattrName = "com.apple.metadata:_kMDItemUserTags"
 
+    /// Unlike `read`, distinguish missing tags from an unreadable or malformed
+    /// attribute when deciding whether an imported label is safe.
+    static func hasExistingTags(_ path: String) throws -> Bool {
+        return try readChecked(path).isEmpty == false
+    }
+
+    static func readChecked(_ path: String) throws -> [String] {
+        let size = getxattr(path, xattrName, nil, 0, 0, 0)
+        if size < 0 {
+            if errno == ENOATTR { return [] }
+            throw ActionError("Cannot inspect Finder tags (errno \(errno))")
+        }
+        guard size > 0 else { throw ActionError("Cannot read Finder tags") }
+        var bytes = [UInt8](repeating: 0, count: size)
+        let count = getxattr(path, xattrName, &bytes, size, 0, 0)
+        guard count == size,
+              let tags = (try? PropertyListSerialization.propertyList(from: Data(bytes), options: [], format: nil)) as? [String] else {
+            throw ActionError("Cannot read Finder tags")
+        }
+        return tags
+    }
+
     /// Reads the Finder tags on `path`, or an empty list if there are none.
     static func read(_ path: String) -> [String] {
         let size = getxattr(path, xattrName, nil, 0, 0, 0)
@@ -78,9 +100,7 @@ enum FinderTags {
 
     static func currentColorName(_ path: String) -> String {
         for tag in read(path) {
-            let name = tag.split(separator: "\n").first.map(String.init) ?? tag
-            let trimmed = name.trimmingCharacters(in: .whitespaces)
-            if colorIndex(trimmed) != nil { return trimmed.lowercased() }
+            if let index = tagColor(tag) { return colorName(index) ?? "" }
         }
         return ""
     }
@@ -88,15 +108,31 @@ enum FinderTags {
     /// Sets the macOS colour label on `path`, replacing any existing colour
     /// label. An empty/unknown colour just clears the label.
     static func setColorLabel(_ path: String, color: String) throws {
-        var tags = read(path)
-        tags.removeAll { tag in
-            let name = tag.split(separator: "\n").first.map(String.init) ?? tag
-            return colorIndex(name.trimmingCharacters(in: .whitespaces)) != nil
-        }
-        if let idx = colorIndex(color) {
+        var tags = try readChecked(path)
+        let target = colorIndex(color)
+        tags.removeAll { tagColor($0).map { $0 != target } ?? false }
+        if let idx = target, !tags.contains(where: { tagColor($0) == idx }) {
             tags.append("\(capitalize(color))\n\(idx)")
         }
         try write(path, tags)
+    }
+
+    static func tagColor(_ tag: String) -> Int? {
+        guard let separator = tag.lastIndex(of: "\n"),
+              let value = Int(tag[tag.index(after: separator)...]), (1...7).contains(value) else { return nil }
+        return value
+    }
+
+    static func colorName(_ index: Int) -> String? {
+        [1: "gray", 2: "green", 3: "purple", 4: "blue", 5: "yellow", 6: "red", 7: "orange"][index]
+    }
+
+    static func restoreColors(_ path: String, before: [String], after: [String]) throws {
+        let tags = try readChecked(path)
+        guard tags.filter({ tagColor($0) != nil }) == after else {
+            throw ActionError("Finder color tags changed since this action ran")
+        }
+        try write(path, tags.filter { tagColor($0) == nil } + before)
     }
 
     private static func capitalize(_ s: String) -> String {

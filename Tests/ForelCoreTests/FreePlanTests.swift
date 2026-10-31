@@ -3,6 +3,34 @@ import Testing
 @testable import ForelCore
 
 @Suite struct FreePlanTests {
+    @Test func nestedForcedOCRRequiresProAndCustomContentCannotBypassGate() throws {
+        let dir = TempDir(), file = dir.path + "/fixture.png"
+        makeTextImage(at: file, text: "INVOICE 2026")
+        var capture = CustomTextCondition(); capture.names = "match"; capture.pattern = "(INVOICE)"; capture.source = "contents"
+        let captured = makeCondition(.customTextMatch, .is, capture.encoded)
+        #expect(capture.evaluate(path: file, allowOCR: false) == nil)
+        // Vision can transiently decline a request when the full suite starts
+        // several OCR jobs at once. Require a real match, retrying only an
+        // unavailable result (a genuine non-match must still fail).
+        var direct = capture.evaluate(path: file, allowOCR: true)
+        for _ in 0..<2 where direct == nil {
+            direct = capture.evaluate(path: file, allowOCR: true)
+        }
+        #expect(direct?.0 == true)
+        #expect(direct?.1["match"] == .string("INVOICE"))
+        var attributes: [String: JSONValue] = [:]
+        #expect(try ConditionEvaluator.evaluateWithContext(captured, path: file, depth: 0, lastOpened: SpotlightLastOpenedMetadata(), attributes: &attributes, allowOCR: false) == nil)
+        let customGroup = makeCondition(.conditionGroup, .is, ConditionGroup(match: .all, target: .current, conditions: [captured]).encoded)
+        #expect(try ConditionEvaluator.evaluateWithContext(customGroup, path: file, depth: 0, lastOpened: SpotlightLastOpenedMetadata(), attributes: &attributes, allowOCR: false) == nil)
+        #expect(try ConditionEvaluator.evaluateWithContext(customGroup, path: file, depth: 0, lastOpened: SpotlightLastOpenedMetadata(), attributes: &attributes, allowOCR: true) == true)
+        #expect(attributes["match"] == .string("INVOICE"))
+        let forced = makeCondition(.contentsWithOCR, .contains, "fixture")
+        let nested = makeCondition(.conditionGroup, .is, ConditionGroup(match: .all, target: .current, conditions: [forced]).encoded)
+        var rule = makeRule(name: "OCR gate"); rule.conditions = [nested]
+        #expect(FreePlan.requiredFeature(for: rule) == .ocr)
+        #expect(throws: FreePlanError.feature(.ocr)) { try FreePlan.validate(rule, isPro: false) }
+        #expect(throws: Never.self) { try FreePlan.validate(rule, isPro: true) }
+    }
     @Test func persistenceLimitsFoldersButAllowsUnlimitedRulesInFree() throws {
         let db = try Database(path: ":memory:")
         let first = WatchedFolder(path: "/tmp/first")

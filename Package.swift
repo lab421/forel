@@ -13,9 +13,11 @@ let package = Package(
         .package(url: "https://github.com/lab421/licensing.git", revision: "1569b2038595862084a466d8dea806b360642608"),
     ],
     targets: [
+        .systemLibrary(name: "CArchive"),
         .target(
             name: "ForelCore",
             dependencies: [
+                "CArchive",
                 .product(name: "ZIPFoundation", package: "ZIPFoundation"),
                 .product(name: "Lab421Licensing", package: "licensing"),
             ]

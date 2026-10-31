@@ -31,7 +31,15 @@ public enum FreePlan {
     }
 
     public static func requiredFeature(for rule: Rule) -> ProFeature? {
-        return rule.actions.compactMap { requiredFeature(for: $0.kind) }.first
+        func conditionFeature(_ condition: Condition, depth: Int) -> ProFeature? {
+            guard depth < 16 else { return .ocr }
+            if condition.kind == .contentsWithOCR { return .ocr }
+            if condition.kind == .conditionGroup, let group = ConditionGroup.decode(condition.value) {
+                return group.conditions.compactMap { conditionFeature($0, depth: depth + 1) }.first
+            }
+            return nil
+        }
+        return rule.actions.compactMap { requiredFeature(for: $0.kind) }.first ?? rule.conditions.compactMap { conditionFeature($0, depth: 0) }.first
     }
 
     public static func validate(_ rule: Rule, isPro: Bool) throws {

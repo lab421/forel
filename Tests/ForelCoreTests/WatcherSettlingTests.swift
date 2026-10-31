@@ -238,6 +238,36 @@ import Foundation
         #expect(try db.listHistory().count == 2)
     }
 
+    @Test func folderArrivalRescanRespectsNativeDepthAndHazelFolderGate() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var native = makeRule(folderId: folder.id, name: "native", recursionDepth: 1)
+        native.conditions = [makeCondition(.extension_, .is, "txt", ruleId: native.id)]
+        native.actions = [makeAction(.rename, .object(["pattern": .string("native-{name}")]), ruleId: native.id)]
+        var hazel = makeRule(folderId: folder.id, name: "hazel")
+        hazel.isHazelImported = true
+        hazel.conditions = [makeCondition(.extension_, .is, "txt", ruleId: hazel.id)]
+        hazel.actions = [makeAction(.rename, .object(["pattern": .string("hazel-{name}")]), ruleId: hazel.id)]
+        try db.insertRule(native)
+        try db.insertRule(hazel)
+        let incoming = dir.dir("Export")
+        _ = dir.dir("Export/Nested")
+        let first = dir.file("Export/a.txt")
+        let deep = dir.file("Export/Nested/b.txt")
+        let coordinator = WatcherCoordinator(db: db, settleInterval: 0.05)
+        coordinator.enqueue(event: .pathArrived(incoming))
+        #expect(coordinator.waitForPendingEvents())
+        #expect(!FileManager.default.fileExists(atPath: first))
+        #expect(FileManager.default.fileExists(atPath: "\(incoming)/native-a.txt"))
+        #expect(FileManager.default.fileExists(atPath: deep))
+        #expect(try db.listHistory().count == 1)
+        coordinator.enqueue(event: .pathArrived(incoming))
+        #expect(coordinator.waitForPendingEvents())
+        #expect(try db.listHistory().count == 1)
+    }
+
     @Test(arguments: ["preview", "manual", "watcher-arrival", "watcher-rescan"])
     func directorySymlinksDoNotProcessExternalContents(execution: String) throws {
         let db = try makeDB()

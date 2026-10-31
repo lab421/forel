@@ -21,6 +21,45 @@ import AppKit
 @testable import ForelCore
 
 @Suite struct ContentExtractorTests {
+    @Test func lockedPdfCannotMatchBlankOrNegatedContent() throws {
+        let dir = TempDir()
+        let url = URL(fileURLWithPath: dir.path).appendingPathComponent("locked.pdf")
+        let image = renderTextImage("secret")
+        let page = try #require(PDFPage(image: image))
+        let document = PDFDocument()
+        document.insert(page, at: 0)
+        #expect(document.write(to: url, withOptions: [.userPasswordOption: "secret", .ownerPasswordOption: "owner-secret"]))
+        let locked = try #require(PDFDocument(url: url))
+        #expect(locked.isLocked)
+        let result = ContentExtractor.extract(path: url.path, useOCR: false)
+        #expect(result.text == nil)
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.contentsWithoutOCR, .isBlank, ""), path: url.path))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.contentsWithoutOCR, .doesNotContain, "secret"), path: url.path))
+        #expect(ContentExtractor.extract(path: url.path, forceOCR: true).text == nil)
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.contentsWithOCR, .isBlank, ""), path: url.path))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.contentsWithOCR, .doesNotContain, "secret"), path: url.path))
+    }
+    @Test func passwordReferenceUnlocksPDFAndFailsClosed() throws {
+        let dir = TempDir()
+        let plain = (dir.path as NSString).appendingPathComponent("plain.pdf")
+        let locked = (dir.path as NSString).appendingPathComponent("locked.pdf")
+        makeTextPDF(at: plain, text: "Secret invoice 1234")
+        let document = try #require(PDFDocument(url: URL(fileURLWithPath: plain)))
+        #expect(document.write(to: URL(fileURLWithPath: locked), withOptions: [.userPasswordOption: "secret", .ownerPasswordOption: "owner-secret"]))
+        let spec = PasswordContentCondition(credentialID: UUID().uuidString, operand: "1234")
+        let condition = Condition(ruleId: "r", kind: .contentsWithPassword, operator: .contains, value: spec.encoded)
+        #expect(ConditionEvaluator.evaluatePasswordContents(condition, path: locked, lookup: { _ in "secret" }) == true)
+        #expect(ConditionEvaluator.evaluatePasswordContents(condition, path: locked, lookup: { _ in "wrong" }) == nil)
+        #expect(ConditionEvaluator.evaluatePasswordContents(condition, path: locked, lookup: { _ in nil }) == nil)
+        #expect(!condition.value.contains("secret"))
+        let rule = makeRule(name: "password", conditions: [condition])
+        let exported = try RuleTransfer.exportForel([rule])
+        #expect(!String(decoding: exported, as: UTF8.self).contains(spec.credentialID))
+        let imported = try RuleTransfer.importRules(from: exported, folderId: "folder")
+        #expect(imported.rules.first?.enabled == false)
+        #expect(imported.issues.contains { $0.message.contains("Save the PDF password again") })
+        #expect(PasswordContentCondition.decode(try #require(imported.rules.first?.conditions.first?.value))?.credentialID == "")
+    }
     @Test func plainTextFallsBackToUTF16() throws {
         let dir = TempDir()
         let file = (dir.path as NSString).appendingPathComponent("utf16.txt")
@@ -55,6 +94,29 @@ import AppKit
         #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "refund"), path: pdf))
     }
 
+    @Test func forceOCRDoesNotFallBackToAnExistingPDFTextLayer() throws {
+        let dir = TempDir()
+        let pdf = (dir.path as NSString).appendingPathComponent("invoice.pdf")
+        makeTextPDF(at: pdf, text: "Invoice total 1234 EUR")
+        #expect(ContentExtractor.extract(path: pdf).strategy == .pdfText)
+        let forced = ContentExtractor.extract(path: pdf, forceOCR: true)
+        #expect(forced.strategy == .pdfOCR || (forced.strategy == .none && forced.text == nil))
+    }
+
+    @Test func importedHazelStatementConditionMatchesPDFText() throws {
+        guard let root = ProcessInfo.processInfo.environment["FOREL_HAZEL_CORPUS"] else { return }
+        let data = try Data(contentsOf: URL(fileURLWithPath: root).appendingPathComponent("Statements.hazelrules"))
+        let imported = try RuleTransfer.importRules(from: data, folderId: "folder")
+        let rule = try #require(imported.rules.first { $0.name == "File LendingClub Statement" })
+        let condition = try #require(rule.conditions.first { $0.kind == .contents })
+        let directory = TempDir()
+        let pdf = (directory.path as NSString).appendingPathComponent("statement.pdf")
+        makeTextPDF(at: pdf, text: "Account \(condition.value)")
+        #expect(ConditionEvaluator.evaluateContents(condition, path: pdf).strategy == .pdfText)
+        #expect(ConditionEvaluator.evaluate(condition, path: pdf))
+        #expect(rule.actions.contains { $0.kind == .runHazelAppleScript })
+    }
+
     @Test func scannedPdfFallsBackToOCR() throws {
         let dir = TempDir()
         let pdf = (dir.path as NSString).appendingPathComponent("scanned.pdf")
@@ -63,7 +125,7 @@ import AppKit
         let result = ContentExtractor.extract(path: pdf)
         // OCR may be unavailable in some headless environments; only assert the
         // match when recognition actually produced text.
-        if result.text != nil {
+        if result.text?.isEmpty == false {
             #expect(result.strategy == .pdfOCR)
             #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "SCANNED"), path: pdf))
         }
@@ -282,6 +344,8 @@ import AppKit
         let query = ContentExtractor.spotlightContainsQuery(name: "book.xls", term: "Re\"ve\\nue")
         // Quotes and backslashes in the term must be escaped so the query stays valid.
         #expect(query == #"(kMDItemTextContent == "*Re\"ve\\nue*"cd) && (kMDItemFSName == "book.xls"cd)"#)
+        let literalWildcards = ContentExtractor.spotlightContainsQuery(name: "book*.xls", term: "a?b*c")
+        #expect(literalWildcards == #"(kMDItemTextContent == "*a\?b\*c*"cd) && (kMDItemFSName == "book\*.xls"cd)"#)
     }
 
     @Test func legacyXlsOnlyUsesSpotlightForContains() throws {
@@ -330,7 +394,7 @@ import AppKit
         let result = ContentExtractor.extract(path: png)
         // OCR may be unavailable in some headless environments; only assert the
         // match when recognition actually produced text.
-        if result.text != nil {
+        if result.text?.isEmpty == false {
             #expect(result.strategy == .imageOCR)
             #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "HELLO"), path: png))
         }
@@ -342,7 +406,10 @@ import AppKit
         makeBlankImage(at: png)
 
         let result = ContentExtractor.extract(path: png)
-        #expect(result.text == nil)
+        if let text = result.text {
+            #expect(text.isEmpty && result.strategy == .imageOCR)
+            #expect(ConditionEvaluator.evaluate(makeCondition(.contents, .isBlank, ""), path: png))
+        }
         #expect(!ConditionEvaluator.evaluate(makeCondition(.contents, .contains, "anything"), path: png))
     }
 
@@ -387,7 +454,7 @@ private func renderTextImage(_ text: String, size: NSSize = NSSize(width: 600, h
     return image
 }
 
-private func makeTextImage(at path: String, text: String) {
+func makeTextImage(at path: String, text: String) {
     writePNG(renderTextImage(text), to: path)
 }
 

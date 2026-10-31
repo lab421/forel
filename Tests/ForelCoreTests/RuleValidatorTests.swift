@@ -3,6 +3,26 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct RuleValidatorTests {
+    @Test func osaActionsShareSaveAndRuntimeConfigurationValidation() {
+        func action(_ params: [String: JSONValue]) -> Action { makeAction(.runHazelOSA, .object(params)) }
+        let invalid: [[String: JSONValue]] = [
+            [:],
+            [ActionParam.script: .string(" ")],
+            [ActionParam.osaLanguage: .string("unsupported"), ActionParam.script: .string("return true")],
+            [ActionParam.osaMode: .string("external"), ActionParam.osaPath: .string("relative")],
+            [ActionParam.osaMode: .string("compiled"), ActionParam.compiledAppleScript: .string(Data("bad".utf8).base64EncodedString())],
+            [ActionParam.script: .string("return true"), ActionParam.osaOutputs: .stringArray(["same", "same"])],
+            [ActionParam.script: .string("return true"), ActionParam.osaInputs: .stringArray(["  "])]
+        ]
+        for params in invalid {
+            let value = action(params)
+            #expect(!RuleValidator.validate([value]).isEmpty)
+            #expect(throws: ActionError.self) { try ActionExecutor.osaConfiguration(value) }
+        }
+        let valid = action([ActionParam.osaLanguage: .string("JavaScript"), ActionParam.osaMode: .string("embedded"), ActionParam.script: .string("return true;")])
+        #expect(RuleValidator.validate([valid]).isEmpty)
+        #expect(throws: Never.self) { try ActionExecutor.osaConfiguration(valid) }
+    }
     // MARK: - Conditions
 
     @Test func validConditionProducesNoIssues() {

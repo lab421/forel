@@ -98,6 +98,23 @@ import Foundation
         #expect(applied.copiedPath == (dir.path as NSString).appendingPathComponent("Screenshots/2026/07/shot.png"))
     }
 
+    @Test(arguments: [ActionKind.moveToFolder, .copyToFolder])
+    func dateDestinationAfterRenameUsesOriginalFileDate(kind: ActionKind) throws {
+        let dir = TempDir()
+        let file = dir.file("original.txt", contents: "hello")
+        let created = Calendar.current.date(from: DateComponents(year: 2022, month: 3, day: 5, hour: 12))!
+        try FileManager.default.setAttributes([.creationDate: created], ofItemAtPath: file)
+        let renamed = (dir.path as NSString).appendingPathComponent("renamed.txt")
+        let destination = (dir.path as NSString).appendingPathComponent("Archive/{year}/{month}-{day}")
+        let action = makeAction(kind, .object([ActionParam.destination: .string(destination)]))
+        let expected = (dir.path as NSString).appendingPathComponent("Archive/2022/03-05/renamed.txt")
+        #expect(try ActionExecutor.plan(action, path: renamed, contextPath: file).targetPath == expected)
+        _ = try ActionExecutor.execute(makeAction(.rename, .object(["pattern": .string("renamed.txt")])), path: file)
+        let applied = try ActionExecutor.execute(action, path: renamed, contextPath: file)
+        #expect((kind == .copyToFolder ? applied.copiedPath : applied.newPath) == expected)
+        #expect(try String(contentsOfFile: expected, encoding: .utf8) == "hello")
+    }
+
     @Test func destinationTokensWithUnknownBracesAreLeftAlone() throws {
         let dir = TempDir()
         let file = dir.file("note.txt", contents: "hi")
@@ -122,7 +139,7 @@ import Foundation
         #expect(plan.targetPath == (dir.path as NSString).appendingPathComponent("report.txt"))
         #expect(plan.finalPath == plan.targetPath)
 
-        let applied = try ActionExecutor.execute(action, path: zip)
+        let applied = try ActionExecutor.execute(action, path: zip, platform: TemporaryTrashPlatform())
 
         #expect(applied.newPath == (dir.path as NSString).appendingPathComponent("report.txt"))
         #expect(try String(contentsOfFile: applied.newPath, encoding: .utf8) == "hello")
@@ -139,7 +156,7 @@ import Foundation
         try makeZip(in: staging, items: ["a.txt", "b.txt"], destination: zip)
         try FileManager.default.removeItem(atPath: staging)
 
-        let applied = try ActionExecutor.execute(makeAction(.uncompress, .object([:])), path: zip)
+        let applied = try ActionExecutor.execute(makeAction(.uncompress, .object([:])), path: zip, platform: TemporaryTrashPlatform())
 
         #expect(applied.newPath == (dir.path as NSString).appendingPathComponent("bundle"))
         #expect(FileManager.default.fileExists(atPath: (applied.newPath as NSString).appendingPathComponent("a.txt")))

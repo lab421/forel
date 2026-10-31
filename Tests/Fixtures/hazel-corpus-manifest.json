@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "env": "FOREL_HAZEL_CORPUS",
+      "url": "https://github.com/rosskukulinski/hazel-rules.git",
+      "revision": "b5671f838c133789678c4817a01d1ddd19b3fc09",
+      "files": {
+        "2012_IITSEC_Booth_1149.hazelrules": "98799ca435083bf09ff52d8bd9f39babe142a50f3114e0d0988eec910d3bde7e",
+        "Desktop.hazelrules": "a3082a510387c93d9bf3b5732b40b16ee284aa90874d46a6933378da079e1f4e",
+        "Downloads.hazelrules": "e06854f4b6946afcd111bae5d3d56172339ea9876ada3c7869b3462bb11a8854",
+        "Expenses.hazelrules": "7b683d50735a114ebe92233a2e0b7b79acf03d18921af87adf87f233e5bf4a26",
+        "Incoming Documents.hazelrules": "c5941d96b1813ff80d438e9e0bcc5ce2e833b92984a4085fd52443439a8f6c27",
+        "MANUALS_ALL.hazelrules": "5924206e30259d9b36a9bdb5966eb6b2a7c7682afdfad7b939a4c00a0c02df2d",
+        "Production_spreadsheets_&_Schedules.hazelrules": "3f438eb974b35fc8a33d2c8ec7f6611973300234c756a1f7f7d5d7303219d824",
+        "Spreadsheets.hazelrules": "9b8ff621f804f08b86f07336db390ab272796cbf46ffb757dc26953bd46aae1f",
+        "Statements.hazelrules": "ae29f094990147e89fb4f92a38cdf9f886f502f919218f819cf054407a37eba5",
+        "To Evernote.hazelrules": "2a1d726521bf1d205b1c965f335d4a3af4a80c96d5dee2b4411f78068ab923e5",
+        "VOISUS_TESTING.hazelrules": "a9fa85bbafe02ae422ea82e614400ba02869dd23b73b9db81235f3406439d92e",
+        "tmp.hazelrules": "5168e9353435f582edfd8b847e462c9a9ce583c950bcffd73b907f4e862af022"
+      }
+    },
+    {
+      "env": "FOREL_HAZEL_CORPUS_2",
+      "url": "https://github.com/thomasjoulin/hazel-rules.git",
+      "revision": "2d5bc70f1a775218b65db46e3929aa9dae5f19bb",
+      "files": {
+        "Desktop.hazelrules": "90d9b1bf789fba2fb45cb311aa05805f606909e067f1a9be281e325dbfdc9962",
+        "Downloads.hazelrules": "a77fdda8645af79cb6682de0d30ac4b3cfad39b5d423207cc6a7780d805155f5",
+        "Movies.hazelrules": "19115b19fe44df5f1a72ef9ee21941c14204ce5b5242859bc6bcf9737bea1296",
+        "OldDekstop.hazelrules": "7d76fe774860b0d63d3a0d96cfafff27e6b8010f31858f419c81cb9cc94b73f9"
+      }
+    },
+    {
+      "env": "FOREL_HAZEL_CORPUS_3",
+      "url": "https://github.com/ericteeman/hazelrules.git",
+      "revision": "e7efab72435f6b0bf7d697cc4e4c9c0a5f8e08ef",
+      "files": {
+        "Screen Shots.hazelrules": "fb12702632618addd68f48451f1b3b30a9a9b0e348770f1aa665c1d913e44911"
+      }
+    },
+    {
+      "env": "FOREL_HAZEL_BJANGO",
+      "url": "https://github.com/bjango/Bjango-Actions.git",
+      "revision": "0fdc790b4931fd36816e6056dd84c2aa0d3ff054",
+      "files": {
+        "Hazel Rules/Auto @2x, then move.hazelrules": "309740b5e5df80d457fd0784f766f7942532babc6d9bd28137371a11cded1dc4",
+        "Hazel Rules/Auto @3x, then move.hazelrules": "7958c549d640bfe97bd01db5a6aaa9b4d75ffc5a5b0a23e797388ff1d2b50bf4",
+        "Hazel Rules/Move into subfolders if # exists.hazelrules": "3c7bbd007dcb838071280c69a5da207d3cf43c116e48c5ad699feb2a1bc1842a"
+      }
+    },
+    {
+      "env": "FOREL_HAZEL_INSTALLER",
+      "url": "https://github.com/Jaharmi/archive_osx_installer_app.git",
+      "revision": "5766d4647fa75db8fc5d04571dd534e2cd8ff011",
+      "files": {
+        "Applications.hazelrules": "dbe49e1d7587a70b16cc577f61bc386793d70d4fdc5d8d34c7efa57824d3a864"
+      }
+    },
+    {
+      "env": "FOREL_HAZEL_OPEN_URL",
+      "url": "https://github.com/EvanLovely/drafts-hazel--open-url.git",
+      "revision": "1543f01e0d387d32e1503d08ed56eb057fc89c6c",
+      "files": {
+        "to-open-url.hazelrules": "3329fd4c758bb0e772b572b41e8572b0f115276bf0f2493d25da67c03a186169"
+      }
+    },
+    {
+      "env": "FOREL_HAZEL_PHOTOS",
+      "url": "https://github.com/ptoomey3/family-photo-library.git",
+      "revision": "546307c5fe0aaba91eaab0f4397d7e03aa66357e",
+      "files": {
+        "google_photos.hazelrules": "5a6683eefdd60b6f405b8cee1f011a43885908a0450e2d4ce21875572dc1fc03"
+      }
+    },
+    {
+      "env": "FOREL_HAZEL_TICKLER",
+      "url": "https://github.com/albatrossflavour/tickler.git",
+      "revision": "5071e3364b51f8877aa508512efae65eccff01df",
+      "files": {
+        "Downloads.hazelrules": "a50cf3a9e22cfebc9e9d6b5dca7dc1590057087bb70607eb26eace1f181c5513",
+        "tickler.hazelrules": "473399b9965df41fdd61070e51c335d2739d3c16baca7cdf0060f62ac318dba4"
+      }
+    },
+    {
+      "env": "FOREL_HAZEL_UNZIP",
+      "url": "https://github.com/ash0080/better-unzip-for-Hazel.git",
+      "revision": "dfa94a98b9dc960c230ac199789155014e19caa7",
+      "files": {
+        "download.hazelrules": "1303b348b93f6c471d695f2e979e2728b56610081526b8d284a3f706b32eb677"
+      }
+    },
+    {
+      "env": "FOREL_HAZEL_TUXPEOPLE",
+      "url": "https://github.com/tuxpeople/mac-dev-playbook.git",
+      "revision": "366452d5abcfd5078ddc3d21d4064028059dc3cb",
+      "files": {
+        "files/Hazel/hazelrules/Desktop.hazelrules": "2579c1b73c18dd6505be1fdcec08b70ac61da2c9e50accd59fcbfbfb29aa43da",
+        "files/Hazel/hazelrules/Downloads-old.hazelrules": "208fb4b883849013f7058d237c131991e083da819d4083c7dd397a262a246bf0",
+        "files/Hazel/hazelrules/Downloads.hazelrules": "d93c2b96e4b50e7697c5094989a2acdc1001760e6ccbf31a5f4e3baeb72b5ae8",
+        "files/Hazel/hazelrules/iCloudDownloads-old.hazelrules": "1ae9b1151d5e9187841a5e4f4ef2c68a1a981064ed2d3c13d5df758545989efe",
+        "files/Hazel/hazelrules/iCloudDownloads.hazelrules": "1a95957ab781058ff2ba1198ef519e604948a8478a672dcc9f479febbe98abca"
+      }
+    },
+    {
+      "env": "FOREL_HAZEL_HEIC",
+      "url": "https://github.com/tjluoma/hazel-heic2jpg.git",
+      "revision": "b292fd08493ab49cd974f48cdd8a989215ff687a",
+      "files": {
+        "Downloads-HEIC2jpg.hazelrules": "5dc08f360b4ec950b1e8e62f9f7dd2840209d9c947b4d07038b20f2b03728d20"
+      }
+    },
+    {
+      "env": "FOREL_HAZEL_WRAPPED",
+      "url": "https://github.com/jaxfry/nixos-configs-mac.git",
+      "revision": "61259ef145094118a6762126c44556c7a2c639a7",
+      "files": {
+        "modules/home/programs/hazel-backup/16777230-36143.hazelrules": "793150284a4ad14d547d8ff301b3a0b12fbf3891df12be5167ee1bd7a1b47e02"
+      }
+    }
+  ]
+}

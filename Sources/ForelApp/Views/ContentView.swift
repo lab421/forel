@@ -48,6 +48,10 @@ struct ContentView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+        .sheet(isPresented: $model.showHazelImportAssistant) {
+            HazelImportAssistantView()
+                .environmentObject(model)
+        }
         .tint(ForelTheme.accent)
         .sheet(item: $model.proUpgrade) { context in
             ProUpgradeView(context: context)
