@@ -16,6 +16,7 @@
 
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import ForelCore
 
 struct RuleListView: View {
@@ -77,7 +78,7 @@ struct RuleListView: View {
             if model.paused, model.selectedFolderId != nil {
                 pausedBanner
             }
-            if !model.rules.isEmpty {
+            if model.selectedFolderId != nil {
                 actionBar
             }
             if !selectedRuleIDs.isEmpty {
@@ -266,8 +267,44 @@ struct RuleListView: View {
             .disabled(!model.selectedFolderIsAllowed || model.isPreviewing)
             .opacity(model.selectedFolderIsAllowed ? 1 : 0.45)
 
+            Menu {
+                Button("Import Rules…", action: importRules)
+                    .disabled(!model.selectedFolderIsAllowed)
+                Button("Export Rules…", action: exportRules)
+                    .disabled(model.rules.isEmpty)
+            } label: {
+                Label("Import / Export", systemImage: "arrow.left.arrow.right")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(model.selectedFolderId == nil)
+
             Spacer()
         }
+    }
+
+    private func importRules() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "forelrules") ?? .json,
+        ]
+        panel.prompt = "Import"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.importRules(from: url)
+    }
+
+    private func exportRules() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "forelrules") ?? .json]
+        // Rules are exported per watched folder; naming the file after it keeps
+        // exports of different folders from all proposing the same filename.
+        let folderName = selectedFolder.map { ($0.path as NSString).lastPathComponent } ?? ""
+        panel.nameFieldStringValue = folderName.isEmpty ? "Forel Rules.forelrules" : "Forel Rules - \(folderName).forelrules"
+        panel.prompt = "Export"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.exportRules(to: url)
     }
 
     private var pausedBanner: some View {
