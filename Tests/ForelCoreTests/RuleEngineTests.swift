@@ -263,6 +263,23 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: (targetRoot as NSString).appendingPathComponent("note (1).txt")))
     }
 
+    @Test func runSyncFoldersAgainLeavesAnUnchangedCounterpartAlone() throws {
+        let dir = TempDir()
+        let sourceRoot = dir.dir("Source")
+        let targetRoot = dir.dir("Target")
+        let source = (sourceRoot as NSString).appendingPathComponent("note.txt")
+        let target = (targetRoot as NSString).appendingPathComponent("note.txt")
+        try "note".write(toFile: source, atomically: true, encoding: .utf8)
+        let rule = makeRule(name: "sync", actions: [makeAction(.syncFolders, .object([ActionParam.destination: .string(targetRoot)]))])
+
+        _ = RuleEngine.run(path: source, depth: 0, rules: [rule], batchId: "first", root: sourceRoot)
+        let firstCopy = FileFingerprint.identity(target)
+        let second = RuleEngine.run(path: source, depth: 0, rules: [rule], batchId: "second", root: sourceRoot)
+
+        #expect(second.history.map(\.status) == [.skipped])
+        #expect(FileFingerprint.identity(target) == firstCopy)
+    }
+
     @Test func previewFileShowsConditionResults() throws {
         let dir = TempDir()
         let file = dir.file("invoice.pdf", contents: "paid")

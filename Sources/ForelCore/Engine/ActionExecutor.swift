@@ -1161,7 +1161,7 @@ public enum ActionExecutor {
             var isDirectory: ObjCBool = false
             FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
 
-            if normalizedPath(path) == normalizedPath(naiveTarget) {
+            if normalizedPath(path) == normalizedPath(naiveTarget) || isAlreadySynced(path, naiveTarget) {
                 return ActionPlan(
                     kind: action.kind,
                     description: "Already synced",
@@ -1464,6 +1464,19 @@ public enum ActionExecutor {
             return (targetRoot as NSString).appendingPathComponent(relative)
         }
         throw ActionError("Sync folders can only sync files inside the watched folder or target folder")
+    }
+
+    /// A folder is synced once it exists on the other side, its files being
+    /// synced one by one. A file is when its size and modification date match,
+    /// which a copy keeps.
+    private static func isAlreadySynced(_ path: String, _ counterpart: String) -> Bool {
+        guard let source = try? FileManager.default.attributesOfItem(atPath: path),
+              let other = try? FileManager.default.attributesOfItem(atPath: counterpart),
+              let type = source[.type] as? FileAttributeType, type == other[.type] as? FileAttributeType
+        else { return false }
+        if type == .typeDirectory { return true }
+        return source[.size] as? UInt64 == other[.size] as? UInt64
+            && source[.modificationDate] as? Date == other[.modificationDate] as? Date
     }
 
     private static func syncResolvedTarget(_ action: Action, naiveTarget: String) throws -> String {

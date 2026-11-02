@@ -308,7 +308,7 @@ public enum RuleEngine {
     /// `.any` are order-independent. Used by `run`, which only needs a
     /// yes/no answer; `previewFile` keeps the original order and evaluates
     /// every condition on purpose, to show each one's result in the Dry Run.
-    private static func ruleMatches(_ rule: Rule, path: String, depth: Int, allowOCR: Bool) -> Bool {
+    static func ruleMatches(_ rule: Rule, path: String, depth: Int, allowOCR: Bool) -> Bool {
         guard ruleInScope(rule, depth: depth) else { return false }
         if rule.conditions.isEmpty { return true }
 

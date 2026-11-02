@@ -327,17 +327,30 @@ public final class WatcherCoordinator: @unchecked Sendable {
     }
 
     private func handleSyncTargetChange(path: String) -> Bool {
-        guard let match = syncRuleMatch(forPath: path, includeWatchedRoot: false) else { return false }
-        guard ActionExecutor.syncDirection(match.action) == .twoWay else { return true }
-        guard hasPathChangedSinceLastEvaluation(path) else { return true }
+        let matches = syncRuleMatches(forPath: path, includeWatchedRoot: false)
+            .filter { ActionExecutor.syncDirection($0.action) == .twoWay }
+        guard !matches.isEmpty else { return false }
 
+        // Contents a folder arrived with never get their own events.
+        var items = [path]
+        if isRealDirectory(path) {
+            RuleEngine.forEachEntry(root: path, maxDepth: nil) { items.append($0.path) }
+        }
+        for item in items {
+            guard let match = matches.first(where: { syncRuleApplies($0, to: item) }) else { continue }
+            syncBack(item, match: match)
+        }
+        return true
+    }
+
+    private func syncBack(_ path: String, match: SyncRuleMatch) {
         let batchId = UUID().uuidString
         do {
             let plan = try ActionExecutor.plan(match.action, path: path, root: match.folder.path)
             guard plan.status == .wouldRun else {
                 insertSyncHistory(match: match, batchId: batchId, originalPath: path, resultPath: path, status: .skipped, message: plan.description, undo: .none)
                 recordEvaluatedState(path)
-                return true
+                return
             }
             let applied = try ActionExecutor.execute(match.action, path: path, root: match.folder.path)
             insertSyncHistory(match: match, batchId: batchId, originalPath: path, resultPath: applied.copiedPath ?? applied.newPath, undo: applied.undo)
@@ -346,34 +359,35 @@ public final class WatcherCoordinator: @unchecked Sendable {
         } catch {
             insertSyncHistory(match: match, batchId: batchId, originalPath: path, resultPath: path, status: .failed, message: String(describing: error), undo: .none)
         }
-        return true
     }
 
     private func handleDeleted(path: String) {
-        guard let match = syncRuleMatch(forPath: path, includeWatchedRoot: true) else { return }
-        guard ActionExecutor.syncDeletePolicy(match.action) == .moveToTrash else { return }
-
-        do {
-            let counterpart = try ActionExecutor.syncCounterpartPath(match.action, path: path, root: match.folder.path)
-            guard FileManager.default.fileExists(atPath: counterpart) else { return }
-            let trash = try moveToTrash(counterpart)
-            insertSyncHistory(
-                match: match,
-                batchId: UUID().uuidString,
-                originalPath: path,
-                resultPath: trash,
-                undo: .move(from: counterpart, to: trash)
-            )
-        } catch {
-            insertSyncHistory(
-                match: match,
-                batchId: UUID().uuidString,
-                originalPath: path,
-                resultPath: path,
-                status: .failed,
-                message: String(describing: error),
-                undo: .none
-            )
+        for match in syncRuleMatches(forPath: path, includeWatchedRoot: true)
+        where ActionExecutor.syncDeletePolicy(match.action) == .moveToTrash {
+            do {
+                let counterpart = try ActionExecutor.syncCounterpartPath(match.action, path: path, root: match.folder.path)
+                // The deleted file is gone, so the rule is checked on what is left.
+                guard FileManager.default.fileExists(atPath: counterpart), syncRuleApplies(match, to: counterpart) else { continue }
+                let trash = try moveToTrash(counterpart)
+                insertSyncHistory(
+                    match: match,
+                    batchId: UUID().uuidString,
+                    originalPath: path,
+                    resultPath: trash,
+                    undo: .move(from: counterpart, to: trash)
+                )
+            } catch {
+                insertSyncHistory(
+                    match: match,
+                    batchId: UUID().uuidString,
+                    originalPath: path,
+                    resultPath: path,
+                    status: .failed,
+                    message: String(describing: error),
+                    undo: .none
+                )
+            }
+            return
         }
     }
 
@@ -383,25 +397,32 @@ public final class WatcherCoordinator: @unchecked Sendable {
         let action: Action
     }
 
-    private func syncRuleMatch(forPath path: String, includeWatchedRoot: Bool) -> SyncRuleMatch? {
+    private func syncRuleMatches(forPath path: String, includeWatchedRoot: Bool) -> [SyncRuleMatch] {
         db.withLock { db in
+            var matches: [SyncRuleMatch] = []
             let folders = ((try? db.listFolders()) ?? []).filter(\.enabled)
             for folder in folders {
                 let rules = (try? db.executionRules(folderID: folder.id, isPro: isPro)) ?? []
                 for rule in rules {
                     for action in rule.actions where action.kind == .syncFolders {
                         guard let target = action.params[ActionParam.destination]?.stringValue else { continue }
-                        if includeWatchedRoot, isPathPrefix(folder.path, of: path) {
-                            return SyncRuleMatch(folder: folder, rule: rule, action: action)
-                        }
-                        if isPathPrefix(target, of: path) {
-                            return SyncRuleMatch(folder: folder, rule: rule, action: action)
+                        if (includeWatchedRoot && isPathPrefix(folder.path, of: path)) || isPathPrefix(target, of: path) {
+                            matches.append(SyncRuleMatch(folder: folder, rule: rule, action: action))
                         }
                     }
                 }
             }
-            return nil
+            return matches
         }
+    }
+
+    /// The rule's conditions and depth, checked on an item of either folder.
+    private func syncRuleApplies(_ match: SyncRuleMatch, to path: String) -> Bool {
+        let target = match.action.params[ActionParam.destination]?.stringValue ?? ""
+        guard let depth = RuleEngine.pathDepth(root: match.folder.path, path: path)
+            ?? RuleEngine.pathDepth(root: target, path: path) else { return false }
+        let pro = db.withLock { _ in isPro }
+        return RuleEngine.ruleMatches(match.rule, path: path, depth: depth, allowOCR: pro)
     }
 
     private func syncTargets(for folder: WatchedFolder, db: Database) -> [String] {

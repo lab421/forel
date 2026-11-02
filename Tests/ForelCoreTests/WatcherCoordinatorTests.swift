@@ -552,6 +552,52 @@ import Foundation
         #expect(try String(contentsOfFile: counterpart, encoding: .utf8) == "saved")
     }
 
+    @Test func syncFolderDeletionOnlyTrashesFilesTheRuleCovers() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync pdf", recursionDepth: nil)
+        rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
+        rule.actions = [makeAction(.syncFolders, .object([ActionParam.destination: .string(target)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let notes = (target as NSString).appendingPathComponent("notes.txt")
+        let invoice = (target as NSString).appendingPathComponent("invoice.pdf")
+        try "mine".write(toFile: notes, atomically: true, encoding: .utf8)
+        try "pdf".write(toFile: invoice, atomically: true, encoding: .utf8)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .pathRemoved((source as NSString).appendingPathComponent("notes.txt")))
+        coordinator.handle(event: .pathRemoved((source as NSString).appendingPathComponent("invoice.pdf")))
+
+        #expect(FileManager.default.fileExists(atPath: notes))
+        #expect(!FileManager.default.fileExists(atPath: invoice))
+    }
+
+    @Test func syncFolderDroppedIntoTargetCopiesItsContentsBack() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([ActionParam.destination: .string(target)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let photos = (target as NSString).appendingPathComponent("Photos")
+        try FileManager.default.createDirectory(atPath: (photos as NSString).appendingPathComponent("2026"), withIntermediateDirectories: true)
+        try "a".write(toFile: (photos as NSString).appendingPathComponent("a.jpg"), atomically: true, encoding: .utf8)
+        try "b".write(toFile: (photos as NSString).appendingPathComponent("2026/b.jpg"), atomically: true, encoding: .utf8)
+
+        WatcherCoordinator(db: db).handle(path: photos)
+
+        let copied = (source as NSString).appendingPathComponent("Photos")
+        #expect(try String(contentsOfFile: (copied as NSString).appendingPathComponent("a.jpg"), encoding: .utf8) == "a")
+        #expect(try String(contentsOfFile: (copied as NSString).appendingPathComponent("2026/b.jpg"), encoding: .utf8) == "b")
+    }
+
     @Test func recordedHistoryIsSignalledForFailuresToo() throws {
         let db = try makeDB()
         let dir = TempDir()
