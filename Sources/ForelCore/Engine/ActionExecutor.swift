@@ -219,6 +219,8 @@ public enum ActionExecutor {
             return try importToLibrary(action, path: path)
         case .uncompress:
             return try uncompress(action, path: path)
+        case .compress:
+            return try compress(action, path: path)
         }
     }
 
@@ -340,6 +342,107 @@ public enum ActionExecutor {
 
         _ = try moveIntoDir(path: path, destDir: try trashDir())
         return Applied(newPath: plan.target, undo: .none)
+    }
+
+    /// Creates a ZIP using the configured name and destination. Cleanup only
+    /// removes the source after the archive has been written successfully.
+    private static func compress(_ action: Action, path: String) throws -> Applied {
+        let dir = try compressionDirectory(action, path: path)
+        let fileName = try compressArchiveName(action, path: path)
+        return try explainingDisconnectedVolume(dir) {
+            try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            let dest = try resolveDestination(
+                naiveDest: (dir as NSString).appendingPathComponent(fileName),
+                dir: dir, fileName: fileName, resolution: .rename
+            )
+            do {
+                try FileManager.default.zipItem(at: URL(fileURLWithPath: path), to: URL(fileURLWithPath: dest), compressionMethod: .deflate)
+            } catch {
+                // A failed write can leave an incomplete archive. Keep the
+                // source and remove only the new archive we tried to create.
+                try? FileManager.default.removeItem(atPath: dest)
+                throw ActionError("Could not create ZIP archive. The source was kept. \(error)")
+            }
+            if deletesSourceAfterCompression(action) {
+                do {
+                    try FileManager.default.removeItem(atPath: path)
+                } catch {
+                    throw ActionError("ZIP created at \(dest), but the source could not be deleted: \(error)")
+                }
+                return Applied(newPath: dest, undo: .none)
+            }
+            return Applied(newPath: path, undo: .none, copiedPath: dest)
+        }
+    }
+
+    public static func deletesSourceAfterCompression(_ action: Action) -> Bool {
+        action.params[ActionParam.deleteSourceAfterCompression]?.boolValue == true
+    }
+
+    /// Empty means next to the source. Custom destinations must be absolute;
+    /// a relative path must never silently resolve against the app's directory.
+    static func archiveDestinationPath(_ value: String) throws -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let expanded = (trimmed as NSString).expandingTildeInPath
+        guard expanded.hasPrefix("/"), !expanded.contains("\0") else {
+            throw ActionError("Archive destination must be an absolute folder path or start with ~/.")
+        }
+        return (expanded as NSString).standardizingPath
+    }
+
+    private static func compressionDirectory(_ action: Action, path: String) throws -> String {
+        let configured = try archiveDestinationPath(action.params[ActionParam.destination]?.stringValue ?? "")
+        let directory = configured.map { expandedDestination($0, fileAtPath: path) }
+            ?? (path as NSString).deletingLastPathComponent
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue {
+            let source = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().pathComponents
+            let destination = URL(fileURLWithPath: directory).standardizedFileURL.resolvingSymlinksInPath().pathComponents
+            guard !destination.starts(with: source) else {
+                throw ActionError("Choose an archive destination outside the source folder. A ZIP inside it would include itself and could be deleted with the source.")
+            }
+        }
+        return directory
+    }
+
+    private static func compressArchiveName(_ action: Action, path: String) throws -> String {
+        let name = (path as NSString).lastPathComponent
+        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+        let isFolder = (attributes?[.type] as? FileAttributeType) == .typeDirectory
+        return try archiveFileName(
+            pattern: action.params[ActionParam.archiveName]?.stringValue ?? "",
+            sourceName: isFolder ? name : (name as NSString).deletingPathExtension
+        )
+    }
+
+    /// Resolves an archive name for execution, validation, and editor previews.
+    /// Dates use the local time zone; ZIP is appended when omitted.
+    public static func archiveFileName(pattern: String, sourceName: String, at date: Date = Date()) throws -> String {
+        let trimmed = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        let template = trimmed.isEmpty ? "{name}.zip" : trimmed
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        let day = formatter.string(from: date)
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        // Insert the source name last so braces in its name stay literal.
+        var result = template
+            .replacingOccurrences(of: "{current_date}", with: day)
+            .replacingOccurrences(of: "{timestamp}", with: formatter.string(from: date))
+            .replacingOccurrences(of: "{name}", with: sourceName)
+        guard !result.isEmpty, result != ".", result != "..",
+              !result.contains("/"), !result.contains("\0"),
+              !result.hasSuffix("."), !result.hasSuffix(" ") else {
+            throw ActionError("Archive name must be a filename, without '/' or null characters, and cannot end with a dot or space.")
+        }
+        if !result.lowercased().hasSuffix(".zip") { result += ".zip" }
+        guard result.utf8.count <= 255 else {
+            throw ActionError("Archive name is too long (maximum 255 bytes including .zip).")
+        }
+        return result
     }
 
     /// Resolves the actual path a move/copy should write to, given the
@@ -1206,6 +1309,30 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .compress:
+            let dir = try compressionDirectory(action, path: path)
+            let fileName = try compressArchiveName(action, path: path)
+            let naiveTarget = (dir as NSString).appendingPathComponent(fileName)
+            let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
+            // Existing archives are always preserved by numbering the new one.
+            let target = try resolveDestination(naiveDest: naiveTarget, dir: dir, fileName: fileName, resolution: .rename)
+            let cleanup = deletesSourceAfterCompression(action)
+            var description = "Compress to \(target)"
+            if conflicts { description += " (renamed to avoid an existing archive)" }
+            if cleanup { description += "; permanently delete source after success" }
+            let warning = [destinationWarning(dir), cleanup ? "The original file or folder and all its contents will be permanently deleted after the ZIP is created. This cannot be undone. Following actions apply to the ZIP." : nil]
+                .compactMap { $0 }.joined(separator: " ")
+            return ActionPlan(
+                kind: action.kind,
+                description: description,
+                sourcePath: path,
+                targetPath: target,
+                status: .wouldRun,
+                finalPath: cleanup ? target : path,
+                copiedPath: cleanup ? nil : target,
+                isTerminal: false,
+                warning: warning.isEmpty ? nil : warning
+            )
         }
     }
 
@@ -1224,7 +1351,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress:
+        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress, .compress:
             return true
         }
     }

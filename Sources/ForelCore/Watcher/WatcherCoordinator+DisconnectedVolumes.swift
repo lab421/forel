@@ -86,7 +86,7 @@ extension WatcherCoordinator {
     /// `history` were headed to and that aren't connected.
     static func disconnectedVolumes(in history: [HistoryEntry], rules: [Rule]) -> [String] {
         var volumes = Set<String>()
-        for entry in history where entry.status == .failed && [.moveToFolder, .copyToFolder].contains(entry.actionKind) {
+        for entry in history where entry.status == .failed && [.moveToFolder, .copyToFolder, .compress].contains(entry.actionKind) {
             guard let rule = rules.first(where: { $0.id == entry.ruleId }) else { continue }
             for action in rule.actions where action.kind == entry.actionKind {
                 guard let destination = action.params[ActionParam.destination]?.stringValue,
