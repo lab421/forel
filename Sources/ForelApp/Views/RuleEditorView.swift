@@ -1150,6 +1150,15 @@ private struct ActionOptionsView: View {
                 label: { value in SyncDeletePolicy(rawValue: value)?.label ?? value }
             )
             .frame(maxWidth: .infinity, alignment: .leading)
+            if ActionExecutor.syncDeletePolicy(action) == .delete {
+                Label(
+                    "When a file is deleted from the watched folder, its copy in the destination is permanently deleted too. This cannot be undone.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                    .font(.system(size: 11))
+                    .foregroundStyle(ForelTheme.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

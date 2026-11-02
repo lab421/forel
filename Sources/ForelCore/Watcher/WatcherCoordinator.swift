@@ -310,20 +310,26 @@ public final class WatcherCoordinator: @unchecked Sendable {
     }
 
     private func handleDeleted(path: String) {
-        for match in syncRuleMatches(forPath: path)
-        where ActionExecutor.syncDeletePolicy(match.action) == .moveToTrash {
+        for match in syncRuleMatches(forPath: path) {
+            let policy = ActionExecutor.syncDeletePolicy(match.action)
+            guard policy != .keepOtherSide else { continue }
             do {
                 let counterpart = try ActionExecutor.syncCounterpartPath(match.action, path: path, root: match.folder.path)
                 // The deleted file is gone, so the rule is checked on what is left.
                 guard FileManager.default.fileExists(atPath: counterpart), syncRuleApplies(match, to: counterpart) else { continue }
-                let trash = try moveToTrash(counterpart)
-                insertSyncHistory(
-                    match: match,
-                    batchId: UUID().uuidString,
-                    originalPath: path,
-                    resultPath: trash,
-                    undo: .move(from: counterpart, to: trash)
-                )
+                if policy == .delete {
+                    try FileManager.default.removeItem(atPath: counterpart)
+                    insertSyncHistory(match: match, batchId: UUID().uuidString, originalPath: path, resultPath: counterpart, undo: .none)
+                } else {
+                    let trash = try moveToTrash(counterpart)
+                    insertSyncHistory(
+                        match: match,
+                        batchId: UUID().uuidString,
+                        originalPath: path,
+                        resultPath: trash,
+                        undo: .move(from: counterpart, to: trash)
+                    )
+                }
             } catch {
                 insertSyncHistory(
                     match: match,

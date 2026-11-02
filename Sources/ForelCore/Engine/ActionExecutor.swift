@@ -144,11 +144,13 @@ public enum ShortcutInputMode: String, CaseIterable, Sendable {
 public enum SyncDeletePolicy: String, CaseIterable, Sendable {
     case keepOtherSide = "keep_other_side"
     case moveToTrash = "move_to_trash"
+    case delete
 
     public var label: String {
         switch self {
         case .keepOtherSide: return "Keep counterpart"
         case .moveToTrash: return "Move counterpart to Trash"
+        case .delete: return "Delete counterpart permanently"
         }
     }
 }

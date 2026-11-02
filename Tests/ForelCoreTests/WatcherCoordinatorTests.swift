@@ -488,6 +488,30 @@ import Foundation
         #expect(try db.listHistory().isEmpty)
     }
 
+    @Test func syncFolderDeletionCanDeleteCounterpartPermanently() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(target),
+            ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.delete.rawValue),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let counterpart = (target as NSString).appendingPathComponent("a.txt")
+        try "other".write(toFile: counterpart, atomically: true, encoding: .utf8)
+
+        WatcherCoordinator(db: db).handle(event: .pathRemoved((source as NSString).appendingPathComponent("a.txt")))
+
+        #expect(!FileManager.default.fileExists(atPath: counterpart))
+        let history = try db.listHistory()
+        #expect(history.map(\.status) == [.applied])
+        #expect(history.map(\.reversible) == [false])
+    }
+
     @Test func syncFolderPathRenamedAwayIsTreatedAsDeletion() throws {
         let db = try makeDB()
         let dir = TempDir()
