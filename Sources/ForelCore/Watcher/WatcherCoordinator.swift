@@ -79,6 +79,10 @@ public final class WatcherCoordinator: @unchecked Sendable {
         var includesContents = true
         /// Items that arrived inside this folder while it was waiting.
         var hasDeferredDescendants = false
+        var hasDeferredSyncDescendants = false
+        /// Modifications and known descendants of renamed folders only sync;
+        /// they must not replay unrelated arrival actions.
+        var syncOnly = false
     }
 
     public init(db: Database, monthlyUsage: MonthlyFileUsageStore = MonthlyFileUsageStore(),
@@ -162,31 +166,55 @@ public final class WatcherCoordinator: @unchecked Sendable {
             }
         case .rescanSubtree(let path):
             handleRescanSubtree(root: path, waitsForSettledFiles: waitsForSettledFiles)
+        case .pathModified(let path):
+            // Non-sync watched folders keep their arrival-only behavior,
+            // including avoiding snapshots of unrelated modified trees.
+            let hasSync = db.withLock { db in
+                guard let folder = try? db.folderForPath(path) else { return false }
+                let rules = (try? db.executionRules(folderID: folder.id, isPro: isPro)) ?? []
+                return rules.contains { $0.actions.contains { $0.kind == .syncFolders } }
+            }
+            guard hasSync else { return }
+            if waitsForSettledFiles {
+                awaitSettled(path, syncOnly: true)
+            } else {
+                handle(path: path, syncOnly: true)
+            }
         }
     }
 
     /// Runs rules on `path` once its fingerprint has stayed the same for a
     /// full `settleInterval` and nothing marks it as still being written.
-    private func awaitSettled(_ path: String, includingContents: Bool = true) {
+    private func awaitSettled(_ path: String, includingContents: Bool = true, syncOnly: Bool = false) {
         guard settleInterval > 0 else {
-            handle(path: path)
+            handle(path: path, syncOnly: syncOnly)
             return
         }
         // A check is already scheduled; it will see the file's latest state.
-        guard settling[path] == nil else { return }
+        if var existing = settling[path] {
+            existing.syncOnly = existing.syncOnly && syncOnly
+            settling[path] = existing
+            return
+        }
         // Something arriving inside a folder that is itself still waiting is
         // already covered by that folder's snapshot. Giving every nested item
         // its own wait would re-read the tree once per item (a `git clone` or
         // an unzip creates thousands), so it is evaluated when the folder
         // settles instead.
         if let ancestor = settlingAncestor(of: path) {
-            settling[ancestor]?.hasDeferredDescendants = true
+            if syncOnly {
+                settling[ancestor]?.hasDeferredSyncDescendants = true
+            } else {
+                settling[ancestor]?.hasDeferredDescendants = true
+                settling[ancestor]?.syncOnly = false
+            }
             return
         }
         guard FileManager.default.fileExists(atPath: path), hasPathChangedSinceLastEvaluation(path) else { return }
         settling[path] = SettlingState(
             fingerprint: FileReadiness.snapshot(path, includingContents: includingContents)?.fingerprint,
-            includesContents: includingContents
+            includesContents: includingContents,
+            syncOnly: syncOnly
         )
         scheduleSettleCheck(path)
     }
@@ -232,13 +260,18 @@ public final class WatcherCoordinator: @unchecked Sendable {
         // to stop changing. A folder the watcher already knows was only
         // renamed or moved inside the watched folder: nothing new arrived.
         // Checked before `handle` records the folder under its new path.
-        let arrivedWithContents = state.includesContents && isRealDirectory(path) && !wasEvaluatedBefore(path)
+        let isFolder = state.includesContents && isRealDirectory(path)
+        let knownFolder = isFolder && wasEvaluatedBefore(path)
+        let arrivedWithContents = isFolder && !knownFolder
         settling[path] = nil
-        handle(path: path)
+        handle(path: path, syncOnly: state.syncOnly)
         if state.hasDeferredDescendants {
-            handleRescanSubtree(root: path, waitsForSettledFiles: false)
+            handleRescanSubtree(root: path, waitsForSettledFiles: false, skipsKnownItems: knownFolder, syncOnly: state.syncOnly)
         } else if arrivedWithContents {
-            handleRescanSubtree(root: path, waitsForSettledFiles: false, skipsKnownItems: true)
+            handleRescanSubtree(root: path, waitsForSettledFiles: false, skipsKnownItems: true, syncOnly: state.syncOnly)
+        }
+        if knownFolder || state.hasDeferredSyncDescendants {
+            handleRescanSubtree(root: path, waitsForSettledFiles: false, syncOnly: true)
         }
     }
 
@@ -269,7 +302,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
     }
 
     /// `retrying` runs the rules even though the file hasn't changed.
-    func handle(path: String, retrying: Bool = false) {
+    func handle(path: String, retrying: Bool = false, syncOnly: Bool = false) {
         // A duplicate/coalesced FSEvent for a path a prior call already
         // moved away — common with FSEvents — would otherwise be replanned
         // (name/extension conditions don't require the file to exist) and
@@ -280,7 +313,8 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
         guard let (folder, rules, isPro) = db.withLock({ db -> (WatchedFolder, [Rule], Bool)? in
             guard let folder = try? db.folderForPath(path) else { return nil }
-            let rules = (try? db.executionRules(folderID: folder.id, isPro: self.isPro)) ?? []
+            let saved = (try? db.executionRules(folderID: folder.id, isPro: self.isPro)) ?? []
+            let rules = syncOnly ? Self.syncOnlyRules(saved) : saved
             guard !rules.isEmpty else { return nil }
             return (folder, rules, self.isPro)
         }) else { return }
@@ -314,6 +348,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
             let policy = ActionExecutor.syncDeletePolicy(match.action)
             guard policy != .keepOtherSide else { continue }
             do {
+                guard try !ActionExecutor.isSyncDestinationPath(match.action, path: path) else { continue }
                 let counterpart = try ActionExecutor.syncCounterpartPath(match.action, path: path, root: match.folder.path)
                 // The deleted file is gone, so the rule is checked on what is left.
                 guard FileManager.default.fileExists(atPath: counterpart), syncRuleApplies(match, to: counterpart) else { continue }
@@ -341,7 +376,14 @@ public final class WatcherCoordinator: @unchecked Sendable {
                     undo: .none
                 )
             }
-            return
+        }
+    }
+
+    private static func syncOnlyRules(_ rules: [Rule]) -> [Rule] {
+        rules.compactMap { rule in
+            var sync = rule
+            sync.actions = rule.actions.filter { $0.kind == .syncFolders }
+            return sync.actions.isEmpty ? nil : sync
         }
     }
 
@@ -369,7 +411,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
     /// The rule's conditions and depth, checked on the counterpart in the target.
     private func syncRuleApplies(_ match: SyncRuleMatch, to counterpart: String) -> Bool {
-        guard let target = match.action.params[ActionParam.destination]?.stringValue,
+        guard let target = try? ActionExecutor.syncCounterpartPath(match.action, path: match.folder.path, root: match.folder.path),
               let depth = RuleEngine.pathDepth(root: target, path: counterpart) else { return false }
         let pro = db.withLock { _ in isPro }
         return RuleEngine.ruleMatches(match.rule, path: counterpart, depth: depth, allowOCR: pro)
@@ -485,16 +527,17 @@ public final class WatcherCoordinator: @unchecked Sendable {
 
     /// `skipsKnownItems` leaves out what the watcher already evaluated under
     /// another path, e.g. files inside a folder that was renamed.
-    private func handleRescanSubtree(root: String, waitsForSettledFiles: Bool, skipsKnownItems: Bool = false) {
+    private func handleRescanSubtree(root: String, waitsForSettledFiles: Bool, skipsKnownItems: Bool = false, syncOnly: Bool = false) {
         guard FileManager.default.fileExists(atPath: root) else { return }
         guard isRealDirectory(root) else {
-            handle(event: .pathArrived(root), waitsForSettledFiles: waitsForSettledFiles)
+            handle(event: syncOnly ? .pathModified(root) : .pathArrived(root), waitsForSettledFiles: waitsForSettledFiles)
             return
         }
 
         guard let (folder, rules, isPro) = db.withLock({ db -> (WatchedFolder, [Rule], Bool)? in
             guard let folder = try? db.folderForPath(root) else { return nil }
-            let rules = (try? db.executionRules(folderID: folder.id, isPro: self.isPro)) ?? []
+            let saved = (try? db.executionRules(folderID: folder.id, isPro: self.isPro)) ?? []
+            let rules = syncOnly ? Self.syncOnlyRules(saved) : saved
             guard !rules.isEmpty else { return nil }
             return (folder, rules, self.isPro)
         }) else { return }
@@ -508,7 +551,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
         let process: (String, Int) -> Void = { [self] path, depth in
             if skipsKnownItems, wasEvaluatedBefore(path) { return }
             if waitsForSettledFiles {
-                awaitSettled(path, includingContents: false)
+                awaitSettled(path, includingContents: false, syncOnly: syncOnly)
             } else {
                 handle(path: path, depth: depth, rules: rules, watchedRoot: folder.path, isPro: isPro)
             }

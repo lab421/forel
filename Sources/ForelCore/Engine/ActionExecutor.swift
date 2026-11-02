@@ -464,6 +464,7 @@ public enum ActionExecutor {
     }
 
     private static func syncFolders(_ action: Action, path: String, root: String?) throws -> Applied {
+        guard try !isSyncDestinationPath(action, path: path) else { return Applied(newPath: path, undo: .none) }
         let sourceRoot = root ?? (path as NSString).deletingLastPathComponent
         let syncTarget = try syncCounterpartPath(action, path: path, root: sourceRoot)
         var isDirectory: ObjCBool = false
@@ -1146,14 +1147,16 @@ public enum ActionExecutor {
             )
         case .syncFolders:
             let sourceRoot = root ?? (path as NSString).deletingLastPathComponent
+            if try isSyncDestinationPath(action, path: path) {
+                return ActionPlan(kind: action.kind, description: "Already synced", sourcePath: path,
+                                  targetPath: nil, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
+            }
             let naiveTarget = try syncCounterpartPath(action, path: path, root: sourceRoot)
             let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
             var isDirectory: ObjCBool = false
             FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
 
-            // A target inside the watched folder must not be synced into itself.
-            let isInTarget = relativePath(root: try stringParam(action, ActionParam.destination, "SyncFolders"), path: path) != nil
-            if isInTarget || isAlreadySynced(path, naiveTarget) {
+            if isAlreadySynced(path, naiveTarget) {
                 return ActionPlan(
                     kind: action.kind,
                     description: "Already synced",
@@ -1444,11 +1447,50 @@ public enum ActionExecutor {
 
     /// Where `path`, inside the watched `root`, is mirrored in the target.
     public static func syncCounterpartPath(_ action: Action, path: String, root: String) throws -> String {
-        let targetRoot = try stringParam(action, ActionParam.destination, "SyncFolders")
+        let targetRoot = try syncDestinationRoot(action)
         guard let relative = relativePath(root: root, path: path) else {
             throw ActionError("Sync folders can only sync files inside the watched folder")
         }
-        return (targetRoot as NSString).appendingPathComponent(relative)
+        let counterpart = (targetRoot as NSString).appendingPathComponent(relative)
+        let destination = try resolvedSyncPath(targetRoot).pathComponents
+        guard try resolvedSyncPath(counterpart).pathComponents.starts(with: destination) else {
+            throw ActionError("The sync destination contains a symbolic link pointing outside the destination folder. No file was changed.")
+        }
+        return counterpart
+    }
+
+    /// The mirror itself is never an input, including for removal events.
+    static func isSyncDestinationPath(_ action: Action, path: String) throws -> Bool {
+        let target = try syncDestinationRoot(action)
+        if relativePath(root: target, path: path) != nil { return true }
+        let source = try resolvedSyncPath(path).pathComponents
+        return try source.starts(with: resolvedSyncPath(target).pathComponents)
+    }
+
+    private static func syncDestinationRoot(_ action: Action) throws -> String {
+        let value = normalizedPath(try stringParam(action, ActionParam.destination, "SyncFolders"))
+        guard value.hasPrefix("/"), !value.contains("\0") else {
+            throw ActionError("Choose an absolute destination folder for Sync Folders.")
+        }
+        return value
+    }
+
+    private static func resolvedSyncPath(_ path: String) throws -> URL {
+        // Resolve the existing prefix first: destinations may contain parent
+        // directories that have not been created yet.
+        var existing = URL(fileURLWithPath: normalizedPath(path)).standardizedFileURL
+        var missing: [String] = []
+        while !FileManager.default.fileExists(atPath: existing.path), existing.path != "/" {
+            let attributes = try? FileManager.default.attributesOfItem(atPath: existing.path)
+            if (attributes?[.type] as? FileAttributeType) == .typeSymbolicLink {
+                throw ActionError("The sync path contains a broken symbolic link. Choose a reachable destination folder.")
+            }
+            missing.append(existing.lastPathComponent)
+            existing.deleteLastPathComponent()
+        }
+        var resolved = existing.resolvingSymlinksInPath()
+        for part in missing.reversed() { resolved.appendPathComponent(part) }
+        return resolved
     }
 
     /// A folder is synced once it exists on the other side, its files being

@@ -22,6 +22,8 @@ public enum FileWatcherEvent: Equatable, Sendable {
     case rescanSubtree(String)
     /// Only Sync Folders acts on removals.
     case pathRemoved(String)
+    /// Content changes are routed only to Sync Folders actions.
+    case pathModified(String)
 }
 
 /// Native FSEvents-based replacement for the Rust `notify` watcher. Watches a
@@ -120,10 +122,9 @@ public final class FileWatcher: @unchecked Sendable {
     /// existing file is edited. Duplicate/coalesced create/rename events are
     /// handled downstream by `WatcherCoordinator`'s fingerprint cache.
     ///
-    /// Do not add `ItemModified`/`ItemXattrMod` here casually. Those would make
-    /// Forel re-evaluate existing files whenever content, tags, labels, or
-    /// download metadata change, which is a broader product behavior than
-    /// "run rules for newly arrived files".
+    /// Content changes have a distinct event so the coordinator can update
+    /// sync counterparts without replaying arrival-only actions. Attribute
+    /// changes alone still don't trigger processing.
     ///
     /// `MustScanSubDirs`/dropped events are different: they mean FSEvents lost
     /// detail and the safe recovery is to rescan the affected subtree. The
@@ -141,7 +142,9 @@ public final class FileWatcher: @unchecked Sendable {
         if flags & UInt32(kFSEventStreamEventFlagItemRemoved) != 0 {
             return .pathRemoved(path)
         }
-        return shouldReportEvent(path: path, flags: flags) ? .pathArrived(path) : nil
+        if shouldReportEvent(path: path, flags: flags) { return .pathArrived(path) }
+        if flags & UInt32(kFSEventStreamEventFlagItemModified) != 0 { return .pathModified(path) }
+        return nil
     }
 
     static func shouldReportEvent(path: String, flags: FSEventStreamEventFlags) -> Bool {
