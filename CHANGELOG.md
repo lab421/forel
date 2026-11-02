@@ -3,6 +3,11 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Added a Sync Folders action that mirrors relative file changes between two folders, can run two-way, and can move counterpart files to the Trash when deletions are propagated.
+
 ## [1.1.1] - 2026-11-02
 
 ### Added
@@ -128,9 +133,6 @@ All notable changes to Forel are documented here. Format loosely follows
 - Added the ability to change the path of an existing watched folder while keeping its rules.
 - Added expandable rule cards that show each rule's conditions and actions directly in the rule list.
 - Each rule now shows its run count from the last 30 days, hidden when there's nothing to show, and the menu bar quick panel has a "Last 30 Days" section with success and failed totals across all rules.
-
-### Added
-- Added a Sync Folders action that mirrors relative file changes between two folders, can run two-way, and can move counterpart files to the Trash when deletions are propagated.
 
 ### Changed
 - Dry Run now shows each matched file's full path beneath its name.
