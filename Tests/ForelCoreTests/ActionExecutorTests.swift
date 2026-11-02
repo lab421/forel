@@ -30,7 +30,6 @@ import Foundation
 
         let action = makeAction(.syncFolders, .object([
             ActionParam.destination: .string(targetRoot),
-            ActionParam.syncDirection: .string(SyncDirection.twoWay.rawValue),
         ]))
 
         let plan = try ActionExecutor.plan(action, path: file, root: sourceRoot)
@@ -42,25 +41,7 @@ import Foundation
         #expect(try String(contentsOfFile: expected, encoding: .utf8) == "hello")
     }
 
-    @Test func syncFoldersTwoWayCopiesTargetChangeBackToWatchedRoot() throws {
-        let dir = TempDir()
-        let sourceRoot = dir.dir("Source")
-        let targetRoot = dir.dir("Target")
-        let file = (targetRoot as NSString).appendingPathComponent("a.txt")
-        try "target".write(toFile: file, atomically: true, encoding: .utf8)
-
-        let action = makeAction(.syncFolders, .object([
-            ActionParam.destination: .string(targetRoot),
-            ActionParam.syncDirection: .string(SyncDirection.twoWay.rawValue),
-        ]))
-
-        let applied = try ActionExecutor.execute(action, path: file, root: sourceRoot)
-        let expected = (sourceRoot as NSString).appendingPathComponent("a.txt")
-        #expect(applied.copiedPath == expected)
-        #expect(try String(contentsOfFile: expected, encoding: .utf8) == "target")
-    }
-
-    @Test func syncFoldersPrefersTargetRootWhenTargetIsNestedInWatchedRoot() throws {
+    @Test func syncFoldersSkipsItemsAlreadyInATargetNestedInTheWatchedFolder() throws {
         let dir = TempDir()
         let sourceRoot = dir.dir("Source")
         let targetRoot = (sourceRoot as NSString).appendingPathComponent("DMG")
@@ -70,12 +51,9 @@ import Foundation
 
         let action = makeAction(.syncFolders, .object([
             ActionParam.destination: .string(targetRoot),
-            ActionParam.syncDirection: .string(SyncDirection.twoWay.rawValue),
         ]))
 
-        let counterpart = try ActionExecutor.syncCounterpartPath(action, path: file, root: sourceRoot)
-        #expect(counterpart == (sourceRoot as NSString).appendingPathComponent("a.txt"))
-        #expect(counterpart != (targetRoot as NSString).appendingPathComponent("DMG/a.txt"))
+        #expect(try ActionExecutor.plan(action, path: file, root: sourceRoot).status == .wouldSkip)
     }
 
     @Test func syncFoldersCreatesCounterpartDirectoryWithoutRecursiveCopy() throws {
@@ -88,7 +66,6 @@ import Foundation
 
         let action = makeAction(.syncFolders, .object([
             ActionParam.destination: .string(targetRoot),
-            ActionParam.syncDirection: .string(SyncDirection.twoWay.rawValue),
         ]))
 
         let applied = try ActionExecutor.execute(action, path: sourceFolder, root: sourceRoot)

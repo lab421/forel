@@ -224,8 +224,7 @@ import Foundation
             name: "sync",
             actions: [makeAction(.syncFolders, .object([
                 ActionParam.destination: .string(targetRoot),
-                ActionParam.syncDirection: .string(SyncDirection.twoWay.rawValue),
-            ]))]
+                ]))]
         )
 
         let preview = RuleEngine.previewFile(path: source, depth: 0, rules: [rule], root: sourceRoot)
@@ -249,8 +248,7 @@ import Foundation
             name: "sync",
             actions: [makeAction(.syncFolders, .object([
                 ActionParam.destination: .string(targetRoot),
-                ActionParam.syncDirection: .string(SyncDirection.twoWay.rawValue),
-            ]))]
+                ]))]
         )
 
         let result = RuleEngine.run(path: source, depth: 0, rules: [rule], batchId: "batch", root: sourceRoot)

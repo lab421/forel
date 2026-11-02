@@ -194,7 +194,6 @@ public enum FileKindCatalog {
 public enum ActionParam {
     public static let destination = "destination"
     public static let onConflict = "on_conflict"
-    public static let syncDirection = "sync_direction"
     public static let syncDeletePolicy = "sync_delete_policy"
     public static let pattern = "pattern"
     public static let archiveName = "archive_name"

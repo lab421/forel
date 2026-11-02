@@ -376,8 +376,6 @@ final class AppModel: ObservableObject {
         guard let folderId = selectedFolderId else { rules = []; return }
         rules = db.withLock { db in (try? db.listRules(folderId: folderId)) ?? [] }
         reloadRuleRunStats()
-        // A rule change can add or remove a Sync Folders target to watch.
-        refreshWatching()
     }
 
     func reloadHistory() {
@@ -467,7 +465,6 @@ final class AppModel: ObservableObject {
         for path in registeredWatchPaths.subtracting(paths) { coordinator.remove(path) }
         for path in paths.subtracting(registeredWatchPaths) { coordinator.add(path) }
         registeredWatchPaths = paths
-        coordinator.watchSyncTargets(of: paths)
     }
 
     func addFolder(path: String) {

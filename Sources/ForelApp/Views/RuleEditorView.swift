@@ -967,8 +967,7 @@ private struct ActionRow: View {
                 if newKind == .importToLibrary {
                     params[ActionParam.libraryType] = .string(LibraryType.music.rawValue)
                 } else if newKind == .syncFolders {
-                    params[ActionParam.syncDirection] = .string(SyncDirection.twoWay.rawValue)
-                    params[ActionParam.syncDeletePolicy] = .string(SyncDeletePolicy.moveToTrash.rawValue)
+                    params[ActionParam.syncDeletePolicy] = .string(SyncDeletePolicy.keepOtherSide.rawValue)
                 } else if newKind == .openApplication {
                     params[ActionParam.passFileToApplication] = .bool(true)
                 }
@@ -1140,32 +1139,17 @@ private struct ActionOptionsView: View {
     }
 
     private var syncOptions: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Direction")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(ForelTheme.secondaryText)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Deletes")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(ForelTheme.secondaryText)
 
-                StringSelectMenu(
-                    selection: paramBinding(ActionParam.syncDirection, defaultValue: SyncDirection.twoWay.rawValue),
-                    options: SyncDirection.allCases.map(\.rawValue),
-                    label: { value in SyncDirection(rawValue: value)?.label ?? value }
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Deletes")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(ForelTheme.secondaryText)
-
-                StringSelectMenu(
-                    selection: paramBinding(ActionParam.syncDeletePolicy, defaultValue: SyncDeletePolicy.moveToTrash.rawValue),
-                    options: SyncDeletePolicy.allCases.map(\.rawValue),
-                    label: { value in SyncDeletePolicy(rawValue: value)?.label ?? value }
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            StringSelectMenu(
+                selection: paramBinding(ActionParam.syncDeletePolicy, defaultValue: SyncDeletePolicy.keepOtherSide.rawValue),
+                options: SyncDeletePolicy.allCases.map(\.rawValue),
+                label: { value in SyncDeletePolicy(rawValue: value)?.label ?? value }
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

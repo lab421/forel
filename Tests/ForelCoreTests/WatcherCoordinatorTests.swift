@@ -441,34 +441,6 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: numberedDuplicate))
     }
 
-    @Test func syncFolderTargetChangeCopiesBackToWatchedRoot() throws {
-        let db = try makeDB()
-        let dir = TempDir()
-        let source = dir.dir("Source")
-        let target = dir.dir("Target")
-        let folder = WatchedFolder(path: source)
-        try db.insertFolder(folder)
-        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
-        rule.actions = [makeAction(.syncFolders, .object([
-            ActionParam.destination: .string(target),
-            ActionParam.syncDirection: .string(SyncDirection.twoWay.rawValue),
-        ]), position: 0, ruleId: rule.id)]
-        try db.insertRule(rule)
-
-        let file = (target as NSString).appendingPathComponent("a.txt")
-        try "target".write(toFile: file, atomically: true, encoding: .utf8)
-
-        let coordinator = WatcherCoordinator(db: db)
-        coordinator.handle(path: file)
-
-        let copied = (source as NSString).appendingPathComponent("a.txt")
-        #expect(try String(contentsOfFile: copied, encoding: .utf8) == "target")
-        let history = try db.listHistory()
-        #expect(history.count == 1)
-        #expect(history[0].actionKind == .syncFolders)
-        #expect(history[0].status == .applied)
-    }
-
     @Test func syncFolderDeletionMovesCounterpartToTrash() throws {
         let db = try makeDB()
         let dir = TempDir()
@@ -479,7 +451,6 @@ import Foundation
         var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
         rule.actions = [makeAction(.syncFolders, .object([
             ActionParam.destination: .string(target),
-            ActionParam.syncDirection: .string(SyncDirection.twoWay.rawValue),
             ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.moveToTrash.rawValue),
         ]), position: 0, ruleId: rule.id)]
         try db.insertRule(rule)
@@ -498,6 +469,25 @@ import Foundation
         #expect(history[0].reversible)
     }
 
+    @Test func syncFolderDeletionKeepsCounterpartByDefault() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([ActionParam.destination: .string(target)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let counterpart = (target as NSString).appendingPathComponent("a.txt")
+        try "other".write(toFile: counterpart, atomically: true, encoding: .utf8)
+
+        WatcherCoordinator(db: db).handle(event: .pathRemoved((source as NSString).appendingPathComponent("a.txt")))
+
+        #expect(FileManager.default.fileExists(atPath: counterpart))
+        #expect(try db.listHistory().isEmpty)
+    }
+
     @Test func syncFolderPathRenamedAwayIsTreatedAsDeletion() throws {
         let db = try makeDB()
         let dir = TempDir()
@@ -508,7 +498,6 @@ import Foundation
         var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
         rule.actions = [makeAction(.syncFolders, .object([
             ActionParam.destination: .string(target),
-            ActionParam.syncDirection: .string(SyncDirection.twoWay.rawValue),
             ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.moveToTrash.rawValue),
         ]), position: 0, ruleId: rule.id)]
         try db.insertRule(rule)
@@ -561,7 +550,10 @@ import Foundation
         try db.insertFolder(folder)
         var rule = makeRule(folderId: folder.id, name: "sync pdf", recursionDepth: nil)
         rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
-        rule.actions = [makeAction(.syncFolders, .object([ActionParam.destination: .string(target)]), position: 0, ruleId: rule.id)]
+        rule.actions = [makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(target),
+            ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.moveToTrash.rawValue),
+        ]), position: 0, ruleId: rule.id)]
         try db.insertRule(rule)
         let notes = (target as NSString).appendingPathComponent("notes.txt")
         let invoice = (target as NSString).appendingPathComponent("invoice.pdf")
@@ -574,28 +566,6 @@ import Foundation
 
         #expect(FileManager.default.fileExists(atPath: notes))
         #expect(!FileManager.default.fileExists(atPath: invoice))
-    }
-
-    @Test func syncFolderDroppedIntoTargetCopiesItsContentsBack() throws {
-        let db = try makeDB()
-        let dir = TempDir()
-        let source = dir.dir("Source")
-        let target = dir.dir("Target")
-        let folder = WatchedFolder(path: source)
-        try db.insertFolder(folder)
-        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
-        rule.actions = [makeAction(.syncFolders, .object([ActionParam.destination: .string(target)]), position: 0, ruleId: rule.id)]
-        try db.insertRule(rule)
-        let photos = (target as NSString).appendingPathComponent("Photos")
-        try FileManager.default.createDirectory(atPath: (photos as NSString).appendingPathComponent("2026"), withIntermediateDirectories: true)
-        try "a".write(toFile: (photos as NSString).appendingPathComponent("a.jpg"), atomically: true, encoding: .utf8)
-        try "b".write(toFile: (photos as NSString).appendingPathComponent("2026/b.jpg"), atomically: true, encoding: .utf8)
-
-        WatcherCoordinator(db: db).handle(path: photos)
-
-        let copied = (source as NSString).appendingPathComponent("Photos")
-        #expect(try String(contentsOfFile: (copied as NSString).appendingPathComponent("a.jpg"), encoding: .utf8) == "a")
-        #expect(try String(contentsOfFile: (copied as NSString).appendingPathComponent("2026/b.jpg"), encoding: .utf8) == "b")
     }
 
     @Test func recordedHistoryIsSignalledForFailuresToo() throws {

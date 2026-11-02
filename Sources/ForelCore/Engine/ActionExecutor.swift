@@ -141,26 +141,14 @@ public enum ShortcutInputMode: String, CaseIterable, Sendable {
     }
 }
 
-public enum SyncDirection: String, CaseIterable, Sendable {
-    case twoWay = "two_way"
-    case mirrorToTarget = "mirror_to_target"
-
-    public var label: String {
-        switch self {
-        case .twoWay: return "Two-way sync"
-        case .mirrorToTarget: return "Mirror to target"
-        }
-    }
-}
-
 public enum SyncDeletePolicy: String, CaseIterable, Sendable {
-    case moveToTrash = "move_to_trash"
     case keepOtherSide = "keep_other_side"
+    case moveToTrash = "move_to_trash"
 
     public var label: String {
         switch self {
-        case .moveToTrash: return "Move counterpart to Trash"
         case .keepOtherSide: return "Keep counterpart"
+        case .moveToTrash: return "Move counterpart to Trash"
         }
     }
 }
@@ -1161,7 +1149,9 @@ public enum ActionExecutor {
             var isDirectory: ObjCBool = false
             FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
 
-            if normalizedPath(path) == normalizedPath(naiveTarget) || isAlreadySynced(path, naiveTarget) {
+            // A target inside the watched folder must not be synced into itself.
+            let isInTarget = relativePath(root: try stringParam(action, ActionParam.destination, "SyncFolders"), path: path) != nil
+            if isInTarget || isAlreadySynced(path, naiveTarget) {
                 return ActionPlan(
                     kind: action.kind,
                     description: "Already synced",
@@ -1445,25 +1435,18 @@ public enum ActionExecutor {
         }
     }
 
-    public static func syncDirection(_ action: Action) -> SyncDirection {
-        guard let raw = action.params[ActionParam.syncDirection]?.stringValue else { return .twoWay }
-        return SyncDirection(rawValue: raw) ?? .twoWay
-    }
-
     public static func syncDeletePolicy(_ action: Action) -> SyncDeletePolicy {
-        guard let raw = action.params[ActionParam.syncDeletePolicy]?.stringValue else { return .moveToTrash }
-        return SyncDeletePolicy(rawValue: raw) ?? .moveToTrash
+        guard let raw = action.params[ActionParam.syncDeletePolicy]?.stringValue else { return .keepOtherSide }
+        return SyncDeletePolicy(rawValue: raw) ?? .keepOtherSide
     }
 
+    /// Where `path`, inside the watched `root`, is mirrored in the target.
     public static func syncCounterpartPath(_ action: Action, path: String, root: String) throws -> String {
         let targetRoot = try stringParam(action, ActionParam.destination, "SyncFolders")
-        if syncDirection(action) == .twoWay, let relative = relativePath(root: targetRoot, path: path) {
-            return (root as NSString).appendingPathComponent(relative)
+        guard let relative = relativePath(root: root, path: path) else {
+            throw ActionError("Sync folders can only sync files inside the watched folder")
         }
-        if let relative = relativePath(root: root, path: path) {
-            return (targetRoot as NSString).appendingPathComponent(relative)
-        }
-        throw ActionError("Sync folders can only sync files inside the watched folder or target folder")
+        return (targetRoot as NSString).appendingPathComponent(relative)
     }
 
     /// A folder is synced once it exists on the other side, its files being
