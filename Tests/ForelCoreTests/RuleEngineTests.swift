@@ -40,6 +40,70 @@ import Foundation
         #expect(history.isEmpty)
     }
 
+    @Test func runIgnoresIncompleteBrowserDownloadsEvenWhenRuleWouldMatch() throws {
+        let dir = TempDir()
+        let file = dir.file("report.pdf.crdownload", contents: "")
+        try setQuarantineAgent(file, agent: "Google Chrome")
+        let destination = dir.dir("Documents")
+        let rule = makeRule(
+            name: "chrome downloads",
+            conditions: [makeCondition(.downloadedWithApp, .is, "Google Chrome")],
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(destination)]))]
+        )
+
+        let (matched, history) = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(matched.isEmpty)
+        #expect(history.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(!FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("report.pdf.crdownload")))
+    }
+
+    @Test func previewFileIgnoresIncompleteBrowserDownloadsEvenWhenRuleWouldMatch() throws {
+        let dir = TempDir()
+        let file = dir.file("report.pdf.crdownload", contents: "")
+        try setQuarantineAgent(file, agent: "Google Chrome")
+        let rule = makeRule(
+            name: "chrome downloads",
+            conditions: [makeCondition(.downloadedWithApp, .is, "Google Chrome")]
+        )
+
+        #expect(RuleEngine.previewFile(path: file, depth: 0, rules: [rule]) == nil)
+    }
+
+    @Test func walkEntriesSkipsIncompleteBrowserDownloadsForFolderRuns() throws {
+        let dir = TempDir()
+        _ = dir.file("report.pdf.crdownload", contents: "")
+        let finished = dir.file("report.pdf", contents: "done")
+
+        #expect(RuleEngine.walkEntries(root: dir.path, maxDepth: 0).map(\.path) == [finished])
+    }
+
+    @Test func customFolderIconFileIsIgnoredByRunPreviewAndFolderWalk() throws {
+        // "Icon\r" has no extension, so a "Kind is Document" rule would
+        // otherwise move it and strip the folder of its custom icon.
+        let dir = TempDir()
+        let icon = dir.file("Icon\r", contents: "")
+        let document = dir.file("notes.docx", contents: "done")
+        let destination = dir.dir("Documents")
+        let rule = makeRule(
+            name: "documents",
+            conditions: [makeCondition(.kind, .is, "document")],
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(destination)]))]
+        )
+
+        #expect(RuleEngine.previewFile(path: icon, depth: 0, rules: [rule]) == nil)
+        let walked = RuleEngine.walkEntries(root: dir.path, maxDepth: 0).map(\.path)
+        #expect(!walked.contains(icon))
+        #expect(walked.contains(document))
+
+        let (matched, history) = RuleEngine.run(path: icon, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(matched.isEmpty)
+        #expect(history.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: icon))
+    }
+
     @Test func conditionOrderDoesNotChangeAllOrAnyMatching() throws {
         // `ruleMatches` evaluates cheap conditions before `contents` and
         // short-circuits. Reordering must not change the boolean outcome, so a
@@ -63,6 +127,44 @@ import Foundation
 
         let (matched, _) = RuleEngine.run(path: file, depth: 0, rules: rules, batchId: "batch")
         #expect(matched == ["any contents-gated"])
+    }
+
+    @Test func allConditionsCombineRegexWithCompleteFilenameExclusionsInPreviewAndRun() throws {
+        let dir = TempDir()
+        let destination = dir.dir("Processed")
+        let excluded = ["Desktop.ini", "Thumbs.db", "$RECYCLE.BIN"]
+        let included = dir.file("report.pdf")
+        let excludedPaths = excluded.map { dir.file($0) }
+        let rule = makeRule(
+            name: "move non-system files",
+            conditionMatch: .all,
+            conditions: [
+                makeCondition(.name, .matchesRegex, #"^[^.]"#),
+                makeCondition(.name, .isNot, "Desktop.ini"),
+                makeCondition(.name, .isNot, "Thumbs.db"),
+                makeCondition(.name, .isNot, "$RECYCLE.BIN"),
+            ],
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(destination)]))]
+        )
+
+        #expect(RuleEngine.previewFile(path: included, depth: 0, rules: [rule]) != nil)
+        for path in excludedPaths {
+            #expect(RuleEngine.previewFile(path: path, depth: 0, rules: [rule]) == nil)
+        }
+
+        for path in excludedPaths {
+            let result = RuleEngine.run(path: path, depth: 0, rules: [rule], batchId: "excluded")
+            #expect(result.matched.isEmpty)
+            #expect(result.history.isEmpty)
+            #expect(FileManager.default.fileExists(atPath: path))
+        }
+
+        let includedResult = RuleEngine.run(path: included, depth: 0, rules: [rule], batchId: "included")
+        #expect(includedResult.matched == ["move non-system files"])
+        #expect(includedResult.history.count == 1)
+        #expect(FileManager.default.fileExists(
+            atPath: (destination as NSString).appendingPathComponent("report.pdf")
+        ))
     }
 
     @Test func previewFileHidesAlreadyAppliedActions() throws {
@@ -331,6 +433,20 @@ import Foundation
         #expect(entries.allSatisfy { $0.depth == 0 })
     }
 
+    /// Shared by Run Now and Dry Run: an app is one item, its contents stay out.
+    @Test func walkEntriesListsPackagesWithoutTheirContents() throws {
+        let dir = TempDir()
+        let app = dir.dir("Some.app")
+        _ = dir.dir("Some.app/Contents/Resources")
+        try "x".write(toFile: (app as NSString).appendingPathComponent("Contents/Resources/icon.png"), atomically: true, encoding: .utf8)
+        let plain = dir.dir("Plain")
+        let inside = (plain as NSString).appendingPathComponent("photo.png")
+        try "x".write(toFile: inside, atomically: true, encoding: .utf8)
+
+        #expect(RuleEngine.walkEntries(root: dir.path, maxDepth: nil).map(\.path) == [plain, inside, app])
+        #expect(RuleEngine.walkEntries(root: app, maxDepth: nil).isEmpty)
+    }
+
     @Test func walkEntriesSkipsMacOSAndOfficeSystemFiles() throws {
         let dir = TempDir()
         let real = dir.file("report.pdf")
@@ -557,6 +673,102 @@ import Foundation
         #expect(FinderTags.currentColorName(moved) == "red")
     }
 
+    @Test func previewUncompressContinuesLaterActionsOnExtractedPath() throws {
+        let dir = TempDir()
+        let staging = dir.dir("staging")
+        try "hello".write(toFile: (staging as NSString).appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
+        let zip = (dir.path as NSString).appendingPathComponent("download.zip")
+        try makeZip(in: staging, items: ["report.txt"], destination: zip)
+        try FileManager.default.removeItem(atPath: staging)
+
+        let extracted = (dir.path as NSString).appendingPathComponent("report.txt")
+        let renamed = (dir.path as NSString).appendingPathComponent("final.txt")
+        var rule = makeRule(name: "unzip then rename", conditions: [makeCondition(.kind, .is, "archive")])
+        rule.actions = [
+            makeAction(.uncompress, .object([:]), position: 0),
+            makeAction(.rename, .object(["pattern": .string("final.txt")]), position: 1),
+        ]
+
+        let preview = RuleEngine.previewFile(path: zip, depth: 0, rules: [rule])
+
+        #expect(preview?.rules[0].actions.map(\.kind) == [.uncompress, .rename])
+        #expect(preview?.rules[0].actions.map(\.status) == [.wouldRun, .wouldRun])
+        #expect(preview?.rules[0].actions[1].sourcePath == extracted)
+        #expect(preview?.rules[0].actions[1].targetPath == renamed)
+        #expect(!FileManager.default.fileExists(atPath: extracted))
+    }
+
+    @Test func runUncompressContinuesLaterActionsOnExtractedPath() throws {
+        let dir = TempDir()
+        let staging = dir.dir("staging")
+        try "hello".write(toFile: (staging as NSString).appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
+        let zip = (dir.path as NSString).appendingPathComponent("download.zip")
+        try makeZip(in: staging, items: ["report.txt"], destination: zip)
+        try FileManager.default.removeItem(atPath: staging)
+
+        let final = (dir.path as NSString).appendingPathComponent("final.txt")
+        var rule = makeRule(name: "unzip then rename", conditions: [makeCondition(.kind, .is, "archive")])
+        rule.actions = [
+            makeAction(.uncompress, .object([:]), position: 0),
+            makeAction(.rename, .object(["pattern": .string("final.txt")]), position: 1),
+        ]
+
+        let result = RuleEngine.run(path: zip, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(result.history.map(\.actionKind) == [.uncompress, .rename])
+        #expect(result.history.allSatisfy { $0.status == .applied })
+        #expect(!FileManager.default.fileExists(atPath: zip))
+        #expect(FileManager.default.fileExists(atPath: final))
+        #expect(try String(contentsOfFile: final, encoding: .utf8) == "hello")
+    }
+
+    @Test func previewUncompressSkipConflictStopsLaterActions() throws {
+        let dir = TempDir()
+        let existing = dir.file("report.txt", contents: "existing")
+        let staging = dir.dir("staging")
+        try "new".write(toFile: (staging as NSString).appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
+        let zip = (dir.path as NSString).appendingPathComponent("download.zip")
+        try makeZip(in: staging, items: ["report.txt"], destination: zip)
+        try FileManager.default.removeItem(atPath: staging)
+
+        var rule = makeRule(name: "skip unzip then rename", conditions: [makeCondition(.kind, .is, "archive")])
+        rule.actions = [
+            makeAction(.uncompress, .object([ActionParam.onConflict: .string(MoveConflictResolution.skip.rawValue)]), position: 0),
+            makeAction(.rename, .object(["pattern": .string("final.txt")]), position: 1),
+        ]
+
+        let preview = RuleEngine.previewFile(path: zip, depth: 0, rules: [rule])
+
+        #expect(preview?.rules[0].actions.map(\.kind) == [.uncompress])
+        #expect(preview?.rules[0].actions[0].status == .wouldSkip)
+        #expect(try String(contentsOfFile: existing, encoding: .utf8) == "existing")
+    }
+
+    @Test func runUncompressSkipConflictStopsLaterActions() throws {
+        let dir = TempDir()
+        let existing = dir.file("report.txt", contents: "existing")
+        let staging = dir.dir("staging")
+        try "new".write(toFile: (staging as NSString).appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
+        let zip = (dir.path as NSString).appendingPathComponent("download.zip")
+        try makeZip(in: staging, items: ["report.txt"], destination: zip)
+        try FileManager.default.removeItem(atPath: staging)
+        let wronglyRenamedArchive = (dir.path as NSString).appendingPathComponent("final.txt")
+
+        var rule = makeRule(name: "skip unzip then rename", conditions: [makeCondition(.kind, .is, "archive")])
+        rule.actions = [
+            makeAction(.uncompress, .object([ActionParam.onConflict: .string(MoveConflictResolution.skip.rawValue)]), position: 0),
+            makeAction(.rename, .object(["pattern": .string("final.txt")]), position: 1),
+        ]
+
+        let result = RuleEngine.run(path: zip, depth: 0, rules: [rule], batchId: "batch")
+
+        #expect(result.history.map(\.actionKind) == [.uncompress])
+        #expect(result.history[0].status == .skipped)
+        #expect(FileManager.default.fileExists(atPath: zip))
+        #expect(!FileManager.default.fileExists(atPath: wronglyRenamedArchive))
+        #expect(try String(contentsOfFile: existing, encoding: .utf8) == "existing")
+    }
+
     @Test func previewRenameAfterSimulatedMoveDoesNotNeedMovedFileToExistYet() throws {
         let dir = TempDir()
         let firstDestination = dir.dir("PDF")
@@ -671,5 +883,51 @@ import Foundation
         #expect(RuleEngine.pathDepth(root: "/Users/x/Inbox", path: "/Users/x/Inbox/file.txt") == 0)
         #expect(RuleEngine.pathDepth(root: "/Users/x/Inbox", path: "/Users/x/Inbox/Sub/file.txt") == 1)
         #expect(RuleEngine.pathDepth(root: "/Users/x/Inbox", path: "/Users/x/Other/file.txt") == nil)
+    }
+
+    @Test(arguments: [ActionKind.moveToFolder, .copyToFolder])
+    func unreachableDestinationIsFlaggedInPreviewAndFailsWhenRun(kind: ActionKind) throws {
+        let dir = TempDir()
+        let file = dir.file("report.pdf", contents: "done")
+        // Like a NAS share that isn't mounted: the folder is missing and
+        // nothing can be created under /Volumes.
+        let volume = "ForelMissingShare-\(UUID().uuidString)"
+        let destination = "/Volumes/\(volume)/Inbox"
+        let rule = makeRule(
+            name: "to nas",
+            conditions: [makeCondition(.extension_, .is, "pdf")],
+            actions: [makeAction(kind, .object(["destination": .string(destination)]))]
+        )
+
+        let preview = try #require(RuleEngine.previewFile(path: file, depth: 0, rules: [rule]))
+        let action = try #require(preview.rules.first?.actions.first)
+        #expect(action.status == .wouldRun)
+        #expect(action.warning?.contains("“\(volume)” isn't connected") == true)
+
+        // The warning only informs: the run still attempts the action, and
+        // records the real failure without touching the file. The failure
+        // names the missing share rather than a file system error.
+        let (_, history) = RuleEngine.run(path: file, depth: 0, rules: [rule], batchId: "batch")
+        #expect(history.map(\.status) == [.failed])
+        #expect(history.first?.message?.contains("“\(volume)” isn't connected") == true)
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(RunSummary.message(for: history) == "Run complete — 1 action failed")
+    }
+
+    @Test func reachableDestinationHasNoWarningEvenBeforeItExists() throws {
+        let dir = TempDir()
+        let file = dir.file("report.pdf", contents: "done")
+        let existing = dir.dir("Documents")
+        let notCreatedYet = (dir.path as NSString).appendingPathComponent("Archive/2026/10")
+
+        for destination in [existing, notCreatedYet] {
+            let rule = makeRule(
+                name: "sort",
+                conditions: [makeCondition(.extension_, .is, "pdf")],
+                actions: [makeAction(.moveToFolder, .object(["destination": .string(destination)]))]
+            )
+            let preview = try #require(RuleEngine.previewFile(path: file, depth: 0, rules: [rule]))
+            #expect(preview.rules.first?.actions.first?.warning == nil)
+        }
     }
 }

@@ -15,132 +15,213 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import SwiftUI
+import ForelCore
+import Lab421Licensing
 
+/// Shared across the app delegate and `SettingsView` so code outside SwiftUI
+/// (e.g. the status item's "Activate" action, or `AppDelegate` reacting to a
+/// denied license) can select a specific settings tab before opening the
+/// `Settings` scene.
+@MainActor
+final class SettingsNavigation: ObservableObject {
+    @Published var selectedCategory: SettingsCategory = .general
+}
+
+/// Modern macOS Settings layout: a category sidebar on the left (matching
+/// System Settings' own convention), detail content on the right — instead
+/// of one long scrolling list of sections.
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var updater: UpdaterManager
+    @EnvironmentObject var license: ForelLicenseManager
+    @EnvironmentObject var navigation: SettingsNavigation
     @State private var launchAtLogin = LoginItem.isEnabled
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    SectionLabel(title: "Appearance")
-                    GlassCard {
-                        PickerRow(title: "Theme", selection: themeBinding) {
-                            Text("System").tag(AppTheme.system)
-                            Text("Light").tag(AppTheme.light)
-                            Text("Dark").tag(AppTheme.dark)
-                        }
-                        Divider().overlay(ForelTheme.divider).padding(.leading, 14)
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Accent color").font(.system(size: 13)).foregroundStyle(ForelTheme.primaryText)
-                            AccentColorPicker(selection: accentBinding)
-                        }
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 14)
-                    }
-
-                    SectionLabel(title: "General")
-                    GlassCard {
-                        ToggleRow(
-                            title: "Start at login",
-                            subtitle: "Open Forel automatically when you log in",
-                            isOn: launchAtLoginBinding
-                        )
-                        Divider().overlay(ForelTheme.divider).padding(.leading, 14)
-                        ToggleRow(
-                            title: "Show Dock icon",
-                            subtitle: "Keep Forel visible in the Dock while it runs",
-                            isOn: dockIconBinding
-                        )
-                        Divider().overlay(ForelTheme.divider).padding(.leading, 14)
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Keep history for").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
-                                Spacer()
-                                Text("\(model.historyMaxDays) day\(model.historyMaxDays > 1 ? "s" : "")").font(.system(size: 12)).foregroundStyle(ForelTheme.secondaryText)
-                            }
-                            Slider(value: historyMaxDaysDoubleBinding, in: 1...30, step: 1)
-                                .tint(ForelTheme.accent)
-                        }
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 14)
-                    }
-
-                    PermissionsSection()
-
-                    SectionLabel(title: "Updates")
-                    if updater.updateAvailable {
-                        UpdateAvailableBanner(
-                            version: updater.latestVersion,
-                            isInstalling: updater.isInstalling,
-                            action: updater.installUpdate
-                        )
-                    }
-                    GlassCard {
-                        ToggleRow(
-                            title: "Automatic updates",
-                            subtitle: "Check for new versions in the background",
-                            isOn: automaticUpdatesBinding
-                        )
-                        Divider().overlay(ForelTheme.divider).padding(.leading, 14)
-                        SettingsActionRow(
-                            title: "Current version",
-                            subtitle: versionSubtitle,
-                            buttonTitle: "Check Now",
-                            action: { updater.checkForUpdates() }
-                        )
-                        .disabled(updater.isChecking || updater.isInstalling || updater.updateAvailable)
-                    }
-
-                    SectionLabel(title: "About")
-                    GlassCard {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Forel").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
-                                Text("Open-source file automation for macOS").font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
-                            }
-                            Spacer()
-                        }
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 14)
-                    }
-                }
-            }
-            .scrollIndicators(.never)
-
-            Spacer(minLength: 0)
+        HStack(spacing: 0) {
+            sidebar
+            Divider().overlay(ForelTheme.divider)
+            detail
         }
-        .padding(16)
-        .frame(minWidth: 460)
+        .frame(width: 600, height: 440)
         .background(ForelTheme.background)
+        .navigationTitle("Settings")
         .onAppear {
             let storedLogin = (try? model.db.getSetting("launch_at_login")) ?? nil
             launchAtLogin = LoginItem.isEnabled || storedLogin == "1"
         }
     }
 
-    private var header: some View {
-        ViewHeader(title: "Settings", subtitle: "Forel preferences", systemImage: "gearshape") {
-            Button {
-                model.detailRoute = .rules
-            } label: {
-                Image(systemName: "chevron.backward")
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(SettingsCategory.allCases) { category in
+                SettingsSidebarRow(
+                    category: category,
+                    isSelected: navigation.selectedCategory == category,
+                    action: { navigation.selectedCategory = category }
+                )
             }
-            .buttonStyle(IconButtonStyle())
-            .help("Back to rules")
+            Spacer(minLength: 0)
         }
+        .padding(10)
+        .frame(width: 170, alignment: .top)
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                switch navigation.selectedCategory {
+                case .general:
+                    generalPane
+                case .permissions:
+                    PermissionsSection()
+                case .license:
+                    LicenseSettingsView()
+                        .environmentObject(license)
+                case .updates:
+                    updatesPane
+                case .about:
+                    aboutPane
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollIndicators(.never)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var generalPane: some View {
+        Group {
+            SectionLabel(title: "Appearance")
+            GlassCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Accent color").font(.system(size: 13)).foregroundStyle(ForelTheme.primaryText)
+                    AccentColorPicker(selection: accentBinding)
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+            }
+
+            SectionLabel(title: "General")
+            GlassCard {
+                ToggleRow(
+                    title: "Automatic watching",
+                    subtitle: model.paused ? "Paused — new files are ignored" : "Watching folders — rules run automatically",
+                    isOn: watchingBinding
+                )
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                ToggleRow(
+                    title: "Start at login",
+                    subtitle: "Open Forel automatically when you log in",
+                    isOn: launchAtLoginBinding
+                )
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                ToggleRow(
+                    title: "Show Dock icon",
+                    subtitle: "Keep Forel visible in the Dock while it runs",
+                    isOn: dockIconBinding
+                )
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                ToggleRow(
+                    title: "Watcher notifications",
+                    subtitle: "Notify when automatic rules process files",
+                    isOn: watcherNotificationsBinding
+                )
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Keep history for").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
+                        Spacer()
+                        Text("\(model.historyMaxDays) day\(model.historyMaxDays > 1 ? "s" : "")").font(.system(size: 12)).foregroundStyle(ForelTheme.secondaryText)
+                    }
+                    Slider(value: historyMaxDaysDoubleBinding, in: 1...30, step: 1)
+                        .tint(ForelTheme.accent)
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+            }
+        }
+    }
+
+    private var updatesPane: some View {
+        Group {
+            SectionLabel(title: "Updates")
+            if updater.updateAvailable {
+                UpdateAvailableBanner(
+                    version: updater.latestVersion,
+                    isInstalling: updater.isInstalling,
+                    action: updater.installUpdate
+                )
+            }
+            GlassCard {
+                ToggleRow(
+                    title: "Automatic updates",
+                    subtitle: "Check for new versions in the background",
+                    isOn: $updater.automaticallyChecksForUpdates
+                )
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                SettingsActionRow(
+                    title: "Current version",
+                    subtitle: versionSubtitle,
+                    buttonTitle: "Check Now",
+                    action: { updater.checkForUpdates() }
+                )
+                .disabled(updater.isChecking || updater.isInstalling || updater.updateAvailable)
+            }
+        }
+    }
+
+    private var aboutPane: some View {
+        Group {
+            SectionLabel(title: "About")
+            GlassCard {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(AppInfo.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
+                        Text(AppInfo.tagline).font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                aboutRow(title: "Version", value: AppInfo.version)
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                aboutRow(title: "Build", value: AppInfo.build)
+                if let copyright = AppInfo.copyright {
+                    Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                    aboutRow(title: "Copyright", value: copyright)
+                }
+                Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                HStack {
+                    Text("GitHub Repository").font(.system(size: 13)).foregroundStyle(ForelTheme.primaryText)
+                    Spacer()
+                    Link("lab421/forel", destination: AppInfo.repositoryURL)
+                        .font(.system(size: 12))
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+            }
+        }
+    }
+
+    private func aboutRow(title: String, value: String) -> some View {
+        HStack {
+            Text(title).font(.system(size: 13)).foregroundStyle(ForelTheme.primaryText)
+            Spacer()
+            Text(value)
+                .font(.system(size: 12))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .textSelection(.enabled)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
     }
 
     private var accentBinding: Binding<AccentPreset> {
         Binding(get: { model.accentPreset }, set: { model.setAccentPreset($0) })
-    }
-
-    private var themeBinding: Binding<AppTheme> {
-        Binding(get: { model.appTheme }, set: { model.setAppTheme($0) })
     }
 
     private var launchAtLoginBinding: Binding<Bool> {
@@ -158,6 +239,18 @@ struct SettingsView: View {
         Binding(get: { model.showDockIcon }, set: { model.setShowDockIcon($0) })
     }
 
+    private var watcherNotificationsBinding: Binding<Bool> {
+        Binding(get: { model.watcherNotificationsEnabled }, set: { model.setWatcherNotificationsEnabled($0) })
+    }
+
+    private var watchingBinding: Binding<Bool> {
+        Binding(get: { !model.paused }, set: { enabled in
+            if enabled == model.paused {
+                model.togglePaused()
+            }
+        })
+    }
+
     private var historyMaxDaysBinding: Binding<Int> {
         Binding(get: { model.historyMaxDays }, set: { model.setHistoryMaxDays($0) })
     }
@@ -166,13 +259,80 @@ struct SettingsView: View {
         Binding(get: { Double(model.historyMaxDays) }, set: { model.setHistoryMaxDays(Int($0)) })
     }
 
-    private var automaticUpdatesBinding: Binding<Bool> {
-        Binding(get: { updater.automaticallyChecksForUpdates }, set: { updater.automaticallyChecksForUpdates = $0 })
-    }
-
     private var versionSubtitle: String {
-        let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "alpha"
+        let current = AppInfo.version
         if updater.isChecking { return "\(current) — Checking…" }
         return current
+    }
+}
+
+enum SettingsCategory: CaseIterable, Identifiable {
+    case general, permissions, license, updates, about
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .permissions: "Permissions"
+        case .license: "License"
+        case .updates: "Updates"
+        case .about: "About"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .general: "gearshape.fill"
+        case .permissions: "lock.shield.fill"
+        case .license: "key.fill"
+        case .updates: "arrow.triangle.2.circlepath"
+        case .about: "info.circle.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .general: Color(red: 0.36, green: 0.34, blue: 0.90)
+        case .permissions: Color(red: 0.95, green: 0.55, blue: 0.13)
+        case .license: Color(red: 0.20, green: 0.45, blue: 0.80)
+        case .updates: Color(red: 0.20, green: 0.70, blue: 0.45)
+        case .about: Color(red: 0.31, green: 0.55, blue: 0.95)
+        }
+    }
+}
+
+private struct SettingsSidebarRow: View {
+    let category: SettingsCategory
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(category.tint)
+                    Image(systemName: category.systemImage)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 22, height: 22)
+
+                Text(category.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isSelected ? .white : ForelTheme.primaryText)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isSelected ? ForelTheme.accent : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

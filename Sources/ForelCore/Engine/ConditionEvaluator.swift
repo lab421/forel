@@ -19,14 +19,13 @@ import Darwin
 
 public enum ConditionEvaluator {
     /// Returns true if the file at `path` satisfies the condition.
-    public static func evaluate(_ condition: Condition, path: String) -> Bool {
+    public static func evaluate(_ condition: Condition, path: String, allowOCR: Bool = true) -> Bool {
         let url = URL(fileURLWithPath: path)
         let attrs = try? FileManager.default.attributesOfItem(atPath: path)
 
         switch condition.kind {
         case .name:
-            let name = url.deletingPathExtension().lastPathComponent
-            return matchString(condition.operator, name, condition.value)
+            return matchName(condition.operator, url: url, condition.value)
 
         case .extension_:
             let ext = url.pathExtension.lowercased()
@@ -80,7 +79,7 @@ public enum ConditionEvaluator {
             }
 
         case .contents:
-            return evaluateContents(condition, path: path).matched
+            return evaluateContents(condition, path: path, allowOCR: allowOCR).matched
 
         case .createdAt:
             guard let attrs else { return false }
@@ -115,8 +114,8 @@ public enum ConditionEvaluator {
     /// uses the extra detail to explain what was read; `evaluate` discards it.
     /// When no text can be extracted every operator is `false`, so a rule never
     /// matches on content it could not read (including the negative operators).
-    static func evaluateContents(_ condition: Condition, path: String) -> (matched: Bool, strategy: ContentStrategy, message: String?) {
-        let result = ContentExtractor.extract(path: path)
+    static func evaluateContents(_ condition: Condition, path: String, allowOCR: Bool = true) -> (matched: Bool, strategy: ContentStrategy, message: String?) {
+        let result = ContentExtractor.extract(path: path, allowOCR: allowOCR)
         if let text = result.text {
             return (matchString(condition.operator, text, condition.value), result.strategy, result.message)
         }
@@ -190,9 +189,9 @@ public enum ConditionEvaluator {
         }
         guard rc == 0 else { return nil }
 
-        let secs = buf.withUnsafeBytes { $0.load(fromByteOffset: 4, as: Int64.self) }
+        let secs = buf.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: Int64.self) }
         if secs == 0 { return nil }
-        let nsecs = buf.withUnsafeBytes { $0.load(fromByteOffset: 12, as: Int64.self) }
+        let nsecs = buf.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 12, as: Int64.self) }
         return Date(timeIntervalSince1970: Double(secs) + Double(nsecs) / 1_000_000_000)
     }
 
@@ -227,7 +226,7 @@ public enum ConditionEvaluator {
         return formatter.date(from: value.trimmingCharacters(in: .whitespaces))
     }
 
-    /// Parses a relative duration ("30 days", "2 weeks", "6 months", "1 years")
+    /// Parses a relative duration ("2 hours", "30 days", "2 weeks", "6 months", "1 years")
     /// into the cutoff instant `now - duration`. Months/years use calendar arithmetic.
     private static func cutoffDate(_ value: String) -> Date? {
         let s = value.trimmingCharacters(in: .whitespaces)
@@ -239,6 +238,7 @@ public enum ConditionEvaluator {
         let now = Date()
         var component: Calendar.Component
         switch unitPart {
+        case "hour", "hours": component = .hour
         case "day", "days": component = .day
         case "week", "weeks": component = .weekOfYear
         case "month", "months": component = .month
@@ -295,12 +295,29 @@ public enum ConditionEvaluator {
         }
     }
 
+    /// Name conditions traditionally operate on the extensionless stem, but
+    /// exact comparisons also accept the complete filename. This keeps rules
+    /// such as `Name is invoice` working while allowing exclusions copied from
+    /// Finder, such as `Name is not Desktop.ini`, to compare the intended name.
+    private static func matchName(_ operator_: Operator, url: URL, _ needle: String) -> Bool {
+        let stem = url.deletingPathExtension().lastPathComponent
+        let fullName = url.lastPathComponent
+        switch operator_ {
+        case .is:
+            return stem == needle || fullName == needle
+        case .isNot:
+            return stem != needle && fullName != needle
+        default:
+            return matchString(operator_, stem, needle)
+        }
+    }
+
     /// Parses a size threshold into bytes. Accepts a plain number ("5242880")
     /// or a number with a unit suffix ("5 MB", "100kb"). Unitless values are bytes.
     private static func parseSize(_ value: String) -> UInt64 {
         let s = value.trimmingCharacters(in: .whitespaces)
         guard let splitIndex = s.firstIndex(where: { !$0.isNumber && $0 != "." }) else {
-            return UInt64(Double(s) ?? 0)
+            return clampedBytes(Double(s) ?? 0)
         }
         let numPart = String(s[s.startIndex..<splitIndex]).trimmingCharacters(in: .whitespaces)
         let unitPart = String(s[splitIndex...]).trimmingCharacters(in: .whitespaces).lowercased()
@@ -312,7 +329,16 @@ public enum ConditionEvaluator {
         case "gb": multiplier = 1024 * 1024 * 1024
         default: multiplier = 1
         }
-        return UInt64(n * multiplier)
+        return clampedBytes(n * multiplier)
+    }
+
+    /// A checked `UInt64(...)` conversion traps on values that don't fit
+    /// (a very long digit string parses to a huge or infinite `Double`), so
+    /// an oversized threshold saturates instead of crashing the rule run.
+    private static func clampedBytes(_ value: Double) -> UInt64 {
+        guard value > 0 else { return 0 }
+        guard value < Double(UInt64.max) else { return .max }
+        return UInt64(value)
     }
 
     private static func tagName(_ tag: String) -> String {

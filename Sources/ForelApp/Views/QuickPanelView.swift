@@ -17,25 +17,33 @@
 import AppKit
 import SwiftUI
 import ForelCore
+import Lab421Licensing
 
 /// The menu-bar quick panel: header with status badge, a "Watching" master
-/// switch, watched-folder toggles, and an activity summary — styled after
-/// Vorssaint's dark glass popover. Deep editing (rules, conditions, actions)
-/// stays in the main window; this is the glanceable surface.
+/// switch, watched-folder toggles, and an activity summary. Deep editing
+/// (rules, conditions, actions) stays in the main window; this is the
+/// glanceable surface.
 struct QuickPanelView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var updater: UpdaterManager
+    @EnvironmentObject var license: ForelLicenseManager
+    @Environment(\.openSettings) private var openSettings
     let onOpenMainWindow: () -> Void
     let onQuit: () -> Void
+    var onOpenLicense: (() -> Void)?
+    @State private var totalRuleCount = 0
 
     var body: some View {
         ZStack {
-            VisualEffectBlur(material: .hudWindow, blendingMode: .behindWindow)
+            // `.popover` (unlike `.hudWindow`) follows the system/app
+            // appearance instead of always rendering dark, so the panel
+            // stays legible in Light mode.
+            VisualEffectBlur(material: .popover, blendingMode: .behindWindow)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black.opacity(0.18))
+                .fill(ForelTheme.background.opacity(0.55))
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                .strokeBorder(ForelTheme.surfaceBorder, lineWidth: 1)
 
             VStack(alignment: .leading, spacing: 14) {
                 header
@@ -51,7 +59,7 @@ struct QuickPanelView: View {
                 GlassCard {
                     ToggleRow(
                         title: "Watching",
-                        subtitle: model.paused ? "Paused — new files are ignored" : "Rules run automatically on new files",
+                        subtitle: model.paused ? "Paused — new files are ignored" : "Watching folders — rules run automatically",
                         isOn: watchingBinding
                     )
                 }
@@ -61,7 +69,11 @@ struct QuickPanelView: View {
                     GlassCard {
                         VStack(spacing: 0) {
                             ForEach(model.folders, id: \.id) { folder in
-                                QuickFolderRow(folder: folder, isOn: folderBinding(folder))
+                                QuickFolderRow(
+                                    folder: folder,
+                                    isOn: folderBinding(folder),
+                                    isBlocked: !FreePlan.allows(folderID: folder.id, folders: model.folders, isPro: model.isPro)
+                                )
                                 if folder.id != model.folders.last?.id {
                                     Divider().overlay(ForelTheme.divider).padding(.leading, 50)
                                 }
@@ -70,33 +82,26 @@ struct QuickPanelView: View {
                     }
                 }
 
-                SectionLabel(title: "Activity")
-                HStack(spacing: 10) {
-                    StatTile(icon: "folder", label: "Folders", value: "\(model.folders.count)")
-                    StatTile(icon: "list.bullet", label: "Rules", value: "\(model.rules.count)")
-                    StatTile(icon: "clock.arrow.circlepath", label: "History", value: "\(model.historyTotalCount)")
+                SectionLabel(title: "Overview")
+                GlassCard {
+                    HStack(spacing: 0) {
+                        QuickCount(value: model.folders.count, label: "Folders")
+                        Divider().overlay(ForelTheme.divider).frame(height: 28)
+                        QuickCount(value: totalRuleCount, label: "Rules")
+                        Divider().overlay(ForelTheme.divider).frame(height: 28)
+                        QuickCount(value: model.historyTotalCount, label: "History")
+                    }
+                    .padding(.vertical, 10)
                 }
+
+                SectionLabel(title: "Recent Activity")
+                QuickActivityFeed(db: model.db)
 
                 Divider().overlay(ForelTheme.divider)
 
-                HStack {
-                    FooterLink(title: "Open Forel", systemImage: "arrow.up.forward.app", action: onOpenMainWindow)
-                    Spacer()
-                    FooterLink(title: "Settings", systemImage: "gearshape") {
-                        model.detailRoute = .settings
-                        onOpenMainWindow()
-                    }
-                    Spacer()
-                    FooterLink(title: "Quit", systemImage: "power", action: onQuit)
-                    Spacer()
-                    Button {
-                        NSWorkspace.shared.open(URL(string: "https://buymeacoffee.com/lionelguic9")!)
-                    } label: {
-                        Image(systemName: "cup.and.saucer.fill").font(.system(size: 12))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(ForelTheme.secondaryText)
-                    .help("Buy me a coffee")
+                HStack(spacing: 8) {
+                    QuickPanelFooterButton(title: "Open Forel", systemImage: "arrow.up.forward.app", action: onOpenMainWindow)
+                    QuickPanelFooterButton(title: "Quit", systemImage: "power", action: onQuit)
                 }
             }
             .padding(.horizontal, 12)
@@ -108,13 +113,48 @@ struct QuickPanelView: View {
         .onAppear {
             model.reloadFolders()
             model.reloadHistory()
+            reloadTotalRuleCount()
         }
+        .onReceive(model.$rules) { _ in reloadTotalRuleCount() }
     }
 
     private var header: some View {
-        ViewHeader(title: "Forel", subtitle: "File automation") {
-            StatusBadge(active: !model.paused)
+        HStack(alignment: .top, spacing: 12) {
+            BrandMark(size: 38)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 7) {
+                    Text("Forel")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(ForelTheme.primaryText)
+                    Button(action: showLicenseSettings) {
+                      Text(license.hasAccess ? "Pro" : "Free")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(license.hasAccess ? ForelTheme.pro : ForelTheme.primaryText)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(license.hasAccess ? ForelTheme.pro.opacity(0.16) : ForelTheme.surface))
+                        .overlay(Capsule().strokeBorder(license.hasAccess ? ForelTheme.pro.opacity(0.35) : ForelTheme.surfaceBorder, lineWidth: 1))
+                        .accessibilityLabel(license.hasAccess ? "Forel Pro" : "Forel Free")
+                    }
+                    .buttonStyle(.plain)
+                    .help(license.hasAccess ? "Manage your Pro license" : "Discover Forel Pro")
+                }
+                StatusBadge(active: !model.paused)
+                if !license.hasAccess {
+                    MonthlyFileUsageView(onUpgrade: showLicenseSettings)
+                }
+            }
+            Spacer(minLength: 0)
         }
+    }
+
+    private func reloadTotalRuleCount() {
+        totalRuleCount = model.db.withLock { db in (try? db.countRules()) ?? 0 }
+    }
+
+    private func showLicenseSettings() {
+        onOpenLicense?()
+        openSettings()
     }
 
     private var watchingBinding: Binding<Bool> {
@@ -132,5 +172,23 @@ struct QuickPanelView: View {
             },
             set: { model.toggleFolder(folder, enabled: $0) }
         )
+    }
+}
+
+/// A big number over a small label, used for the quick panel's overview row.
+private struct QuickCount: View {
+    let value: Int
+    let label: String
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text("\(value)")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(ForelTheme.primaryText)
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
     }
 }

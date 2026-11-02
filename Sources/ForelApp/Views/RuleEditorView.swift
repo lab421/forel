@@ -23,12 +23,17 @@ import Photos
 
 struct RuleEditorView: View {
     @State private var rule: Rule
+    @State private var showValidationErrors = false
+    @State private var errorDismissTask: Task<Void, Never>?
+    @State private var upgradeContext: ProUpgradeContext?
     @EnvironmentObject private var model: AppModel
+    private let preferredHeight: CGFloat
     let onSave: (Rule) -> Void
     let onCancel: () -> Void
 
-    init(rule: Rule, onSave: @escaping (Rule) -> Void, onCancel: @escaping () -> Void) {
+    init(rule: Rule, preferredHeight: CGFloat = 680, onSave: @escaping (Rule) -> Void, onCancel: @escaping () -> Void) {
         _rule = State(initialValue: rule)
+        self.preferredHeight = max(680, preferredHeight)
         self.onSave = onSave
         self.onCancel = onCancel
     }
@@ -40,6 +45,9 @@ struct RuleEditorView: View {
                 subtitle: "Conditions decide which files match; actions decide what happens",
                 systemImage: "slider.horizontal.3"
             )
+            if showValidationErrors, !validationMessages.isEmpty {
+                RuleValidationBanner(messages: validationMessages)
+            }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
@@ -75,7 +83,7 @@ struct RuleEditorView: View {
                                 placeholder("No conditions — this rule matches every file in scope.")
                             }
                             ForEach($rule.conditions, id: \.id) { $condition in
-                                ConditionRow(condition: $condition) {
+                                ConditionRow(condition: $condition, onRequestUpgrade: { upgradeContext = .feature($0) }) {
                                     rule.conditions.removeAll { $0.id == condition.id }
                                 }
                             }
@@ -85,6 +93,9 @@ struct RuleEditorView: View {
 
                     HStack {
                         SectionLabel(title: "Actions")
+                        Text("\(rule.actions.count)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(ForelTheme.secondaryText)
                         Spacer()
                         Button {
                             rule.actions.append(Action(ruleId: rule.id, kind: .moveToFolder, params: .object(["destination": .string("")]), position: Int64(rule.actions.count)))
@@ -99,7 +110,7 @@ struct RuleEditorView: View {
                                 placeholder("No actions yet — add at least one to make this rule do something.")
                             }
                             ForEach($rule.actions, id: \.id) { $action in
-                                ActionRow(action: $action) {
+                                ActionRow(action: $action, onRequestUpgrade: { upgradeContext = .feature($0) }) {
                                     rule.actions.removeAll { $0.id == action.id }
                                 }
                             }
@@ -120,25 +131,51 @@ struct RuleEditorView: View {
                     .foregroundStyle(ForelTheme.primaryText)
                 Spacer()
                 Button("Cancel", action: onCancel).buttonStyle(SecondaryButtonStyle())
-                Button("Save") { onSave(rule) }
+                Button("Save") {
+                    if hasValidationErrors {
+                        showValidationErrors = true
+                        errorDismissTask?.cancel()
+                        errorDismissTask = Task {
+                            try? await Task.sleep(for: .seconds(5))
+                            guard !Task.isCancelled else { return }
+                            showValidationErrors = false
+                        }
+                    } else {
+                        if !model.isPro, rule.enabled, let feature = FreePlan.requiredFeature(for: rule) {
+                            upgradeContext = .feature(feature)
+                            return
+                        }
+                        showValidationErrors = false
+                        errorDismissTask?.cancel()
+                        onSave(rule)
+                    }
+                }
                     .buttonStyle(PrimaryButtonStyle())
                     .keyboardShortcut(.defaultAction)
-                    .disabled(rule.name.trimmingCharacters(in: .whitespaces).isEmpty || hasInvalidRegexCondition)
+                    .disabled(rule.name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(22)
-        .frame(width: 880, height: 680)
+        .frame(width: 880, height: preferredHeight)
         .background(ForelTheme.background)
         .background(WindowActivationBridge(showsDockIcon: model.showDockIcon))
+        .sheet(item: $upgradeContext) { context in ProUpgradeView(context: context) }
     }
 
-    /// A rule with an unparsable regex would just silently never match at
-    /// run time; block saving it instead of letting that ship invisibly.
-    private var hasInvalidRegexCondition: Bool {
-        rule.conditions.contains { condition in
-            guard condition.operator == .matchesRegex, !condition.value.isEmpty else { return false }
-            return (try? NSRegularExpression(pattern: condition.value)) == nil
-        }
+    private var conditionIssues: [RuleValidator.Issue] {
+        RuleValidator.validate(rule.conditions)
+    }
+
+    private var actionIssues: [RuleValidator.Issue] {
+        RuleValidator.validate(rule.actions)
+    }
+
+    private var validationMessages: [String] {
+        (conditionIssues + actionIssues).map(\.message)
+    }
+
+    private var hasValidationErrors: Bool {
+        !validationMessages.isEmpty
     }
 
     private func placeholder(_ text: String) -> some View {
@@ -148,6 +185,35 @@ struct RuleEditorView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+}
+
+private struct RuleValidationBanner: View {
+    let messages: [String]
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(ForelTheme.danger)
+                .frame(width: 16, height: 16)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(Array(messages.enumerated()), id: \.offset) { _, message in
+                    Text(message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(ForelTheme.danger)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.danger.opacity(0.10)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.danger.opacity(0.24)))
+    }
 }
 
 private struct ScopeEditor: View {
@@ -263,6 +329,8 @@ private struct ScopeEditor: View {
 
 private struct ConditionRow: View {
     @Binding var condition: Condition
+    @EnvironmentObject private var model: AppModel
+    let onRequestUpgrade: (ProFeature) -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -286,11 +354,20 @@ private struct ConditionRow: View {
                 .frame(width: 28)
             }
 
-            if let helpText = condition.kind.helpText {
+            if let helpText = rowHelpText {
                 Text(helpText)
                     .font(.system(size: 10))
                     .foregroundStyle(ForelTheme.secondaryText)
                     .padding(.leading, 2)
+            }
+            if condition.kind == .contents, !model.isPro {
+                HStack {
+                    Text("Document text is included in Free. Images and scanned PDFs require Pro OCR.")
+                        .font(.caption)
+                        .foregroundStyle(ForelTheme.secondaryText)
+                    Button("Unlock OCR") { onRequestUpgrade(.ocr) }
+                        .buttonStyle(.link)
+                }
             }
         }
     }
@@ -314,6 +391,13 @@ private struct ConditionRow: View {
         case .text:
             GlassField(placeholder: "Value", text: $condition.value)
         }
+    }
+
+    private var rowHelpText: String? {
+        if condition.kind == .kind, condition.value == "archive" {
+            return "Archive matches compressed formats such as ZIP, TAR, GZ, 7Z, RAR, XZ, ZST, TGZ, TBZ, and CAB."
+        }
+        return condition.kind.helpText
     }
 
     private var kindBinding: Binding<ConditionKind> {
@@ -412,6 +496,8 @@ private struct ConditionOperatorMenu: View {
 
 private struct ActionKindMenu: View {
     @Binding var selection: ActionKind
+    @EnvironmentObject private var model: AppModel
+    let onRequestUpgrade: (ProFeature) -> Void
 
     var body: some View {
         RuleSelectMenu(title: selection.label) {
@@ -420,12 +506,15 @@ private struct ActionKindMenu: View {
                     Section(title) {
                         ForEach(group.kinds, id: \.self) { kind in
                             Button {
-                                selection = kind
+                                select(kind)
                             } label: {
                                 HStack {
                                     Image(systemName: kind.iconSystemName)
                                         .frame(width: 16)
                                     Text(kind.label)
+                                    if !model.isPro, FreePlan.requiredFeature(for: kind) != nil {
+                                        Label("Pro", systemImage: "lock.fill")
+                                    }
                                 }
                             }
                         }
@@ -433,17 +522,28 @@ private struct ActionKindMenu: View {
                 } else {
                     ForEach(group.kinds, id: \.self) { kind in
                         Button {
-                            selection = kind
+                            select(kind)
                         } label: {
                             HStack {
                                 Image(systemName: kind.iconSystemName)
                                     .frame(width: 16)
                                 Text(kind.label)
+                                if !model.isPro, FreePlan.requiredFeature(for: kind) != nil {
+                                    Label("Pro", systemImage: "lock.fill")
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+
+    private func select(_ kind: ActionKind) {
+        if !model.isPro, let feature = FreePlan.requiredFeature(for: kind) {
+            onRequestUpgrade(feature)
+        } else {
+            selection = kind
         }
     }
 }
@@ -552,12 +652,13 @@ private struct AbsoluteDateValueEditor: View {
 
 private struct RelativeDateValueEditor: View {
     @Binding var value: String
+    private let units = ["hours", "days", "weeks", "months", "years"]
 
     var body: some View {
         HStack(spacing: 8) {
             GlassField(placeholder: "7", text: numberBinding)
                 .frame(width: 72)
-            StringSelectMenu(selection: unitBinding, options: ["days", "weeks", "months", "years"])
+            StringSelectMenu(selection: unitBinding, options: units)
             .frame(width: 120)
             Spacer(minLength: 0)
         }
@@ -578,10 +679,12 @@ private struct RelativeDateValueEditor: View {
     }
 
     private var parts: (number: String, unit: String) {
-        let pieces = value.split(separator: " ", maxSplits: 1).map(String.init)
+        // omittingEmptySubsequences: false keeps "" as the number when the
+        // field is transiently empty mid-edit, so the unit survives keystrokes.
+        let pieces = value.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
         let number = pieces.first?.filter(\.isNumber)
         let unit = pieces.count > 1 ? pieces[1] : "days"
-        return ((number?.isEmpty == false ? number! : "7"), ["days", "weeks", "months", "years"].contains(unit) ? unit : "days")
+        return ((number?.isEmpty == false ? number! : "7"), units.contains(unit) ? unit : "days")
     }
 }
 
@@ -613,7 +716,7 @@ private struct SizeValueEditor: View {
     }
 
     private var parts: (number: String, unit: String) {
-        let pieces = value.split(separator: " ", maxSplits: 1).map(String.init)
+        let pieces = value.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
         let number = pieces.first?.filter { $0.isNumber || $0 == "." }
         let rawUnit = pieces.count > 1 ? pieces[1] : "MB"
         let unit = ["bytes", "KB", "MB", "GB"].contains(rawUnit) ? rawUnit : "MB"
@@ -666,6 +769,47 @@ private struct AppPickerField: View {
     }
 }
 
+private struct ApplicationPathPickerField: View {
+    @Binding var path: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                iconView
+                TextField("Application", text: $path)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundStyle(ForelTheme.primaryText)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
+
+            Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+        }
+    }
+
+    @ViewBuilder private var iconView: some View {
+        if FileManager.default.fileExists(atPath: path) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: path))
+                .resizable()
+                .frame(width: 16, height: 16)
+        } else {
+            Image(systemName: "app.dashed")
+                .font(.system(size: 12))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .frame(width: 16, height: 16)
+        }
+    }
+
+    private func choose() {
+        if let app = InstalledApps.pickFromFinder() {
+            path = app.path
+        }
+    }
+}
+
 private struct KindValuePicker: View {
     @Binding var value: String
 
@@ -690,15 +834,24 @@ private struct KindValuePicker: View {
 
 private struct ActionRow: View {
     @Binding var action: Action
+    @EnvironmentObject private var model: AppModel
+    let onRequestUpgrade: (ProFeature) -> Void
     let onDelete: () -> Void
     @State private var showingOptions = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            ActionKindMenu(selection: kindBinding)
+            ActionKindMenu(selection: kindBinding, onRequestUpgrade: onRequestUpgrade)
             .frame(minWidth: 160, alignment: .leading)
 
-            actionParams
+            Group {
+                if !model.isPro, let feature = FreePlan.requiredFeature(for: action.kind) {
+                    Button("Unlock \(feature.title)") { onRequestUpgrade(feature) }
+                        .buttonStyle(.link)
+                } else {
+                    actionParams
+                }
+            }
                 .frame(minWidth: 200, alignment: .leading)
                 .frame(minHeight: 32)
                 .layoutPriority(1)
@@ -734,7 +887,13 @@ private struct ActionRow: View {
 
     @ViewBuilder private var actionParams: some View {
         switch action.kind {
-        case .moveToFolder, .copyToFolder, .syncFolders:
+        case .moveToFolder, .copyToFolder:
+            FolderField(
+                placeholder: "Destination folder",
+                path: paramBinding(ActionParam.destination),
+                hint: "Add {year}, {month}, or {day} for dated folders, e.g. …/Archive/{year}/{month}"
+            )
+        case .syncFolders:
             FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
         case .rename:
             RenamePatternEditor(pattern: paramBinding(ActionParam.pattern), cleanFileName: action.params[ActionParam.cleanFileName]?.boolValue == true)
@@ -743,9 +902,17 @@ private struct ActionRow: View {
         case .setColorLabel:
             ColorLabelPicker(selection: paramBinding(ActionParam.color), allowNone: true)
         case .runScript:
-            GlassField(placeholder: "Bash script (file path in $FOREL_FILE)", text: paramBinding(ActionParam.script))
+            VStack(alignment: .leading, spacing: 6) {
+                GlassField(placeholder: "Bash script (file path in $FOREL_FILE)", text: paramBinding(ActionParam.script))
+                Text("Runs once per matching file. Use \"$FOREL_FILE\" for its full path. Dry Run does not execute scripts; script changes cannot be undone.")
+                    .font(.caption)
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .textSelection(.enabled)
+            }
         case .runShortcut:
             ShortcutPicker(selection: paramBinding(ActionParam.shortcutName))
+        case .openApplication:
+            ApplicationPathPickerField(path: paramBinding(ActionParam.applicationPath))
         case .importToLibrary:
             let libTypeBinding = paramBinding(ActionParam.libraryType, defaultValue: LibraryType.music.rawValue)
             let libType = LibraryType(rawValue: libTypeBinding.wrappedValue)
@@ -777,6 +944,13 @@ private struct ActionRow: View {
                     }
                 }
             }
+        case .uncompress:
+            Text("ZIP archives only")
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .frame(minHeight: 32, alignment: .center)
+        case .compress:
+            ArchiveNameEditor(pattern: paramBinding(ActionParam.archiveName))
         case .moveToTrash, .delete:
             Text("No parameters")
                 .font(.system(size: 11))
@@ -795,6 +969,8 @@ private struct ActionRow: View {
                 } else if newKind == .syncFolders {
                     params[ActionParam.syncDirection] = .string(SyncDirection.twoWay.rawValue)
                     params[ActionParam.syncDeletePolicy] = .string(SyncDeletePolicy.moveToTrash.rawValue)
+                } else if newKind == .openApplication {
+                    params[ActionParam.passFileToApplication] = .bool(true)
                 }
                 action = Action(id: action.id, ruleId: action.ruleId, kind: newKind, params: .object(params), position: action.position)
             }
@@ -851,18 +1027,82 @@ private struct ActionOptionsView: View {
             switch action.kind {
             case .runShortcut:
                 shortcutOptions
-            case .moveToFolder, .copyToFolder, .importToLibrary:
+            case .openApplication:
+                openApplicationOptions
+            case .moveToFolder, .copyToFolder, .importToLibrary, .uncompress:
                 conflictResolutionOptions
             case .syncFolders:
                 syncOptions
             case .rename:
                 renameOptions
+            case .compress:
+                compressionOptions
             default:
                 Text("No options for this action.")
                     .font(.system(size: 12))
                     .foregroundStyle(ForelTheme.secondaryText)
             }
         }
+    }
+
+    private var openApplicationOptions: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: passFileToApplicationBinding) {
+                Text("Pass matched file to app")
+                    .font(.system(size: 12))
+                    .foregroundStyle(ForelTheme.primaryText)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+        }
+    }
+
+    private var compressionOptions: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Destination")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(ForelTheme.secondaryText)
+            FolderField(
+                placeholder: "Next to the source (default)",
+                path: paramBinding(ActionParam.destination),
+                hint: "Supports {year}, {month}, and {day}."
+            )
+            if action.params[ActionParam.destination]?.stringValue?.isEmpty == false {
+                Button("Use source folder") { paramBinding(ActionParam.destination).wrappedValue = "" }
+                    .buttonStyle(.link)
+            }
+            Text("Leave empty to save next to the source. Existing ZIPs are kept; new archives are numbered.")
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Divider()
+            Toggle("Delete source after compression", isOn: deleteSourceBinding)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .font(.system(size: 12))
+            if ActionExecutor.deletesSourceAfterCompression(action) {
+                Label(
+                    "After the ZIP is created successfully, the original file or folder and all its contents are permanently deleted. "
+                        + "This cannot be undone. Following actions apply to the ZIP.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                    .font(.system(size: 11))
+                    .foregroundStyle(ForelTheme.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var deleteSourceBinding: Binding<Bool> {
+        Binding(
+            get: { ActionExecutor.deletesSourceAfterCompression(action) },
+            set: { enabled in
+                var params: [String: JSONValue] = [:]
+                if case .object(let existing) = action.params { params = existing }
+                params[ActionParam.deleteSourceAfterCompression] = .bool(enabled)
+                action.params = .object(params)
+            }
+        )
     }
 
     private var conflictResolutionOptions: some View {
@@ -948,6 +1188,18 @@ private struct ActionOptionsView: View {
                 var dict: [String: JSONValue] = [:]
                 if case .object(let existing) = action.params { dict = existing }
                 dict[ActionParam.cleanFileName] = .bool(newValue)
+                action.params = .object(dict)
+            }
+        )
+    }
+
+    private var passFileToApplicationBinding: Binding<Bool> {
+        Binding(
+            get: { ActionExecutor.passesFileToApplication(action) },
+            set: { newValue in
+                var dict: [String: JSONValue] = [:]
+                if case .object(let existing) = action.params { dict = existing }
+                dict[ActionParam.passFileToApplication] = .bool(newValue)
                 action.params = .object(dict)
             }
         )
@@ -1202,6 +1454,54 @@ private struct TagTokensEditor: View {
         .background(Capsule().fill(ForelTheme.accent.opacity(0.18)))
         .overlay(Capsule().strokeBorder(ForelTheme.accent.opacity(0.35)))
         .foregroundStyle(ForelTheme.primaryText)
+    }
+}
+
+private struct ArchiveNameEditor: View {
+    @Binding var pattern: String
+
+    private let tokens = [
+        (value: "{name}", label: "Source name"),
+        (value: "{current_date}", label: "Current date"),
+        (value: "{timestamp}", label: "Timestamp"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GlassField(placeholder: "Archive name, e.g. {name}-{timestamp}.zip", text: $pattern)
+                .accessibilityLabel("Archive name")
+            HStack(spacing: 6) {
+                ForEach(tokens, id: \.value) { token in
+                    Button(token.label) { insert(token.value) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .help("Insert \(token.value)")
+                }
+            }
+            Text(preview)
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .textSelection(.enabled)
+            Text("Empty uses {name}.zip. The .zip extension is added automatically; choose a destination in Options.")
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var preview: String {
+        do {
+            return "Preview: \(try ActionExecutor.archiveFileName(pattern: pattern, sourceName: "file"))"
+        } catch {
+            return String(describing: error)
+        }
+    }
+
+    private func insert(_ token: String) {
+        var base = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        if base.lowercased().hasSuffix(".zip") { base = String(base.dropLast(4)) }
+        let separator = base.isEmpty || base.hasSuffix("-") || base.hasSuffix("_") ? "" : "-"
+        pattern = base + separator + token + ".zip"
     }
 }
 

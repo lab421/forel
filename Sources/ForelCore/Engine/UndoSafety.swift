@@ -34,7 +34,7 @@ public enum UndoChecker {
     /// Without this check, undoing a move back into a folder an active rule
     /// still watches would just have the watcher immediately redo what the
     /// user asked to undo.
-    public static func evaluate(_ entry: HistoryEntry, activeRules: [Rule] = [], watchedRoot: String? = nil) -> UndoSafety {
+    public static func evaluate(_ entry: HistoryEntry, activeRules: [Rule] = [], watchedRoot: String? = nil, isPro: Bool = true) -> UndoSafety {
         guard entry.reversible else {
             return .unsafe(reason: "This action cannot be undone.")
         }
@@ -68,7 +68,7 @@ public enum UndoChecker {
 
         // Copy-undo only deletes the copy — the original is never restored
         // anywhere, so there's nothing for a rule to reprocess.
-        if !isCopyUndo(undo), let ruleName = ruleThatWouldReprocess(entry, activeRules: activeRules, watchedRoot: watchedRoot) {
+        if !isCopyUndo(undo), let ruleName = ruleThatWouldReprocess(entry, activeRules: activeRules, watchedRoot: watchedRoot, isPro: isPro) {
             return .unsafe(reason: "The rule \"\(ruleName)\" would immediately reprocess this file once it's restored.")
         }
 
@@ -118,10 +118,10 @@ public enum UndoChecker {
     /// exist there yet; conditions that read the file itself (size, tags,
     /// dates, contents) just won't match before the restore actually
     /// happens, which only means a rule keyed on those won't be caught here.
-    private static func ruleThatWouldReprocess(_ entry: HistoryEntry, activeRules: [Rule], watchedRoot: String?) -> String? {
+    private static func ruleThatWouldReprocess(_ entry: HistoryEntry, activeRules: [Rule], watchedRoot: String?, isPro: Bool) -> String? {
         guard let watchedRoot, !activeRules.isEmpty else { return nil }
         guard let depth = RuleEngine.pathDepth(root: watchedRoot, path: entry.originalPath) else { return nil }
-        guard let preview = RuleEngine.previewFile(path: entry.originalPath, depth: depth, rules: activeRules) else { return nil }
+        guard let preview = RuleEngine.previewFile(path: entry.originalPath, depth: depth, rules: activeRules, isPro: isPro) else { return nil }
         return preview.rules.first { $0.actions.contains { $0.status == .wouldRun } }?.ruleName
     }
 }

@@ -19,6 +19,40 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct WatcherCoordinatorTests {
+    private final class SummaryBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var values: [WatcherActivitySummary] = []
+
+        func append(_ summary: WatcherActivitySummary) {
+            lock.lock()
+            values.append(summary)
+            lock.unlock()
+        }
+
+        func snapshot() -> [WatcherActivitySummary] {
+            lock.lock()
+            defer { lock.unlock() }
+            return values
+        }
+    }
+
+    private final class SignalCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = 0
+
+        func increment() {
+            lock.lock()
+            value += 1
+            lock.unlock()
+        }
+
+        var count: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
+        }
+    }
+
     private func makeDB() throws -> Database {
         try Database(path: ":memory:")
     }
@@ -42,6 +76,157 @@ import Foundation
         #expect(FileManager.default.fileExists(atPath: movedPath))
         #expect(!FileManager.default.fileExists(atPath: file))
         #expect(try db.listHistory().count == 1)
+    }
+
+    @Test func successiveArrivalsAllRunAfterAnEarlierFileWasMoved() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let destination = dir.dir("Network Share")
+        let files = ["first.mp3", "second.mp3", "third.mp3"].map { dir.file($0) }
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+
+        var rule = makeRule(folderId: folder.id, name: "move mp3 files")
+        rule.conditions = [makeCondition(.extension_, .is, "mp3", ruleId: rule.id)]
+        rule.actions = [
+            makeAction(
+                .moveToFolder,
+                .object(["destination": .string(destination)]),
+                position: 0,
+                ruleId: rule.id
+            ),
+        ]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db, settleInterval: 0.05)
+        for file in files {
+            coordinator.enqueue(event: .pathArrived(file))
+        }
+        coordinator.waitForPendingEvents()
+
+        for file in files {
+            let destinationPath = (destination as NSString).appendingPathComponent(
+                (file as NSString).lastPathComponent
+            )
+            #expect(FileManager.default.fileExists(atPath: destinationPath))
+            #expect(!FileManager.default.fileExists(atPath: file))
+        }
+        #expect(try db.listHistory().count == files.count)
+    }
+
+    @Test func watcherActivityReportsAppliedActionsOnly() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("a.txt")
+        let destination = dir.dir("Archive")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "archive")
+        rule.conditions = [makeCondition(.extension_, .is, "txt", ruleId: rule.id)]
+        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(destination)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        let summaries = SummaryBox()
+        coordinator.onActivity = { summary in
+            summaries.append(summary)
+        }
+
+        coordinator.handle(path: file)
+
+        #expect(summaries.snapshot() == [
+            WatcherActivitySummary(actionCount: 1, fileCount: 1, ruleNames: ["archive"])
+        ])
+    }
+
+    @Test func watcherActivityDoesNotReportSkippedActions() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("a.txt")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "already there")
+        rule.conditions = [makeCondition(.extension_, .is, "txt", ruleId: rule.id)]
+        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(dir.path)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        let summaries = SummaryBox()
+        coordinator.onActivity = { summary in
+            summaries.append(summary)
+        }
+
+        coordinator.handle(path: file)
+
+        #expect(summaries.snapshot().isEmpty)
+        #expect(try db.listHistory().count == 1)
+        #expect(try db.listHistory()[0].status == .skipped)
+    }
+
+    @Test func handleHonorsCompleteFilenameExclusionsCombinedWithRegex() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let excluded = dir.file("Desktop.ini")
+        let included = dir.file("report.pdf")
+        let destination = dir.dir("Archive")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "archive downloads")
+        rule.conditions = [
+            makeCondition(.name, .matchesRegex, #"^[^.]"#, ruleId: rule.id),
+            makeCondition(.name, .isNot, "Desktop.ini", ruleId: rule.id),
+        ]
+        rule.actions = [
+            makeAction(
+                .moveToFolder,
+                .object(["destination": .string(destination)]),
+                ruleId: rule.id
+            ),
+        ]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(path: excluded)
+        coordinator.handle(path: included)
+
+        #expect(FileManager.default.fileExists(atPath: excluded))
+        #expect(FileManager.default.fileExists(
+            atPath: (destination as NSString).appendingPathComponent("report.pdf")
+        ))
+        #expect(try db.listHistory().count == 1)
+    }
+
+    @Test func processingStateIsSetWhileWatcherEventRuns() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("a.txt")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+
+        var rule = makeRule(folderId: folder.id, name: "matching rule")
+        rule.conditions = [makeCondition(.extension_, .is, "txt", ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        let callbackStarted = DispatchSemaphore(value: 0)
+        let releaseCallback = DispatchSemaphore(value: 0)
+        coordinator.onRuleMatched = { _, _ in
+            callbackStarted.signal()
+            _ = releaseCallback.wait(timeout: .now() + 2)
+        }
+
+        let finished = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            coordinator.handle(path: file)
+            finished.signal()
+        }
+
+        #expect(callbackStarted.wait(timeout: .now() + 2) == .success)
+        #expect(coordinator.isProcessing(in: dir.path))
+
+        releaseCallback.signal()
+        #expect(finished.wait(timeout: .now() + 2) == .success)
+        #expect(!coordinator.isProcessing(in: dir.path))
     }
 
     /// The bug this whole table exists to fix: `copyToFolder` never moves
@@ -70,6 +255,80 @@ import Foundation
         }
 
         #expect(try db.listHistory().count == 1)
+    }
+
+    @Test func rescanSubtreeProcessesMissedArrivalsAndSkipsUnchangedFiles() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let file = dir.file("a.pdf")
+        let destination = dir.dir("PDF")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "pdf copy")
+        rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
+        rule.actions = [makeAction(.copyToFolder, .object([
+            "destination": .string(destination),
+            "on_conflict": .string("replace"),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .rescanSubtree(dir.path))
+        coordinator.handle(event: .rescanSubtree(dir.path))
+
+        let copiedPath = (destination as NSString).appendingPathComponent("a.pdf")
+        #expect(FileManager.default.fileExists(atPath: copiedPath))
+        #expect(try db.listHistory().count == 1)
+        #expect(FileManager.default.fileExists(atPath: file))
+    }
+
+    @Test func rescanSubtreeHonorsRuleDepthAndTemporaryDownloadExclusions() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        _ = dir.file("ready.pdf")
+        _ = dir.file("pending.pdf.crdownload")
+        let nested = dir.dir("Nested")
+        _ = (nested as NSString).appendingPathComponent("deep.pdf")
+        try "deep".write(toFile: (nested as NSString).appendingPathComponent("deep.pdf"), atomically: true, encoding: .utf8)
+        let destination = dir.dir("PDF")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "current folder pdf copy", recursionDepth: 0)
+        rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
+        rule.actions = [makeAction(.copyToFolder, .object([
+            "destination": .string(destination),
+            "on_conflict": .string("rename"),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .rescanSubtree(dir.path))
+
+        #expect(FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("ready.pdf")))
+        #expect(!FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("pending.pdf.crdownload")))
+        #expect(!FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("deep.pdf")))
+        #expect(try db.listHistory().count == 1)
+    }
+
+    @Test func rescanSubtreeFromNestedDirectoryDoesNotEscapeRuleDepth() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let nested = dir.dir("Nested")
+        let nestedFile = (nested as NSString).appendingPathComponent("deep.pdf")
+        try "deep".write(toFile: nestedFile, atomically: true, encoding: .utf8)
+        let destination = dir.dir("PDF")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "current folder pdf copy", recursionDepth: 0)
+        rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
+        rule.actions = [makeAction(.copyToFolder, .object(["destination": .string(destination)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .rescanSubtree(nested))
+
+        #expect(!FileManager.default.fileExists(atPath: (destination as NSString).appendingPathComponent("deep.pdf")))
+        #expect(try db.listHistory().isEmpty)
     }
 
     /// A duplicate/coalesced FSEvent for the *original* path of a file the
@@ -200,7 +459,7 @@ import Foundation
         try "target".write(toFile: file, atomically: true, encoding: .utf8)
 
         let coordinator = WatcherCoordinator(db: db)
-        coordinator.handle(path: file, kind: .changed)
+        coordinator.handle(path: file)
 
         let copied = (source as NSString).appendingPathComponent("a.txt")
         #expect(try String(contentsOfFile: copied, encoding: .utf8) == "target")
@@ -230,7 +489,7 @@ import Foundation
         try "other".write(toFile: counterpart, atomically: true, encoding: .utf8)
 
         let coordinator = WatcherCoordinator(db: db)
-        coordinator.handle(path: deleted, kind: .deleted)
+        coordinator.handle(event: .pathRemoved(deleted))
 
         #expect(!FileManager.default.fileExists(atPath: counterpart))
         let history = try db.listHistory()
@@ -239,7 +498,7 @@ import Foundation
         #expect(history[0].reversible)
     }
 
-    @Test func syncFolderMissingChangedEventIsTreatedAsDeletion() throws {
+    @Test func syncFolderPathRenamedAwayIsTreatedAsDeletion() throws {
         let db = try makeDB()
         let dir = TempDir()
         let source = dir.dir("Source")
@@ -259,11 +518,67 @@ import Foundation
         try "other".write(toFile: counterpart, atomically: true, encoding: .utf8)
 
         let coordinator = WatcherCoordinator(db: db)
-        coordinator.handle(path: deleted)
+        coordinator.handle(event: .pathArrived(deleted))
 
         #expect(!FileManager.default.fileExists(atPath: counterpart))
         let history = try db.listHistory()
         #expect(history.count == 1)
         #expect(history[0].actionKind == .syncFolders)
+    }
+
+    @Test func syncFolderRemovalOfARecreatedFileKeepsCounterpart() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(target),
+            ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.moveToTrash.rawValue),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        // A safe save removes the file and writes it again at once.
+        let saved = (source as NSString).appendingPathComponent("a.txt")
+        try "saved".write(toFile: saved, atomically: true, encoding: .utf8)
+        let counterpart = (target as NSString).appendingPathComponent("a.txt")
+        try "other".write(toFile: counterpart, atomically: true, encoding: .utf8)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .pathRemoved(saved))
+
+        #expect(try String(contentsOfFile: counterpart, encoding: .utf8) == "saved")
+    }
+
+    @Test func recordedHistoryIsSignalledForFailuresToo() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let moved = dir.file("a.txt")
+        let failing = dir.file("b.md")
+        let untouched = dir.file("c.jpg")
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "archive")
+        rule.conditions = [makeCondition(.extension_, .is, "txt", ruleId: rule.id)]
+        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(dir.dir("Archive"))]), position: 0, ruleId: rule.id)]
+        var failingRule = makeRule(folderId: folder.id, name: "to system")
+        failingRule.conditions = [makeCondition(.extension_, .is, "md", ruleId: failingRule.id)]
+        failingRule.actions = [makeAction(.moveToFolder, .object(["destination": .string("/System/ForelNotWritable")]), position: 0, ruleId: failingRule.id)]
+        try db.insertRule(rule)
+        try db.insertRule(failingRule)
+
+        let coordinator = WatcherCoordinator(db: db)
+        let signals = SignalCounter()
+        coordinator.onHistoryRecorded = { signals.increment() }
+
+        coordinator.handle(path: moved)
+        coordinator.handle(path: failing)
+        coordinator.handle(path: untouched)
+
+        // One signal per run that recorded something; none when no rule matched.
+        #expect(signals.count == 2)
+        #expect(try db.listHistory().map(\.status).filter { $0 == .failed }.count == 1)
     }
 }

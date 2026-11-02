@@ -18,21 +18,33 @@ import Foundation
 import ForelCore
 import Combine
 import AppKit
+import UserNotifications
 
 private let historyCleanupInterval: TimeInterval = 3600
+private let watcherNotificationDelay: Duration = .seconds(5)
 
 /// Central observable state for the SwiftUI app: owns the database, the
 /// watcher coordinator, and the in-memory view of folders/rules. Mirrors the
 /// surface of the old `useForelStore` Zustand store, but as direct Swift
 @MainActor
 final class AppModel: ObservableObject {
-    /// Which screen the detail pane shows. Settings and History are in-app
-    /// views (not separate windows) reached from the sidebar or menu bar.
-    enum DetailRoute { case rules, history, settings }
+    /// Which screen the detail pane shows. History is an in-app view reached
+    /// from the sidebar; Settings is its own window (see `ForelMacApp`'s
+    /// `Settings` scene), matching standard macOS app structure.
+    enum DetailRoute { case rules, history }
+
+    struct RunNowMessage: Equatable {
+        let text: String
+        let hasFailures: Bool
+        /// The folder that was run: the result belongs to it, not to
+        /// whichever folder is selected later.
+        let folderId: String
+    }
 
     @Published var folders: [WatchedFolder] = []
     @Published var selectedFolderId: String?
     @Published var rules: [Rule] = []
+    @Published private(set) var ruleRunStats: [RuleRunStats] = []
     @Published var history: [HistoryEntry] = []
     @Published var historyTotalCount: Int = 0
     @Published var historyFolderFilterId: String?
@@ -42,25 +54,61 @@ final class AppModel: ObservableObject {
     @Published var alertTitle: String = "Error"
     @Published var errorMessage: String?
     @Published var detailRoute: DetailRoute = .rules
-    @Published var appTheme: AppTheme = .system
     @Published var accentPreset: AccentPreset = .default
     @Published var showDockIcon: Bool = true
+    @Published var watcherNotificationsEnabled: Bool = true
     @Published var historyMaxDays: Int = 30
     /// Bumped whenever the accent colour changes, so views can force a full
     /// re-render with `.id(model.accentVersion)` — `ForelTheme.accent` is a
     /// plain static var, not itself observable.
     @Published var accentVersion: Int = 0
     @Published private(set) var isRunningNow = false
-    @Published private(set) var runNowMessage: String?
+    @Published private(set) var runNowMessage: RunNowMessage?
     private var runNowMessageId: UUID?
     @Published private(set) var isPreviewing = false
     @Published var previewResult: PreviewResult?
+    @Published var proUpgrade: ProUpgradeContext?
+    @Published private var ruleExpansionPreferences = RuleExpansionPreferences()
+    @Published private(set) var licenseAccessIsLimited = true
+    var isPro: Bool { !licenseAccessIsLimited }
+    var canAddFolder: Bool { FreePlan.canAddFolder(count: folders.count, isPro: isPro) }
+    var canAddRule: Bool { selectedFolderId != nil && selectedFolderIsAllowed }
+    var monthlyFileUsage: MonthlyFileUsage? {
+        monthlyUsage.monthlyFileUsage()
+    }
+    var selectedFolderIsAllowed: Bool {
+        guard let selectedFolderId else { return false }
+        return FreePlan.allows(folderID: selectedFolderId, folders: folders, isPro: isPro)
+    }
+    var planNotice: String? {
+        guard !isPro, selectedFolderId != nil else { return nil }
+        if !selectedFolderIsAllowed { return "This folder is kept for Pro. Free supports the first 2 watched folders; reorder folders or activate Pro to use it." }
+        if monthlyFileUsage?.isExhausted == true {
+            return FreePlanError.monthlyFileLimit.localizedDescription
+        }
+        return nil
+    }
+    private func executionRules(for folder: WatchedFolder) -> [Rule] {
+        db.withLock { db in (try? db.executionRules(folderID: folder.id, isPro: isPro)) ?? [] }
+    }
 
     let db: Database
+    private let monthlyUsage: MonthlyFileUsageStore
     private let coordinator: WatcherCoordinator
+    private var registeredWatchPaths = Set<String>()
     private let historyPageSize = 200
     private let previewMatchLimit = 500
+    private let ruleRunStatsWindowDays = 30
     private var historyCleanupTimer: AnyCancellable?
+    private var pendingWatcherNotification = PendingWatcherNotification()
+    private var watcherNotificationTask: Task<Void, Never>?
+    private var volumeNotifier = VolumeUnavailableNotifier()
+    private var volumeNotificationTask: Task<Void, Never>?
+    private var volumeMountObserver: NSObjectProtocol?
+    /// Bumped when automatic runs record history, for views showing recent
+    /// activity. A burst of files makes one bump, not one per file.
+    @Published private(set) var watcherHistoryRevision = 0
+    private var watcherHistoryRevisionTask: Task<Void, Never>?
 
     init() throws {
         let appSupportRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -69,34 +117,90 @@ final class AppModel: ObservableObject {
         try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         let dbPath = appSupport.appendingPathComponent("forel.db").path
 
+        let usagePreferences = UserDefaults(suiteName: "com.lab421.forel.usage") ?? .standard
+        let monthlyUsage = MonthlyFileUsageStore(preferences: usagePreferences)
+        self.monthlyUsage = monthlyUsage
         let db = try Database(path: dbPath)
         self.db = db
-        self.coordinator = WatcherCoordinator(db: db)
+        self.coordinator = WatcherCoordinator(db: db, monthlyUsage: monthlyUsage)
+        self.coordinator.onActivity = { [weak self] summary in
+            Task { @MainActor in
+                self?.queueWatcherNotification(summary)
+            }
+        }
+        self.coordinator.onVolumeUnavailable = { [weak self] event in
+            Task { @MainActor in
+                self?.queueVolumeNotification(event)
+            }
+        }
+        self.coordinator.onHistoryRecorded = { [weak self] in
+            Task { @MainActor in
+                self?.bumpWatcherHistoryRevision()
+            }
+        }
+        self.coordinator.onMonthlyQuotaReached = { [weak self] in
+            Task { @MainActor in self?.bumpWatcherHistoryRevision() }
+        }
+        self.coordinator.onProcessingError = { [weak self] message in
+            Task { @MainActor in self?.showNotice(title: "Could not process this file", message: message) }
+        }
         // Default to paused (watching off) on a fresh install — a brand-new
         // user hasn't set up any rules yet, and starting to watch folders
         // immediately means triggering permission prompts and risking rule-less
         // surprises before they've configured anything. Once they've explicitly
         // set this either way, that choice persists.
-        let storedPaused = try? db.getSetting("paused")
+        let storedPaused = db.withLock { db in try? db.getSetting("paused") }
         self.paused = storedPaused.map { $0 == "1" } ?? true
 
-        let storedAccent = (try? db.getSetting("accent_color")) ?? nil
+        let storedAccent = db.withLock { db in (try? db.getSetting("accent_color")) ?? nil }
         let preset = storedAccent.flatMap(AccentPreset.init(rawValue:)) ?? .default
         self.accentPreset = preset
         ForelTheme.apply(preset)
 
-        let storedTheme = (try? db.getSetting("theme")) ?? nil
-        self.appTheme = storedTheme.flatMap(AppTheme.init(rawValue:)) ?? .system
-
-        let storedShowDockIcon = try? db.getSetting("show_dock_icon")
+        let storedShowDockIcon = db.withLock { db in try? db.getSetting("show_dock_icon") }
         self.showDockIcon = storedShowDockIcon.map { $0 == "1" } ?? true
 
-        let storedMaxDays = (try? db.getSetting("history_max_days")).flatMap { Int($0) }
+        let storedWatcherNotificationsEnabled = db.withLock { db in try? db.getSetting("watcher_notifications_enabled") }
+        self.watcherNotificationsEnabled = storedWatcherNotificationsEnabled.map { $0 == "1" } ?? true
+
+        let storedMaxDays = db.withLock { db in (try? db.getSetting("history_max_days")).flatMap { Int($0) } }
         self.historyMaxDays = min(max(storedMaxDays ?? 30, 1), 30)
 
+        self.ruleExpansionPreferences = db.withLock { db in RuleExpansionPreferences.load(from: db) }
+
+        coordinator.setProAccess(isPro)
         reloadFolders()
-        startWatchingEnabledFolders()
         startHistoryCleanupTimer()
+        observeVolumeMounts()
+    }
+
+    /// A disk or share coming back runs the rules again on the files that
+    /// couldn't be moved or copied to it while it was missing.
+    private func observeVolumeMounts() {
+        volumeMountObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didMountNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let url = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL else { return }
+            MainActor.assumeIsolated {
+                self?.volumeDidMount(atPath: url.path)
+            }
+        }
+    }
+
+    private func bumpWatcherHistoryRevision() {
+        guard watcherHistoryRevisionTask == nil else { return }
+        watcherHistoryRevisionTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            self?.watcherHistoryRevisionTask = nil
+            self?.watcherHistoryRevision += 1
+        }
+    }
+
+    private func volumeDidMount(atPath mountPoint: String) {
+        volumeNotifier.volumeConnected((mountPoint as NSString).lastPathComponent)
+        coordinator.volumeDidMount(atPath: mountPoint)
     }
 
     /// Forel's bundle identifier moved from `com.forel.app` (`.app` isn't a
@@ -132,7 +236,7 @@ final class AppModel: ObservableObject {
                 window.orderFrontRegardless()
             }
             keyWindow?.makeKeyAndOrderFront(nil)
-            NSApp.activate()
+            NSApp.activate(ignoringOtherApps: true)
         }
 
         restoreWindows()
@@ -142,33 +246,40 @@ final class AppModel: ObservableObject {
                 window.orderFrontRegardless()
             }
             keyWindow?.makeKeyAndOrderFront(nil)
-            NSApp.activate()
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
     func setShowDockIcon(_ enabled: Bool) {
         showDockIcon = enabled
-        try? db.setSetting("show_dock_icon", enabled ? "1" : "0")
+        db.withLock { db in try? db.setSetting("show_dock_icon", enabled ? "1" : "0") }
         applyDockIconPreference(keepingWindowsVisible: true)
     }
 
-    func setAppTheme(_ theme: AppTheme) {
-        appTheme = theme
-        try? db.setSetting("theme", theme.rawValue)
+    func setWatcherNotificationsEnabled(_ enabled: Bool) {
+        watcherNotificationsEnabled = enabled
+        db.withLock { db in try? db.setSetting("watcher_notifications_enabled", enabled ? "1" : "0") }
+        guard !enabled else { return }
+        watcherNotificationTask?.cancel()
+        watcherNotificationTask = nil
+        pendingWatcherNotification = PendingWatcherNotification()
+        volumeNotificationTask?.cancel()
+        volumeNotificationTask = nil
+        volumeNotifier.discardPending()
     }
 
     func setAccentPreset(_ preset: AccentPreset) {
         accentPreset = preset
         ForelTheme.apply(preset)
         accentVersion += 1
-        try? db.setSetting("accent_color", preset.rawValue)
+        db.withLock { db in try? db.setSetting("accent_color", preset.rawValue) }
     }
 
     func setHistoryMaxDays(_ days: Int) {
         let clamped = min(max(days, 1), 30)
         guard clamped != historyMaxDays else { return }
         historyMaxDays = clamped
-        try? db.setSetting("history_max_days", "\(clamped)")
+        db.withLock { db in try? db.setSetting("history_max_days", "\(clamped)") }
         runHistoryCleanup()
     }
 
@@ -188,8 +299,65 @@ final class AppModel: ObservableObject {
         runHistoryCleanup()
     }
 
+    private func queueWatcherNotification(_ summary: WatcherActivitySummary) {
+        guard watcherNotificationsEnabled else { return }
+        pendingWatcherNotification.add(summary)
+        guard watcherNotificationTask == nil else { return }
+        watcherNotificationTask = Task { [weak self] in
+            try? await Task.sleep(for: watcherNotificationDelay)
+            await self?.flushWatcherNotification()
+        }
+    }
+
+    private func flushWatcherNotification() async {
+        watcherNotificationTask = nil
+        guard watcherNotificationsEnabled else {
+            pendingWatcherNotification = PendingWatcherNotification()
+            return
+        }
+        guard let notification = pendingWatcherNotification.makeNotification() else { return }
+        pendingWatcherNotification = PendingWatcherNotification()
+        await postNotification(title: notification.title, body: notification.body)
+    }
+
+    private func queueVolumeNotification(_ event: VolumeUnavailableEvent) {
+        guard watcherNotificationsEnabled, volumeNotifier.add(event) else { return }
+        guard volumeNotificationTask == nil else { return }
+        volumeNotificationTask = Task { [weak self] in
+            try? await Task.sleep(for: watcherNotificationDelay)
+            await self?.flushVolumeNotification()
+        }
+    }
+
+    private func flushVolumeNotification() async {
+        volumeNotificationTask = nil
+        guard watcherNotificationsEnabled, let notification = volumeNotifier.makeNotification() else { return }
+        await postNotification(title: notification.title, body: notification.body)
+    }
+
+    private func postNotification(title: String, body: String) async {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        if settings.authorizationStatus == .notDetermined {
+            _ = try? await center.requestAuthorization(options: [.alert, .sound])
+        }
+        guard (await center.notificationSettings()).authorizationStatus == .authorized else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "forel-watcher-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        try? await center.add(request)
+    }
+
     func reloadFolders() {
-        folders = (try? db.listFolders()) ?? []
+        folders = db.withLock { db in (try? db.listFolders()) ?? [] }
         if let selectedFolderId, !folders.contains(where: { $0.id == selectedFolderId }) {
             self.selectedFolderId = folders.first?.id
         }
@@ -201,16 +369,52 @@ final class AppModel: ObservableObject {
             reloadHistory()
         }
         reloadRules()
+        refreshWatching()
     }
 
     func reloadRules() {
         guard let folderId = selectedFolderId else { rules = []; return }
-        rules = (try? db.listRules(folderId: folderId)) ?? []
+        rules = db.withLock { db in (try? db.listRules(folderId: folderId)) ?? [] }
+        reloadRuleRunStats()
+        // A rule change can add or remove a Sync Folders target to watch.
+        refreshWatching()
     }
 
     func reloadHistory() {
         loadHistoryPage(reset: true)
+        reloadRuleRunStats()
     }
+
+    /// Success/failed run counts per rule over the last `ruleRunStatsWindowDays`
+    /// days — kept in sync with `rules` and `history`, since both can change
+    /// what these totals should be.
+    private func reloadRuleRunStats() {
+        let days = ruleRunStatsWindowDays
+        ruleRunStats = db.withLock { db in (try? db.ruleRunStats(sinceDays: days)) ?? [] }
+    }
+
+    func runStats(for rule: Rule) -> RuleRunStats? {
+        ruleRunStats.first { $0.id == rule.id }
+    }
+
+    func isRuleExpanded(_ rule: Rule) -> Bool {
+        ruleExpansionPreferences.isExpanded(rule)
+    }
+
+    func toggleRuleExpanded(_ rule: Rule) {
+        db.withLock { db in ruleExpansionPreferences.toggle(rule, in: db) }
+    }
+
+    private func clearRuleExpansionState(_ ruleId: String) {
+        db.withLock { db in ruleExpansionPreferences.clear(ruleId: ruleId, in: db) }
+    }
+
+    private func clearRuleExpansionState(_ ruleIds: Set<String>) {
+        db.withLock { db in ruleExpansionPreferences.clear(ruleIds: ruleIds, in: db) }
+    }
+
+    var totalSuccessCount30d: Int { ruleRunStats.reduce(0) { $0 + $1.successCount } }
+    var totalFailedCount30d: Int { ruleRunStats.reduce(0) { $0 + $1.failedCount } }
 
     func loadMoreHistoryIfNeeded(currentEntry entry: HistoryEntry? = nil) {
         guard hasMoreHistory, !isLoadingHistory else { return }
@@ -232,11 +436,12 @@ final class AppModel: ObservableObject {
         let directoryPath = historyFilterDirectoryPath
         if reset {
             history = []
-            historyTotalCount = (try? db.countHistory(directoryPath: directoryPath)) ?? 0
+            historyTotalCount = db.withLock { db in (try? db.countHistory(directoryPath: directoryPath)) ?? 0 }
         }
 
         let offset = reset ? 0 : history.count
-        let page = (try? db.listHistory(limit: historyPageSize, offset: offset, directoryPath: directoryPath)) ?? []
+        let limit = historyPageSize
+        let page = db.withLock { db in (try? db.listHistory(limit: limit, offset: offset, directoryPath: directoryPath)) ?? [] }
         history = reset ? page : history + page
         hasMoreHistory = history.count < historyTotalCount
     }
@@ -246,11 +451,23 @@ final class AppModel: ObservableObject {
         return folders.first(where: { $0.id == historyFolderFilterId })?.path
     }
 
-    private func startWatchingEnabledFolders() {
-        guard !paused else { return }
-        for folder in (try? db.listFolders()) ?? [] where folder.enabled {
-            coordinator.add(folder.path)
-        }
+    private var isWatchingAllowed: Bool { !paused }
+
+    func setLicenseAccessLimited(_ limited: Bool) {
+        licenseAccessIsLimited = limited
+        coordinator.setProAccess(!limited)
+        refreshWatching()
+        reloadRules()
+    }
+
+    private func refreshWatching() {
+        let paths = Set(folders.filter {
+            isWatchingAllowed && $0.enabled && FreePlan.allows(folderID: $0.id, folders: folders, isPro: isPro)
+        }.map(\.path))
+        for path in registeredWatchPaths.subtracting(paths) { coordinator.remove(path) }
+        for path in paths.subtracting(registeredWatchPaths) { coordinator.add(path) }
+        registeredWatchPaths = paths
+        coordinator.watchSyncTargets(of: paths)
     }
 
     func addFolder(path: String) {
@@ -266,10 +483,13 @@ final class AppModel: ObservableObject {
             return
         }
 
+        guard canAddFolder else {
+            proUpgrade = .folders
+            return
+        }
         let folder = WatchedFolder(path: normalizedPath)
         do {
-            try db.insertFolder(folder)
-            if !paused { coordinator.add(normalizedPath) }
+            try db.withLock { db in try db.insertFolder(folder, isPro: isPro) }
             reloadFolders()
         } catch {
             showError(error)
@@ -277,54 +497,132 @@ final class AppModel: ObservableObject {
     }
 
     func removeFolder(_ folder: WatchedFolder) {
-        coordinator.remove(folder.path)
-        try? db.deleteFolder(folder.id)
-        reloadFolders()
-    }
-
-    func toggleFolder(_ folder: WatchedFolder, enabled: Bool) {
-        try? db.toggleFolder(folder.id, enabled: enabled)
-        if enabled, !paused {
-            coordinator.add(folder.path)
-        } else {
-            coordinator.remove(folder.path)
+        let removedRuleIds = db.withLock { db in
+            Set(((try? db.listRules(folderId: folder.id)) ?? []).map(\.id))
         }
+        coordinator.remove(folder.path)
+        db.withLock { db in try? db.deleteFolder(folder.id) }
+        clearRuleExpansionState(removedRuleIds)
         reloadFolders()
     }
 
-    func reorderFolders(_ folderIds: [String]) {
-        try? db.reorderFolders(folderIds)
-        reloadFolders()
-    }
+    func updateFolderPath(_ folder: WatchedFolder, path: String) {
+        guard !isRunningNow && !isPreviewing else {
+            showNotice(
+                title: "Folder is busy",
+                message: "Wait for the current Run Now or Dry Run to finish before changing this watched folder."
+            )
+            return
+        }
+        guard !coordinator.isProcessing(in: folder.path) else {
+            showNotice(
+                title: "Folder is busy",
+                message: "Forel is still processing a file event in this watched folder. Try again once it finishes."
+            )
+            return
+        }
 
-    func saveRule(_ rule: Rule) {
-        do {
-            if rules.contains(where: { $0.id == rule.id }) {
-                try db.updateRule(rule)
-            } else {
-                try db.insertRule(rule)
-            }
-            if !paused { coordinator.refreshWatchedPaths() }
+        let normalizedPath = (path as NSString).standardizingPath
+        let oldPath = (folder.path as NSString).standardizingPath
+        guard normalizedPath != oldPath else { return }
+
+        if let existingFolder = folders.first(where: { existing in
+            existing.id != folder.id && (existing.path as NSString).standardizingPath == normalizedPath
+        }) {
+            selectedFolderId = existingFolder.id
+            detailRoute = .rules
             reloadRules()
+            showNotice(
+                title: "Folder already watched",
+                message: "\"\((existingFolder.path as NSString).lastPathComponent)\" is already in your watched folders."
+            )
+            return
+        }
+
+        do {
+            try db.withLock { db in try db.updateFolderPath(folder.id, path: normalizedPath) }
+            reloadFolders()
+            reloadRules()
+            if historyFolderFilterId == folder.id {
+                reloadHistory()
+            }
         } catch {
             showError(error)
         }
     }
 
+    func toggleFolder(_ folder: WatchedFolder, enabled: Bool) {
+        if enabled, !FreePlan.allows(folderID: folder.id, folders: folders, isPro: isPro) {
+            proUpgrade = .folders
+            return
+        }
+        db.withLock { db in try? db.toggleFolder(folder.id, enabled: enabled) }
+        reloadFolders()
+    }
+
+    func reorderFolders(_ folderIds: [String]) {
+        db.withLock { db in try? db.reorderFolders(folderIds) }
+        reloadFolders()
+    }
+
+    @discardableResult
+    func saveRule(_ rule: Rule) -> Bool {
+        if !isPro, rule.enabled, let feature = FreePlan.requiredFeature(for: rule) {
+            proUpgrade = .feature(feature)
+            return false
+        }
+        let exists = rules.contains { $0.id == rule.id }
+        if !exists, !canAddRule {
+            proUpgrade = .folders
+            return false
+        }
+        do {
+            try db.withLock { db in
+                let existing = try db.listRules(folderId: rule.folderId)
+                if existing.contains(where: { $0.id == rule.id }) {
+                    try db.updateRule(rule, isPro: isPro)
+                } else {
+                    try db.insertRule(rule, isPro: isPro)
+                }
+            }
+            reloadRules()
+            return true
+        } catch { showError(error); return false }
+    }
+
+    func copyRules(_ ruleIDs: Set<String>, fromFolderID: String, toFolderID: String) throws {
+        _ = try db.withLock { db in
+            try db.copyRules(ruleIDs, fromFolderID: fromFolderID, toFolderID: toFolderID, isPro: isPro)
+        }
+        selectedFolderId = toFolderID
+        reloadRules()
+    }
+
     func deleteRule(_ rule: Rule) {
-        try? db.deleteRule(rule.id)
-        if !paused { coordinator.refreshWatchedPaths() }
+        db.withLock { db in try? db.deleteRule(rule.id) }
+        clearRuleExpansionState(rule.id)
         reloadRules()
     }
 
     func toggleRule(_ rule: Rule, enabled: Bool) {
-        try? db.toggleRule(rule.id, enabled: enabled)
+        if enabled, !isPro {
+            guard FreePlan.allows(folderID: rule.folderId, folders: folders, isPro: false) else {
+                proUpgrade = .folders
+                return
+            }
+        }
+        if enabled, !isPro, let feature = FreePlan.requiredFeature(for: rule) {
+            proUpgrade = .feature(feature)
+            return
+        }
+        do { try db.withLock { db in try db.toggleRule(rule.id, enabled: enabled) } }
+        catch { showError(error) }
         reloadRules()
     }
 
     func reorderRules(_ ruleIds: [String]) {
         guard let folderId = selectedFolderId else { return }
-        try? db.reorderRules(folderId: folderId, ruleIds: ruleIds)
+        db.withLock { db in try? db.reorderRules(folderId: folderId, ruleIds: ruleIds) }
         reloadRules()
     }
 
@@ -333,47 +631,89 @@ final class AppModel: ObservableObject {
     func runNow() {
         guard !isRunningNow else { return }
         guard let folder = folders.first(where: { $0.id == selectedFolderId }) else { return }
-        let folderRules = rules.filter(\.enabled)
+        let folderRules = executionRules(for: folder)
         guard !folderRules.isEmpty else {
-            showRunNowMessage("Run complete — no enabled rules")
+            showRunNowMessage(RunNowMessage(text: "Run complete — no enabled rules", hasFailures: false, folderId: folder.id))
             return
         }
         isRunningNow = true
+        let isPro = self.isPro
+        let usage = monthlyUsage
         Task {
             defer { isRunningNow = false }
-            let allHistory = await Task.detached(priority: .userInitiated) {
+            let result = await Task.detached(priority: .userInitiated) {
                 let maxDepth = RuleEngine.maxRuleDepth(folderRules)
                 let entries = RuleEngine.walkEntries(root: folder.path, maxDepth: maxDepth)
                 let batchId = UUID().uuidString
                 var allHistory: [HistoryEntry] = []
+                var limitReached = false
+                var errorMessage: String?
                 for entry in entries {
-                    let (_, history) = RuleEngine.run(path: entry.path, depth: entry.depth, rules: folderRules, batchId: batchId, root: folder.path)
-                    allHistory.append(contentsOf: history)
+                    do {
+                        let result = try usage.runWithFreePlan(path: entry.path, depth: entry.depth, rules: folderRules,
+                                                                 batchId: batchId, root: folder.path, isPro: isPro)
+                        allHistory.append(contentsOf: result.history)
+                    } catch FreePlanError.monthlyFileLimit {
+                        limitReached = true
+                        break
+                    } catch {
+                        errorMessage = error.localizedDescription
+                        break
+                    }
                 }
-                return allHistory
+                return (history: allHistory, limitReached: limitReached, error: errorMessage)
             }.value
+            let allHistory = result.history
             if !allHistory.isEmpty {
-                try? db.insertHistoryEntries(allHistory)
+                db.withLock { db in try? db.insertHistoryEntries(allHistory) }
             }
             reloadHistory()
-            showRunNowMessage(
-                allHistory.isEmpty
-                    ? "Run complete — no matching files"
-                    : "Run complete — \(allHistory.count) action\(allHistory.count == 1 ? "" : "s") applied"
-            )
+            showRunNowMessage(RunNowMessage(
+                text: result.limitReached
+                    ? "Run paused — monthly Free limit reached. Remaining files stay in place."
+                    : RunSummary.message(for: allHistory),
+                hasFailures: result.limitReached || result.error != nil || allHistory.contains { $0.status == .failed },
+                folderId: folder.id
+            ))
+            if result.limitReached { proUpgrade = .monthlyFiles }
+            if let error = result.error { showNotice(title: "Could not complete Run Now", message: error) }
         }
     }
 
-    /// Shows a transient confirmation after a manual run, auto-dismissed a
-    /// few seconds later — unless a newer run has already replaced it.
-    private func showRunNowMessage(_ message: String) {
+    /// Shows the result of a manual run. A clean run is auto-dismissed a few
+    /// seconds later — unless a newer run has already replaced it. A run with
+    /// failures stays until dismissed, so there is time to open Activity.
+    private func showRunNowMessage(_ message: RunNowMessage) {
         let id = UUID()
         runNowMessageId = id
         runNowMessage = message
+        guard !message.hasFailures else { return }
         Task {
             try? await Task.sleep(for: .seconds(3))
             if runNowMessageId == id { runNowMessage = nil }
         }
+    }
+
+    func dismissRunNowMessage() {
+        runNowMessage = nil
+    }
+
+    /// The last Run Now result, shown only with the folder it was run on. A
+    /// result with failures stays until dismissed, so it is back when that
+    /// folder is selected again.
+    var runNowMessageForSelectedFolder: RunNowMessage? {
+        guard let runNowMessage, runNowMessage.folderId == selectedFolderId else { return nil }
+        return runNowMessage
+    }
+
+    /// Opens Activity. When coming from a folder's run result, a filter set
+    /// to another folder would hide that run, so it is cleared.
+    func showActivity(forFolder folderId: String? = nil) {
+        if let folderId, let historyFolderFilterId, historyFolderFilterId != folderId {
+            self.historyFolderFilterId = nil
+        }
+        reloadHistory()
+        detailRoute = .history
     }
 
     /// Runs Dry Run off the main thread — scanning every file in a large
@@ -386,13 +726,14 @@ final class AppModel: ObservableObject {
             previewResult = PreviewResult(filesScanned: 0, matches: [])
             return
         }
-        let folderRules = rules.filter(\.enabled)
+        let folderRules = executionRules(for: folder)
         guard !folderRules.isEmpty else {
             previewResult = PreviewResult(filesScanned: 0, matches: [])
             return
         }
         let matchLimit = previewMatchLimit
         isPreviewing = true
+        let isPro = self.isPro
         Task {
             defer { isPreviewing = false }
             previewResult = await Task.detached(priority: .userInitiated) {
@@ -402,7 +743,7 @@ final class AppModel: ObservableObject {
                 var reachedMatchLimit = false
                 RuleEngine.forEachEntry(root: folder.path, maxDepth: maxDepth) { entry in
                     filesScanned += 1
-                    guard let match = RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: folderRules) else {
+                    guard let match = RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: folderRules, root: folder.path, isPro: isPro) else {
                         return
                     }
                     if matches.count < matchLimit {
@@ -423,12 +764,16 @@ final class AppModel: ObservableObject {
 
     /// The enabled rules and watched root currently covering `path`, if
     /// watching is actually active there — empty/`nil` when paused or the
-    /// folder is disabled, since the watcher wouldn't reprocess anything in
-    /// that case regardless of what the rules say.
+    /// folder is disabled, since the watcher
+    /// wouldn't reprocess anything in that case regardless of what the rules
+    /// say.
     private func activeRules(coveringRestorePath path: String) -> (rules: [Rule], watchedRoot: String?) {
-        guard !paused, let folder = try? db.folderForPath(path), folder.enabled else { return ([], nil) }
-        let rules = (try? db.listRules(folderId: folder.id))?.filter(\.enabled) ?? []
-        return (rules, folder.path)
+        guard isWatchingAllowed else { return ([], nil) }
+        return db.withLock { db -> (rules: [Rule], watchedRoot: String?) in
+            guard let folder = try? db.folderForPath(path), folder.enabled else { return ([], nil) }
+            let rules = (try? db.executionRules(folderID: folder.id, isPro: isPro)) ?? []
+            return (rules, folder.path)
+        }
     }
 
     /// Reverses `entry` only if `UndoChecker` finds it safe right now —
@@ -437,13 +782,13 @@ final class AppModel: ObservableObject {
     func undo(_ entry: HistoryEntry) {
         guard entry.status == .applied else { return }
         let context = activeRules(coveringRestorePath: entry.originalPath)
-        switch UndoChecker.evaluate(entry, activeRules: context.rules, watchedRoot: context.watchedRoot) {
+        switch UndoChecker.evaluate(entry, activeRules: context.rules, watchedRoot: context.watchedRoot, isPro: isPro) {
         case .unsafe(let reason):
             showNotice(title: "Can't undo this action", message: reason)
         case .safe:
             do {
                 try ActionExecutor.revert(Undo.fromJSON(entry.undo))
-                try db.markHistoryUndone(entry.id)
+                try db.withLock { db in try db.markHistoryUndone(entry.id) }
                 reloadHistory()
             } catch {
                 showError(error)
@@ -458,7 +803,7 @@ final class AppModel: ObservableObject {
     /// another restore in the same batch — are left untouched and reported,
     /// rather than attempted.
     func undoBatch(_ batchId: String) {
-        let entries = (try? db.listHistoryBatch(batchId)) ?? []
+        let entries = db.withLock { db in (try? db.listHistoryBatch(batchId)) ?? [] }
         let reversible = entries.filter { $0.status == .applied && $0.reversible }
         let colliding = UndoChecker.collidingRestoreTargets(reversible)
 
@@ -469,13 +814,13 @@ final class AppModel: ObservableObject {
                 continue
             }
             let context = activeRules(coveringRestorePath: entry.originalPath)
-            switch UndoChecker.evaluate(entry, activeRules: context.rules, watchedRoot: context.watchedRoot) {
+            switch UndoChecker.evaluate(entry, activeRules: context.rules, watchedRoot: context.watchedRoot, isPro: isPro) {
             case .unsafe(let reason):
                 failures.append("\((entry.originalPath as NSString).lastPathComponent): \(reason)")
             case .safe:
                 do {
                     try ActionExecutor.revert(Undo.fromJSON(entry.undo))
-                    try db.markHistoryUndone(entry.id)
+                    try db.withLock { db in try db.markHistoryUndone(entry.id) }
                 } catch {
                     failures.append("\((entry.originalPath as NSString).lastPathComponent): \(error)")
                 }
@@ -490,21 +835,12 @@ final class AppModel: ObservableObject {
 
     func togglePaused() {
         paused.toggle()
-        try? db.setSetting("paused", paused ? "1" : "0")
-        if paused {
-            coordinator.removeAll()
-            return
-        }
-        let allFolders = (try? db.listFolders()) ?? []
-        for folder in allFolders {
-            if folder.enabled {
-                coordinator.add(folder.path)
-            }
-        }
-        coordinator.refreshWatchedPaths()
+        let isPaused = paused
+        db.withLock { db in try? db.setSetting("paused", isPaused ? "1" : "0") }
+        refreshWatching()
     }
 
-    private func showNotice(title: String, message: String) {
+    func showNotice(title: String, message: String) {
         alertTitle = title
         errorMessage = message
     }
@@ -516,5 +852,47 @@ final class AppModel: ObservableObject {
     private func showError(_ message: String) {
         alertTitle = "Error"
         errorMessage = message
+    }
+}
+
+private struct PendingWatcherNotification {
+    var actionCount = 0
+    var fileCount = 0
+    var ruleCounts: [String: Int] = [:]
+
+    mutating func add(_ summary: WatcherActivitySummary) {
+        actionCount += summary.actionCount
+        fileCount += summary.fileCount
+        for ruleName in summary.ruleNames {
+            ruleCounts[ruleName, default: 0] += 1
+        }
+    }
+
+    mutating func makeNotification() -> (title: String, body: String)? {
+        guard actionCount > 0 else { return nil }
+
+        let actionLabel = actionCount == 1 ? "action" : "actions"
+        let fileLabel = fileCount == 1 ? "file" : "files"
+        let title = "Forel applied \(actionCount) \(actionLabel)"
+
+        let ruleNames = ruleCounts
+            .sorted { lhs, rhs in
+                lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value > rhs.value
+            }
+            .map(\.key)
+        let visibleRules = ruleNames.prefix(3)
+        let remainingRuleCount = max(0, ruleNames.count - visibleRules.count)
+        let rulesText: String
+        if visibleRules.isEmpty {
+            rulesText = "No rules"
+        } else {
+            rulesText = visibleRules.joined(separator: ", ")
+                + (remainingRuleCount > 0 ? " and \(remainingRuleCount) more" : "")
+        }
+
+        return (
+            title,
+            "\(fileCount) \(fileLabel) processed. Rules: \(rulesText)."
+        )
     }
 }

@@ -17,19 +17,23 @@
 import CoreServices
 import Foundation
 
+public enum FileWatcherEvent: Equatable, Sendable {
+    case pathArrived(String)
+    case rescanSubtree(String)
+    /// Only Sync Folders acts on removals.
+    case pathRemoved(String)
+}
+
 /// Native FSEvents-based replacement for the Rust `notify` watcher. Watches a
-/// dynamic set of folder paths recursively and reports newly created or
-/// renamed/moved file paths. The underlying `FSEventStream` cannot have its
+/// dynamic set of folder paths recursively. It normally reports newly arrived
+/// paths (created in, renamed inside, or moved into a watched folder). If
+/// FSEvents says detailed events were dropped, it reports a subtree rescan
+/// request instead. The underlying `FSEventStream` cannot have its
 /// path set mutated in place, so adding/removing a folder recreates the stream
 /// with the updated set — same externally-visible behaviour as the old
 /// `WatcherCmd::Add`/`Remove` channel.
 public final class FileWatcher: @unchecked Sendable {
-    public enum EventKind: Sendable {
-        case changed
-        case deleted
-    }
-
-    public typealias EventHandler = @Sendable (_ path: String, _ kind: EventKind) -> Void
+    public typealias EventHandler = @Sendable (_ event: FileWatcherEvent) -> Void
 
     private var onEvent: EventHandler
     private let lock = NSLock()
@@ -58,13 +62,6 @@ public final class FileWatcher: @unchecked Sendable {
         let paths = watchedPaths
         lock.unlock()
         if inserted { rebuildStream(paths: paths) }
-    }
-
-    public func replaceAll(_ paths: Set<String>) {
-        lock.lock()
-        watchedPaths = paths
-        lock.unlock()
-        rebuildStream(paths: paths)
     }
 
     public func remove(_ path: String) {
@@ -118,19 +115,50 @@ public final class FileWatcher: @unchecked Sendable {
         FSEventStreamRelease(current)
     }
 
+    /// Forel's automatic watcher is arrival-oriented in normal operation: it
+    /// starts rules when a path appears in the watched tree, not every time an
+    /// existing file is edited. Duplicate/coalesced create/rename events are
+    /// handled downstream by `WatcherCoordinator`'s fingerprint cache.
+    ///
+    /// Do not add `ItemModified`/`ItemXattrMod` here casually. Those would make
+    /// Forel re-evaluate existing files whenever content, tags, labels, or
+    /// download metadata change, which is a broader product behavior than
+    /// "run rules for newly arrived files".
+    ///
+    /// `MustScanSubDirs`/dropped events are different: they mean FSEvents lost
+    /// detail and the safe recovery is to rescan the affected subtree. The
+    /// coordinator still skips unchanged paths using its fingerprint cache.
+    static func reportedEvent(path: String, flags: FSEventStreamEventFlags) -> FileWatcherEvent? {
+        if SystemFileFilter.isExcluded((path as NSString).lastPathComponent) { return nil }
+
+        let needsRescan = flags & UInt32(kFSEventStreamEventFlagMustScanSubDirs) != 0
+            || flags & UInt32(kFSEventStreamEventFlagUserDropped) != 0
+            || flags & UInt32(kFSEventStreamEventFlagKernelDropped) != 0
+        if needsRescan {
+            return .rescanSubtree(path)
+        }
+
+        if flags & UInt32(kFSEventStreamEventFlagItemRemoved) != 0 {
+            return .pathRemoved(path)
+        }
+        return shouldReportEvent(path: path, flags: flags) ? .pathArrived(path) : nil
+    }
+
+    static func shouldReportEvent(path: String, flags: FSEventStreamEventFlags) -> Bool {
+        let isArrival = flags & UInt32(kFSEventStreamEventFlagItemCreated) != 0
+            || flags & UInt32(kFSEventStreamEventFlagItemRenamed) != 0
+        guard isArrival else { return false }
+        return !SystemFileFilter.isExcluded((path as NSString).lastPathComponent)
+    }
+
     fileprivate func handleEvents(paths: [String], flags: [FSEventStreamEventFlags]) {
         lock.lock()
         let handler = onEvent
         lock.unlock()
 
         for (index, path) in paths.enumerated() {
-            let flag = flags[index]
-            let isDeleted = flag & UInt32(kFSEventStreamEventFlagItemRemoved) != 0
-            let isCreateOrRename = flag & UInt32(kFSEventStreamEventFlagItemCreated) != 0
-                || flag & UInt32(kFSEventStreamEventFlagItemRenamed) != 0
-            guard isCreateOrRename || isDeleted else { continue }
-            if SystemFileFilter.isExcluded((path as NSString).lastPathComponent) { continue }
-            handler(path, isDeleted ? .deleted : .changed)
+            guard let event = Self.reportedEvent(path: path, flags: flags[index]) else { continue }
+            handler(event)
         }
     }
 }

@@ -44,7 +44,7 @@ public extension Operator {
         case .lessThan: return "less than"
         case .before: return "is before"
         case .after: return "is after"
-        case .olderThan: return "is older than"
+        case .olderThan: return "is not in the last"
         case .withinLast: return "is within the last"
         }
     }
@@ -197,11 +197,15 @@ public enum ActionParam {
     public static let syncDirection = "sync_direction"
     public static let syncDeletePolicy = "sync_delete_policy"
     public static let pattern = "pattern"
+    public static let archiveName = "archive_name"
+    public static let deleteSourceAfterCompression = "delete_source_after_compression"
     public static let tags = "tags"
     public static let color = "color"
     public static let script = "script"
     public static let shortcutName = "shortcut_name"
     public static let shortcutInputMode = "shortcut_input_mode"
+    public static let applicationPath = "application_path"
+    public static let passFileToApplication = "pass_file_to_application"
     public static let cleanFileName = "clean_file_name"
     public static let libraryType = "library_type"
     public static let targetPlaylist = "target_playlist"
@@ -211,10 +215,12 @@ public enum ActionParam {
 public enum ActionParamKind: Sendable, Equatable {
     case folderPath
     case renamePattern
+    case archiveName
     case tags
     case colorLabel
     case script
     case shortcut
+    case applicationPath
     case libraryType
     case playlist
 }
@@ -245,7 +251,10 @@ public extension ActionKind {
         case .setColorLabel: return "Set color label"
         case .runScript: return "Run script"
         case .runShortcut: return "Run shortcut"
+        case .openApplication: return "Open application"
         case .importToLibrary: return "Import to library"
+        case .compress: return "Compress"
+        case .uncompress: return "Uncompress"
         }
     }
 
@@ -261,7 +270,10 @@ public extension ActionKind {
         case .setColorLabel: return "paintpalette"
         case .runScript: return "terminal"
         case .runShortcut: return "square.stack.3d.up"
+        case .openApplication: return "app"
         case .importToLibrary: return "tray.full"
+        case .compress: return "archivebox"
+        case .uncompress: return "doc.zipper"
         }
     }
 
@@ -271,7 +283,7 @@ public extension ActionKind {
     /// have none, instead of showing an empty "No options" popover.
     var hasOptions: Bool {
         switch self {
-        case .moveToFolder, .copyToFolder, .syncFolders, .runShortcut, .rename, .importToLibrary:
+        case .moveToFolder, .copyToFolder, .syncFolders, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress, .compress:
             return true
         case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
             return false
@@ -294,10 +306,15 @@ public extension ActionKind {
             return [ActionParamSpec(key: ActionParam.script, kind: .script)]
         case .runShortcut:
             return [ActionParamSpec(key: ActionParam.shortcutName, kind: .shortcut)]
+        case .openApplication:
+            return [ActionParamSpec(key: ActionParam.applicationPath, kind: .applicationPath)]
         case .importToLibrary:
             return [ActionParamSpec(key: ActionParam.libraryType, kind: .libraryType),
                     ActionParamSpec(key: ActionParam.targetPlaylist, kind: .playlist)]
-        case .moveToTrash, .delete:
+        case .compress:
+            return [ActionParamSpec(key: ActionParam.archiveName, kind: .archiveName),
+                    ActionParamSpec(key: ActionParam.destination, kind: .folderPath)]
+        case .moveToTrash, .delete, .uncompress:
             return []
         }
     }
@@ -344,9 +361,9 @@ public enum RuleSchema {
     public static let conditionKinds: [ConditionKind] = conditionKindGroups.flatMap(\.kinds)
 
     public static let actionKindGroups: [ActionKindGroup] = [
-        ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .syncFolders, .rename]),
+        ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .syncFolders, .rename, .compress, .uncompress]),
         ActionKindGroup(title: "Tags", kinds: [.addTag, .removeTag, .setColorLabel]),
-        ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut]),
+        ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut, .openApplication]),
         ActionKindGroup(title: "Disposal", kinds: [.moveToTrash, .delete]),
         ActionKindGroup(title: "Library", kinds: [.importToLibrary]),
     ]

@@ -174,6 +174,7 @@ public final class Database: @unchecked Sendable {
                 fingerprint TEXT,
                 updated_at  TEXT NOT NULL
             );
+            CREATE INDEX IF NOT EXISTS idx_watched_path_state_identity ON watched_path_state(volume_id, file_id);
             """
         )
         try runMigrations()
@@ -313,6 +314,34 @@ public final class Database: @unchecked Sendable {
         try stmt.runToCompletion()
     }
 
+    /// Success ("applied"/"undone") vs. failed counts per rule over the last
+    /// `days` days, for the rule list's badges and the menu-bar quick panel.
+    public func ruleRunStats(sinceDays days: Int) throws -> [RuleRunStats] {
+        let cutoff = ISO8601DateFormatter.forelUTC.string(from: Date().addingTimeInterval(-Double(days) * 86400))
+        let stmt = try statement(
+            """
+            SELECT COALESCE(rule_id, '~' || rule_name) AS rule_key, rule_name,
+                SUM(CASE WHEN status IN ('applied', 'undone') THEN 1 ELSE 0 END),
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)
+            FROM action_history
+            WHERE datetime(created_at) >= datetime(?1)
+            GROUP BY rule_key
+            ORDER BY rule_name COLLATE NOCASE
+            """
+        )
+        stmt.bind(1, cutoff)
+        var stats: [RuleRunStats] = []
+        while try stmt.step() {
+            stats.append(RuleRunStats(
+                id: stmt.columnText(0),
+                ruleName: stmt.columnText(1),
+                successCount: Int(stmt.columnInt64(2)),
+                failedCount: Int(stmt.columnInt64(3))
+            ))
+        }
+        return stats
+    }
+
     private static func historyDirectoryFilter(_ directoryPath: String?) -> (String, [String]) {
         guard let directoryPath else { return ("", []) }
         let path = (directoryPath as NSString).standardizingPath
@@ -398,6 +427,13 @@ public final class Database: @unchecked Sendable {
         try stmt.runToCompletion()
     }
 
+    public func updateFolderPath(_ id: String, path: String) throws {
+        let stmt = try statement("UPDATE watched_folders SET path=?1 WHERE id=?2")
+        stmt.bind(1, path)
+        stmt.bind(2, id)
+        try stmt.runToCompletion()
+    }
+
     public func toggleFolder(_ id: String, enabled: Bool) throws {
         let stmt = try statement("UPDATE watched_folders SET enabled=?1 WHERE id=?2")
         stmt.bind(1, bool: enabled)
@@ -429,6 +465,13 @@ public final class Database: @unchecked Sendable {
 
     // MARK: - Rules
 
+    /// Total number of rules across every watched folder.
+    public func countRules() throws -> Int {
+        let stmt = try statement("SELECT COUNT(*) FROM rules")
+        _ = try stmt.step()
+        return Int(stmt.columnInt64(0))
+    }
+
     public func listRules(folderId: String) throws -> [Rule] {
         let stmt = try statement(
             """
@@ -454,8 +497,10 @@ public final class Database: @unchecked Sendable {
             )
         }
         for index in rules.indices {
-            rules[index].conditions = try listConditions(ruleId: rules[index].id)
-            rules[index].actions = try listActions(ruleId: rules[index].id)
+            var unsupported: [String] = []
+            rules[index].conditions = try listConditions(ruleId: rules[index].id, unsupported: &unsupported)
+            rules[index].actions = try listActions(ruleId: rules[index].id, unsupported: &unsupported)
+            rules[index].unsupportedParts = unsupported
         }
         return rules
     }
@@ -477,28 +522,74 @@ public final class Database: @unchecked Sendable {
     public func insertRule(_ rule: Rule) throws {
         let priority = try nextRulePriority(folderId: rule.folderId)
         try transaction {
-            let stmt = try statement(
-                """
-                INSERT INTO rules (id, folder_id, name, enabled, condition_match, recursion_depth, priority, created_at)
-                VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
-                """
-            )
-            stmt.bind(1, rule.id)
-            stmt.bind(2, rule.folderId)
-            stmt.bind(3, rule.name)
-            stmt.bind(4, bool: rule.enabled)
-            stmt.bind(5, rule.conditionMatch == .any ? "any" : "all")
-            stmt.bind(6, rule.recursionDepth ?? -1)
-            stmt.bind(7, priority)
-            stmt.bind(8, rule.createdAt)
-            try stmt.runToCompletion()
-
-            for condition in rule.conditions { try insertCondition(condition) }
-            for action in rule.actions { try insertAction(action) }
+            try insertRuleRows(rule, priority: priority)
         }
     }
 
+    private func insertRuleRows(_ rule: Rule, priority: Int64) throws {
+        let stmt = try statement(
+            """
+            INSERT INTO rules (id, folder_id, name, enabled, condition_match, recursion_depth, priority, created_at)
+            VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
+            """
+        )
+        stmt.bind(1, rule.id)
+        stmt.bind(2, rule.folderId)
+        stmt.bind(3, rule.name)
+        stmt.bind(4, bool: rule.enabled)
+        stmt.bind(5, rule.conditionMatch == .any ? "any" : "all")
+        stmt.bind(6, rule.recursionDepth ?? -1)
+        stmt.bind(7, priority)
+        stmt.bind(8, rule.createdAt)
+        try stmt.runToCompletion()
+
+        for condition in rule.conditions { try insertCondition(condition) }
+        for action in rule.actions { try insertAction(action) }
+    }
+
+    /// Copies the current saved rules in their source order, appending them to
+    /// the destination. New identities keep edits, deletion, and history separate.
+    public func copyRules(_ ruleIDs: Set<String>, fromFolderID: String, toFolderID: String, isPro: Bool) throws -> [Rule] {
+        guard !ruleIDs.isEmpty else { throw RuleCopyError.noSelection }
+        guard fromFolderID != toFolderID else { throw RuleCopyError.sameFolder }
+        var copies: [Rule] = []
+        try transaction {
+            let folders = try listFolders()
+            guard folders.contains(where: { $0.id == fromFolderID }),
+                  folders.contains(where: { $0.id == toFolderID }) else { throw RuleCopyError.missingFolder }
+            guard FreePlan.allows(folderID: toFolderID, folders: folders, isPro: isPro) else {
+                throw FreePlanError.proFolder
+            }
+            let sources = try listRules(folderId: fromFolderID).filter { ruleIDs.contains($0.id) }
+            guard sources.count == ruleIDs.count else { throw RuleCopyError.missingRules }
+            for source in sources {
+                guard source.isSupported else { throw UnsupportedRuleError() }
+                try FreePlan.validate(source, isPro: isPro)
+                var copy = Rule(
+                    folderId: toFolderID, name: source.name, enabled: source.enabled,
+                    conditionMatch: source.conditionMatch, recursionDepth: source.recursionDepth,
+                    priority: try nextRulePriority(folderId: toFolderID)
+                )
+                copy.conditions = source.conditions.map {
+                    Condition(ruleId: copy.id, kind: $0.kind, operator: $0.operator, value: $0.value)
+                }
+                copy.actions = source.actions.map {
+                    Action(ruleId: copy.id, kind: $0.kind, params: $0.params, position: $0.position)
+                }
+                try insertRuleRows(copy, priority: copy.priority)
+                copies.append(copy)
+            }
+        }
+        return copies
+    }
+
     public func updateRule(_ rule: Rule) throws {
+        // Checked against what is stored: saving would replace what a newer
+        // Forel wrote with this version's guess.
+        var unsupported: [String] = []
+        _ = try listConditions(ruleId: rule.id, unsupported: &unsupported)
+        _ = try listActions(ruleId: rule.id, unsupported: &unsupported)
+        guard unsupported.isEmpty else { throw UnsupportedRuleError() }
         try transaction {
             let stmt = try statement(
                 "UPDATE rules SET name=?1, enabled=?2, condition_match=?3, recursion_depth=?4, priority=?5 WHERE id=?6"
@@ -562,11 +653,16 @@ public final class Database: @unchecked Sendable {
 
     // MARK: - Conditions
 
-    private func listConditions(ruleId: String) throws -> [Condition] {
+    /// Values a newer Forel saved and this version doesn't know are collected
+    /// in `unsupported`, so the rule is held back instead of guessed.
+    private func listConditions(ruleId: String, unsupported: inout [String]) throws -> [Condition] {
         let stmt = try statement("SELECT id, rule_id, kind, operator, value FROM conditions WHERE rule_id=?1")
         stmt.bind(1, ruleId)
         var conditions: [Condition] = []
         while try stmt.step() {
+            let kind = stmt.columnText(2), op = stmt.columnText(3)
+            if ConditionKind(rawValue: kind) == nil { unsupported.append(kind) }
+            if Operator(rawValue: op) == nil { unsupported.append(op) }
             conditions.append(
                 Condition(
                     id: stmt.columnText(0),
@@ -592,11 +688,13 @@ public final class Database: @unchecked Sendable {
 
     // MARK: - Actions
 
-    private func listActions(ruleId: String) throws -> [Action] {
+    private func listActions(ruleId: String, unsupported: inout [String]) throws -> [Action] {
         let stmt = try statement("SELECT id, rule_id, kind, params, position FROM actions WHERE rule_id=?1 ORDER BY position")
         stmt.bind(1, ruleId)
         var actions: [Action] = []
         while try stmt.step() {
+            let kind = stmt.columnText(2)
+            if ActionKind(rawValue: kind) == nil { unsupported.append(kind) }
             actions.append(
                 Action(
                     id: stmt.columnText(0),
@@ -643,6 +741,23 @@ public final class Database: @unchecked Sendable {
             fingerprint: stmt.columnTextOrNil(3),
             updatedAt: stmt.columnText(4)
         )
+    }
+
+    /// Where the watcher already evaluated this file or folder. A renamed or
+    /// moved item keeps its identity, so its old paths show up here.
+    func watchedPaths(volumeId: Int64, fileId: Int64) throws -> [String] {
+        let stmt = try statement("SELECT path FROM watched_path_state WHERE volume_id=?1 AND file_id=?2")
+        stmt.bind(1, volumeId)
+        stmt.bind(2, fileId)
+        var paths: [String] = []
+        while try stmt.step() { paths.append(stmt.columnText(0)) }
+        return paths
+    }
+
+    func deleteWatchedPathState(_ path: String) throws {
+        let stmt = try statement("DELETE FROM watched_path_state WHERE path=?1")
+        stmt.bind(1, path)
+        try stmt.runToCompletion()
     }
 
     public func upsertWatchedPathState(_ state: WatchedPathState) throws {

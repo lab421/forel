@@ -166,6 +166,264 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: (dir.path as NSString).appendingPathComponent("report-archived.txt.txt")))
     }
 
+    @Test func compressFileCreatesZipBesideItAndKeepsTheSource() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "hello")
+
+        let action = makeAction(.compress, .object([:]))
+        let plan = try ActionExecutor.plan(action, path: file)
+        #expect(plan.status == .wouldRun)
+        #expect(plan.targetPath == (dir.path as NSString).appendingPathComponent("report.zip"))
+        #expect(plan.finalPath == file)
+
+        let applied = try ActionExecutor.execute(action, path: file)
+
+        #expect(applied.newPath == file)
+        #expect(applied.copiedPath == (dir.path as NSString).appendingPathComponent("report.zip"))
+        #expect(applied.undo == .none)
+        #expect(FileManager.default.fileExists(atPath: file))
+        try assertZip(at: applied.copiedPath!, contains: ["report.txt"], with: ["report.txt": "hello"])
+    }
+
+    @Test func compressWritesToItsConfiguredDestination() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "hello")
+        let archives = (dir.path as NSString).appendingPathComponent("Archives/{year}")
+        let year = Calendar.current.component(.year, from: Date())
+
+        let applied = try ActionExecutor.execute(makeAction(.compress, .object([ActionParam.destination: .string(archives)])), path: file)
+
+        #expect(applied.copiedPath == (dir.path as NSString).appendingPathComponent("Archives/\(year)/report.zip"))
+    }
+
+    @Test func compressFolderArchivesItsContentsRecursively() throws {
+        let dir = TempDir()
+        let folder = dir.dir("Export")
+        try "a".write(toFile: (folder as NSString).appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        let nested = dir.dir("Export/Nested")
+        try "b".write(toFile: (nested as NSString).appendingPathComponent("b.txt"), atomically: true, encoding: .utf8)
+
+        let applied = try ActionExecutor.execute(makeAction(.compress, .object([:])), path: folder)
+
+        #expect(applied.copiedPath == (dir.path as NSString).appendingPathComponent("Export.zip"))
+        #expect(FileManager.default.fileExists(atPath: folder))
+        // Folder archives keep the folder itself as the wrapper entry, like Finder.
+        try assertZip(at: applied.copiedPath!, contains: ["Export/a.txt", "Export/Nested/b.txt"], with: ["Export/a.txt": "a", "Export/Nested/b.txt": "b"])
+    }
+
+    @Test(arguments: ["preview", "manual", "watcher"], [false, true])
+    func compressUsesCompressionAcrossExecutionPaths(execution: String, isFolder: Bool) throws {
+        let dir = TempDir()
+        let watched = dir.dir("Watched")
+        let contents = String(repeating: "Compressible file contents\n", count: 10_000)
+        let source: String
+        let archivedName: String
+        let original: String
+        if isFolder {
+            source = dir.dir("Watched/Export")
+            _ = dir.dir("Watched/Export/Nested")
+            original = dir.file("Watched/Export/Nested/report.txt", contents: contents)
+            archivedName = "Export/Nested/report.txt"
+        } else {
+            source = dir.file("Watched/report.txt", contents: contents)
+            original = source
+            archivedName = "report.txt"
+        }
+        let archivePath = watched + (isFolder ? "/Export.zip" : "/report.zip")
+        let db = try Database(path: ":memory:")
+        let folder = WatchedFolder(path: watched)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "Compress")
+        rule.conditions = [isFolder
+            ? makeCondition(.kind, .is, "folder", ruleId: rule.id)
+            : makeCondition(.extension_, .is, "txt", ruleId: rule.id)]
+        rule.actions = [makeAction(.compress, .object([:]), ruleId: rule.id)]
+        try db.insertRule(rule)
+        let rules = try db.executionRules(folderID: folder.id, isPro: false)
+
+        if execution == "watcher" {
+            let coordinator = WatcherCoordinator(db: db, settleInterval: 0.01)
+            coordinator.enqueue(event: .pathArrived(source))
+            coordinator.waitForPendingEvents()
+            let history = try db.listHistory()
+            #expect(history.count == 1)
+            #expect(history.first?.status == .applied)
+        } else {
+            let entries = RuleEngine.walkEntries(root: watched, maxDepth: RuleEngine.maxRuleDepth(rules))
+            #expect(entries.map(\.path) == [source])
+            for entry in entries {
+                if execution == "preview" {
+                    let preview = try #require(RuleEngine.previewFile(path: entry.path, depth: entry.depth, rules: rules, isPro: false))
+                    #expect(preview.rules.first?.actions.first?.targetPath == archivePath)
+                } else {
+                    let result = RuleEngine.run(path: entry.path, depth: entry.depth, rules: rules, batchId: "manual", root: watched, isPro: false)
+                    #expect(result.history.count == 1)
+                    #expect(result.history.first?.status == .applied)
+                }
+            }
+        }
+
+        #expect(try String(contentsOfFile: original, encoding: .utf8) == contents)
+        if execution == "preview" {
+            #expect(!FileManager.default.fileExists(atPath: archivePath))
+        } else {
+            let attributes = try FileManager.default.attributesOfItem(atPath: archivePath)
+            let size = try #require(attributes[.size] as? NSNumber)
+            #expect(size.intValue < contents.utf8.count / 10)
+            try assertZip(at: archivePath, contains: [archivedName], with: [archivedName: contents])
+        }
+    }
+
+    @Test func compressWithExistingArchiveRenamesTheNewOne() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "new")
+        let existing = (dir.path as NSString).appendingPathComponent("report.zip")
+        try "old".write(toFile: existing, atomically: true, encoding: .utf8)
+
+        let plan = try ActionExecutor.plan(makeAction(.compress, .object([:])), path: file)
+        #expect(plan.targetPath == (dir.path as NSString).appendingPathComponent("report (1).zip"))
+        #expect(plan.description.contains("renamed"))
+
+        let applied = try ActionExecutor.execute(makeAction(.compress, .object([:])), path: file)
+
+        #expect(applied.copiedPath == (dir.path as NSString).appendingPathComponent("report (1).zip"))
+        try assertZip(at: applied.copiedPath!, contains: ["report.txt"], with: ["report.txt": "new"])
+        #expect(try String(contentsOfFile: existing, encoding: .utf8) == "old")
+    }
+
+    /// Extracts `zip` and checks it contains exactly `names`, each with the
+    /// given contents.
+    private func assertZip(at zip: String, contains names: [String], with contents: [String: String]) throws {
+        let out = TempDir()
+        try FileManager.default.unzipItem(at: URL(fileURLWithPath: zip), to: URL(fileURLWithPath: out.path))
+        var seen: Set<String> = []
+        let enumerator = FileManager.default.enumerator(atPath: out.path)
+        while let item = enumerator?.nextObject() as? String {
+            let full = (out.path as NSString).appendingPathComponent(item)
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: full, isDirectory: &isDir), !isDir.boolValue else { continue }
+            seen.insert(item)
+            if let expected = contents[item] {
+                #expect(try String(contentsOfFile: full, encoding: .utf8) == expected)
+            }
+        }
+        #expect(seen == Set(names))
+    }
+
+    @Test func moveToFolderExpandsDateTokensFromTheFileCreationDate() throws {
+        let dir = TempDir()
+        let file = dir.file("invoice.pdf", contents: "hello")
+        let calendar = Calendar.current
+        let created = calendar.date(from: DateComponents(year: 2026, month: 3, day: 5, hour: 12))!
+        try FileManager.default.setAttributes([.creationDate: created], ofItemAtPath: file)
+        let destination = dir.dir("Archive/{year}/{month}-{day}")
+
+        let action = makeAction(.moveToFolder, .object([ActionParam.destination: .string(destination)]))
+        let plan = try ActionExecutor.plan(action, path: file)
+        let expectedDir = (dir.path as NSString).appendingPathComponent("Archive/2026/03-05")
+        #expect(plan.targetPath == (expectedDir as NSString).appendingPathComponent("invoice.pdf"))
+
+        let applied = try ActionExecutor.execute(action, path: file)
+        #expect(applied.newPath == (expectedDir as NSString).appendingPathComponent("invoice.pdf"))
+        #expect(try String(contentsOfFile: applied.newPath, encoding: .utf8) == "hello")
+    }
+
+    @Test func copyToFolderExpandsDateTokensAndKeepsTheSource() throws {
+        let dir = TempDir()
+        let file = dir.file("shot.png", contents: "png")
+        let calendar = Calendar.current
+        let created = calendar.date(from: DateComponents(year: 2026, month: 7, day: 14, hour: 12))!
+        try FileManager.default.setAttributes([.creationDate: created], ofItemAtPath: file)
+        let destination = dir.dir("Screenshots/{year}/{month}")
+
+        let action = makeAction(.copyToFolder, .object([ActionParam.destination: .string(destination)]))
+        let applied = try ActionExecutor.execute(action, path: file)
+
+        #expect(FileManager.default.fileExists(atPath: file))
+        #expect(applied.copiedPath == (dir.path as NSString).appendingPathComponent("Screenshots/2026/07/shot.png"))
+    }
+
+    @Test func destinationStartingWithTildeResolvesToTheHomeFolder() throws {
+        let dir = TempDir()
+        let file = dir.file("receipt.pdf", contents: "pdf")
+        let year = Calendar.current.component(.year, from: Date())
+        let home = NSHomeDirectory() as NSString
+
+        for (destination, expected) in [("~/Archive", "Archive"), ("~/Archive/{year}", "Archive/\(year)")] {
+            for kind in [ActionKind.moveToFolder, .copyToFolder] {
+                let plan = try ActionExecutor.plan(makeAction(kind, .object([ActionParam.destination: .string(destination)])), path: file)
+                #expect(plan.targetPath == (home.appendingPathComponent(expected) as NSString).appendingPathComponent("receipt.pdf"))
+            }
+        }
+    }
+
+    @Test func destinationTokensWithUnknownBracesAreLeftAlone() throws {
+        let dir = TempDir()
+        let file = dir.file("note.txt", contents: "hi")
+        let destination = dir.dir("Keep {literal}/{year}")
+
+        let applied = try ActionExecutor.execute(makeAction(.moveToFolder, .object([ActionParam.destination: .string(destination)])), path: file)
+
+        let expectedDir = (dir.path as NSString).appendingPathComponent("Keep {literal}/\(Calendar.current.component(.year, from: Date()))")
+        #expect(applied.newPath == (expectedDir as NSString).appendingPathComponent("note.txt"))
+    }
+
+    @Test func uncompressZipExtractsSingleRootItemAndMovesArchiveAway() throws {
+        let dir = TempDir()
+        let staging = dir.dir("staging")
+        try "hello".write(toFile: (staging as NSString).appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
+        let zip = (dir.path as NSString).appendingPathComponent("download.zip")
+        try makeZip(in: staging, items: ["report.txt"], destination: zip)
+        try FileManager.default.removeItem(atPath: staging)
+
+        let action = makeAction(.uncompress, .object([:]))
+        let plan = try ActionExecutor.plan(action, path: zip)
+        #expect(plan.targetPath == (dir.path as NSString).appendingPathComponent("report.txt"))
+        #expect(plan.finalPath == plan.targetPath)
+
+        let applied = try ActionExecutor.execute(action, path: zip)
+
+        #expect(applied.newPath == (dir.path as NSString).appendingPathComponent("report.txt"))
+        #expect(try String(contentsOfFile: applied.newPath, encoding: .utf8) == "hello")
+        #expect(!FileManager.default.fileExists(atPath: zip))
+        #expect(applied.undo == .none)
+    }
+
+    @Test func uncompressZipWithMultipleRootItemsExtractsIntoWrapperFolder() throws {
+        let dir = TempDir()
+        let staging = dir.dir("staging")
+        try "a".write(toFile: (staging as NSString).appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try "b".write(toFile: (staging as NSString).appendingPathComponent("b.txt"), atomically: true, encoding: .utf8)
+        let zip = (dir.path as NSString).appendingPathComponent("bundle.zip")
+        try makeZip(in: staging, items: ["a.txt", "b.txt"], destination: zip)
+        try FileManager.default.removeItem(atPath: staging)
+
+        let applied = try ActionExecutor.execute(makeAction(.uncompress, .object([:])), path: zip)
+
+        #expect(applied.newPath == (dir.path as NSString).appendingPathComponent("bundle"))
+        #expect(FileManager.default.fileExists(atPath: (applied.newPath as NSString).appendingPathComponent("a.txt")))
+        #expect(FileManager.default.fileExists(atPath: (applied.newPath as NSString).appendingPathComponent("b.txt")))
+        #expect(!FileManager.default.fileExists(atPath: zip))
+    }
+
+    @Test func uncompressSkipConflictPlansAndDoesNotExtract() throws {
+        let dir = TempDir()
+        _ = dir.file("report.txt", contents: "existing")
+        let staging = dir.dir("staging")
+        try "new".write(toFile: (staging as NSString).appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
+        let zip = (dir.path as NSString).appendingPathComponent("download.zip")
+        try makeZip(in: staging, items: ["report.txt"], destination: zip)
+        try FileManager.default.removeItem(atPath: staging)
+
+        let action = makeAction(.uncompress, .object([ActionParam.onConflict: .string(MoveConflictResolution.skip.rawValue)]))
+        let plan = try ActionExecutor.plan(action, path: zip)
+
+        #expect(plan.status == .wouldSkip)
+        #expect(plan.isTerminal)
+        #expect(plan.finalPath == zip)
+        #expect(try String(contentsOfFile: (dir.path as NSString).appendingPathComponent("report.txt"), encoding: .utf8) == "existing")
+    }
+
     @Test func revertMoveRestoresFileToOriginalLocation() throws {
         let dir = TempDir()
         let file = dir.file("note.txt", contents: "hello")
@@ -179,6 +437,51 @@ import Foundation
         try ActionExecutor.revert(applied.undo)
         #expect(FileManager.default.fileExists(atPath: file))
         #expect(!FileManager.default.fileExists(atPath: applied.newPath))
+    }
+
+    @Test func openApplicationPlanPassesFileByDefault() throws {
+        let dir = TempDir()
+        let file = dir.file("note.txt", contents: "hello")
+        let action = makeAction(.openApplication, .object([
+            ActionParam.applicationPath: .string("/Applications/TextEdit.app"),
+        ]))
+
+        let plan = try ActionExecutor.plan(action, path: file)
+
+        #expect(plan.description == "Open TextEdit with file")
+        #expect(plan.status == .wouldRun)
+        #expect(plan.finalPath == file)
+        #expect(!plan.isTerminal)
+        #expect(ActionExecutor.passesFileToApplication(action))
+    }
+
+    @Test func openApplicationPlanCanDisablePassingMatchedFile() throws {
+        let dir = TempDir()
+        let file = dir.file("note.txt", contents: "hello")
+        let action = makeAction(.openApplication, .object([
+            ActionParam.applicationPath: .string("/Applications/TextEdit.app"),
+            ActionParam.passFileToApplication: .bool(false),
+        ]))
+
+        let plan = try ActionExecutor.plan(action, path: file)
+
+        #expect(plan.description == "Open TextEdit")
+        #expect(plan.status == .wouldRun)
+        #expect(plan.finalPath == file)
+        #expect(!plan.isTerminal)
+        #expect(!ActionExecutor.passesFileToApplication(action))
+    }
+
+    @Test func openApplicationPlanSkipsEmptyApp() throws {
+        let dir = TempDir()
+        let file = dir.file("note.txt", contents: "hello")
+        let action = makeAction(.openApplication, .object([:]))
+
+        let plan = try ActionExecutor.plan(action, path: file)
+
+        #expect(plan.description == "Open application")
+        #expect(plan.status == .wouldSkip)
+        #expect(plan.finalPath == file)
     }
 
     // MARK: - Clean file name
@@ -238,6 +541,28 @@ import Foundation
         #expect(ActionExecutor.cleanFileName("L'Été 2024 (Report).txt") == "lete-2024-report.txt")
         #expect(ActionExecutor.cleanFileName("Déjà_Vu - Copy (2).txt") == "deja-vu-copy-2.txt")
         #expect(ActionExecutor.cleanFileName("MyCafé_Report (final)") == "my-cafe-report-final")
+    }
+
+    @Test func cleanFileNameTransliteratesGermanSharpS() {
+        #expect(ActionExecutor.cleanFileName("straße") == "strasse")
+        #expect(ActionExecutor.cleanFileName("GROß") == "gross")
+    }
+
+    @Test func cleanFileNameTransliteratesCyrillic() {
+        #expect(ActionExecutor.cleanFileName("Привет") == "privet")
+        #expect(ActionExecutor.cleanFileName("Москва") == "moskva")
+    }
+
+    @Test func cleanFileNameTransliteratesChinese() {
+        #expect(ActionExecutor.cleanFileName("中文文件") == "zhong-wen-wen-jian")
+    }
+
+    @Test func cleanFileNameTransliteratesArabic() {
+        #expect(ActionExecutor.cleanFileName("مرحبا بالعالم") == "mrhba-balalm")
+    }
+
+    @Test func cleanFileNameTransliteratesMixedScripts() {
+        #expect(ActionExecutor.cleanFileName("Café München 中文.txt") == "cafe-munchen-zhong-wen.txt")
     }
 
     @Test func cleanFileNameWithOptionRenamesFileCorrectly() throws {
@@ -398,5 +723,18 @@ import Foundation
             "run", "Archive", "--input-path", "/tmp/a.txt",
         ])
         #expect(ShortcutRunner.arguments(name: "Archive", input: .none) == ["run", "Archive"])
+    }
+}
+
+func makeZip(in directory: String, items: [String], destination: String) throws {
+    let zip = Process()
+    zip.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+    zip.currentDirectoryURL = URL(fileURLWithPath: directory)
+    zip.arguments = ["-r", "-q", destination] + items
+    zip.standardError = FileHandle.nullDevice
+    try zip.run()
+    zip.waitUntilExit()
+    if zip.terminationStatus != 0 {
+        throw ActionError("zip exited with status \(zip.terminationStatus)")
     }
 }

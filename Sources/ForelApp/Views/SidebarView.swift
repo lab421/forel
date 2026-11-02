@@ -29,6 +29,14 @@ struct SidebarView: View {
                 StatusBadge(active: !model.paused)
             }
 
+            GlassCard {
+                ToggleRow(
+                    title: "Watching",
+                    subtitle: model.paused ? "Paused — new files are ignored" : "Rules run automatically",
+                    isOn: watchingBinding
+                )
+            }
+
             HStack {
                 SectionLabel(title: "Watched Folders")
                 Spacer()
@@ -83,12 +91,22 @@ struct SidebarView: View {
 
             Spacer(minLength: 0)
 
+            if !model.isPro { MonthlyFileUsageView() }
+
             HStack {
-                FooterLink(title: "Settings", systemImage: "gearshape") {
-                    model.detailRoute = .settings
+                if #available(macOS 14.0, *) {
+                    SettingsFooterLink()
+                } else {
+                    FooterLink(title: "Settings", systemImage: "gearshape") {
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    }
+                    .help("Settings")
                 }
-                .help("Settings")
                 Spacer()
+                FooterLink(title: "Activity", systemImage: "clock.arrow.circlepath") {
+                    model.showActivity()
+                }
+                .help("Activity history")
             }
         }
         .padding(16)
@@ -124,6 +142,8 @@ struct SidebarView: View {
 
     private func folderCard(_ folder: WatchedFolder) -> some View {
         let isSelected = model.selectedFolderId == folder.id
+        let isAllowed = FreePlan.allows(folderID: folder.id, folders: model.folders, isPro: model.isPro)
+        let isActive = folder.enabled && isAllowed
         return HStack(spacing: 10) {
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 11))
@@ -131,17 +151,17 @@ struct SidebarView: View {
 
             ZStack {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(ForelTheme.accent.opacity(folder.enabled ? 0.18 : 0.08))
+                    .fill(isActive ? ForelTheme.accent.opacity(0.18) : ForelTheme.secondaryText.opacity(0.08))
                 Image(systemName: "folder.fill")
                     .font(.system(size: 12))
-                    .foregroundStyle(folder.enabled ? ForelTheme.accent : ForelTheme.secondaryText)
+                    .foregroundStyle(isActive ? ForelTheme.accent : ForelTheme.secondaryText)
             }
             .frame(width: 26, height: 26)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text((folder.path as NSString).lastPathComponent)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(ForelTheme.primaryText)
+                    .foregroundStyle(isAllowed ? ForelTheme.primaryText : ForelTheme.secondaryText)
                     .lineLimit(1)
                 Text((folder.path as NSString).deletingLastPathComponent)
                     .font(.system(size: 10))
@@ -152,18 +172,26 @@ struct SidebarView: View {
 
             Spacer(minLength: 4)
 
-            ForelSwitch(isOn: enabledBinding(folder), compact: true)
+            if !isAllowed {
+                Label("Pro", systemImage: "lock.fill")
+                    .font(.caption)
+                    .foregroundStyle(ForelTheme.pro)
+            }
+            ForelSwitch(isOn: isAllowed ? enabledBinding(folder) : .constant(false), compact: true)
+                .disabled(!isAllowed)
+                .opacity(isAllowed ? 1 : 0.5)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isSelected ? ForelTheme.accent.opacity(0.14) : ForelTheme.surface)
+                .fill(isSelected ? (isAllowed ? ForelTheme.accent : ForelTheme.secondaryText).opacity(0.14) : ForelTheme.surface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isSelected ? ForelTheme.accent.opacity(0.5) : ForelTheme.surfaceBorder)
+                .strokeBorder(isSelected ? (isAllowed ? ForelTheme.accent : ForelTheme.secondaryText).opacity(0.5) : ForelTheme.surfaceBorder)
         )
+        .help(isAllowed ? folder.path : "Reorder folders or activate Pro to use this folder.")
         .contentShape(Rectangle())
         .onTapGesture {
             model.selectedFolderId = folder.id
@@ -171,6 +199,11 @@ struct SidebarView: View {
             model.reloadRules()
         }
         .contextMenu {
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: folder.path)])
+            }
+            Divider()
+            Button("Change path of folder…") { changeFolder(folder) }
             Button("Remove", role: .destructive) { model.removeFolder(folder) }
         }
     }
@@ -199,10 +232,40 @@ struct SidebarView: View {
         Binding(get: { folder.enabled }, set: { model.toggleFolder(folder, enabled: $0) })
     }
 
+    private var watchingBinding: Binding<Bool> {
+        Binding(get: { !model.paused }, set: { enabled in
+            if enabled == model.paused {
+                model.togglePaused()
+            }
+        })
+    }
+
     private func addFolder() {
+        guard model.canAddFolder else {
+            model.proUpgrade = .folders
+            return
+        }
         if let path = FolderPicker.choose() {
             model.addFolder(path: path)
         }
+    }
+
+    private func changeFolder(_ folder: WatchedFolder) {
+        if let path = FolderPicker.choose(startingAt: folder.path) {
+            model.updateFolderPath(folder, path: path)
+        }
+    }
+}
+
+@available(macOS 14.0, *)
+private struct SettingsFooterLink: View {
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        FooterLink(title: "Settings", systemImage: "gearshape") {
+            openSettings()
+        }
+        .help("Settings")
     }
 }
 

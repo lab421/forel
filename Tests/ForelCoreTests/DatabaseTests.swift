@@ -24,6 +24,21 @@ import SQLite3
         try Database(path: ":memory:")
     }
 
+    @Test func countRulesIncludesEveryWatchedFolder() throws {
+        let db = try makeDB()
+        #expect(try db.countRules() == 0)
+
+        let first = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")
+        let second = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")
+        try db.insertFolder(first)
+        try db.insertFolder(second)
+        try db.insertRule(makeRule(folderId: first.id, name: "first A"))
+        try db.insertRule(makeRule(folderId: first.id, name: "first B"))
+        try db.insertRule(makeRule(folderId: second.id, name: "second A"))
+
+        #expect(try db.countRules() == 3)
+    }
+
     @Test func ruleRoundTripPreservesTagAndColorVariants() throws {
         let db = try makeDB()
         let folder = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")
@@ -89,6 +104,7 @@ import SQLite3
         rule.conditions = [
             makeCondition(.createdAt, .withinLast, "7 weeks", ruleId: rule.id),
             makeCondition(.dateModified, .before, "2026-06-17", ruleId: rule.id),
+            makeCondition(.dateAdded, .olderThan, "2 hours", ruleId: rule.id),
             makeCondition(.sizeBytes, .greaterThan, "12 MB", ruleId: rule.id),
             makeCondition(.kind, .isNot, "archive", ruleId: rule.id),
         ]
@@ -96,9 +112,9 @@ import SQLite3
 
         let loaded = try #require(db.listRules(folderId: folder.id).first)
         #expect(loaded.recursionDepth == 3)
-        #expect(loaded.conditions.map(\.kind) == [.createdAt, .dateModified, .sizeBytes, .kind])
-        #expect(loaded.conditions.map(\.operator) == [.withinLast, .before, .greaterThan, .isNot])
-        #expect(loaded.conditions.map(\.value) == ["7 weeks", "2026-06-17", "12 MB", "archive"])
+        #expect(loaded.conditions.map(\.kind) == [.createdAt, .dateModified, .dateAdded, .sizeBytes, .kind])
+        #expect(loaded.conditions.map(\.operator) == [.withinLast, .before, .olderThan, .greaterThan, .isNot])
+        #expect(loaded.conditions.map(\.value) == ["7 weeks", "2026-06-17", "2 hours", "12 MB", "archive"])
 
         loaded.conditions.forEach { condition in
             #expect(condition.ruleId == rule.id)
@@ -115,6 +131,27 @@ import SQLite3
 
         let loaded = try #require(db.listRules(folderId: folder.id).first)
         #expect(loaded.recursionDepth == nil)
+    }
+
+    @Test func openApplicationActionSurvivesDatabaseRoundTrip() throws {
+        let db = try makeDB()
+        let folder = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)")
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "open in app")
+        rule.actions = [
+            makeAction(.openApplication, .object([
+                ActionParam.applicationPath: .string("/Applications/TextEdit.app"),
+                ActionParam.passFileToApplication: .bool(true),
+            ]), position: 0, ruleId: rule.id),
+        ]
+
+        try db.insertRule(rule)
+
+        let loaded = try #require(db.listRules(folderId: folder.id).first)
+        let action = try #require(loaded.actions.first)
+        #expect(action.kind == .openApplication)
+        #expect(action.params[ActionParam.applicationPath]?.stringValue == "/Applications/TextEdit.app")
+        #expect(action.params[ActionParam.passFileToApplication]?.boolValue == true)
     }
 
     @Test func insertFolderAppendsToOrder() throws {
@@ -159,6 +196,41 @@ import SQLite3
         #expect(throws: (any Error).self) {
             try db.reorderFolders([first.id, UUID().uuidString])
         }
+    }
+
+    @Test func updateFolderPathPreservesFolderRulesAndOrder() throws {
+        let db = try makeDB()
+        let first = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)-first")
+        let second = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)-second")
+        try db.insertFolder(first)
+        try db.insertFolder(second)
+        try db.insertRule(makeRule(folderId: first.id, name: "kept rule"))
+
+        let updatedPath = "/tmp/forel-test-\(UUID().uuidString)-updated"
+        try db.updateFolderPath(first.id, path: updatedPath)
+
+        let folders = try db.listFolders()
+        #expect(folders.map(\.id) == [first.id, second.id])
+        #expect(folders.map(\.path) == [updatedPath, second.path])
+        #expect(folders.map(\.priority) == [0, 1])
+
+        let rules = try db.listRules(folderId: first.id)
+        #expect(rules.map(\.name) == ["kept rule"])
+    }
+
+    @Test func updateFolderPathRejectsDuplicatePath() throws {
+        let db = try makeDB()
+        let first = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)-first")
+        let second = WatchedFolder(path: "/tmp/forel-test-\(UUID().uuidString)-second")
+        try db.insertFolder(first)
+        try db.insertFolder(second)
+
+        #expect(throws: (any Error).self) {
+            try db.updateFolderPath(first.id, path: second.path)
+        }
+
+        let folders = try db.listFolders()
+        #expect(folders.map(\.path) == [first.path, second.path])
     }
 
     @Test func insertRuleAppendsToFolderOrder() throws {
@@ -319,6 +391,50 @@ import SQLite3
         let filtered = try db.listHistory(limit: 10, directoryPath: "/tmp/inbox")
         #expect(try db.countHistory(directoryPath: "/tmp/inbox") == 2)
         #expect(filtered.map(\.id) == ["newer", "older"])
+    }
+
+    @Test func ruleRunStatsCountsSuccessAndFailedWithinWindowPerRule() throws {
+        let db = try makeDB()
+        let now = ISO8601DateFormatter.forelUTC.string(from: Date())
+        let tooOld = ISO8601DateFormatter.forelUTC.string(from: Date().addingTimeInterval(-40 * 86400))
+        let entries = [
+            HistoryEntry(
+                batchId: "b1", ruleId: "rule-a", ruleName: "Archive PDFs", actionKind: .moveToFolder,
+                originalPath: "/a1", resultPath: "/a1-out", undo: .object(["kind": .string("none")]),
+                reversible: true, status: .applied, createdAt: now
+            ),
+            HistoryEntry(
+                batchId: "b1", ruleId: "rule-a", ruleName: "Archive PDFs", actionKind: .moveToFolder,
+                originalPath: "/a2", resultPath: "/a2-out", undo: .object(["kind": .string("none")]),
+                reversible: true, status: .undone, createdAt: now
+            ),
+            HistoryEntry(
+                batchId: "b1", ruleId: "rule-a", ruleName: "Archive PDFs", actionKind: .moveToFolder,
+                originalPath: "/a3", resultPath: "/a3-out", undo: .object(["kind": .string("none")]),
+                reversible: false, status: .failed, createdAt: now
+            ),
+            HistoryEntry(
+                batchId: "b2", ruleId: "rule-b", ruleName: "Run Script", actionKind: .runScript,
+                originalPath: "/b1", resultPath: "/b1", undo: .object(["kind": .string("none")]),
+                reversible: false, status: .failed, createdAt: now
+            ),
+            // Older than the 30-day window: must not be counted.
+            HistoryEntry(
+                batchId: "b3", ruleId: "rule-a", ruleName: "Archive PDFs", actionKind: .moveToFolder,
+                originalPath: "/old", resultPath: "/old-out", undo: .object(["kind": .string("none")]),
+                reversible: true, status: .applied, createdAt: tooOld
+            ),
+        ]
+        try db.insertHistoryEntries(entries)
+
+        let stats = try db.ruleRunStats(sinceDays: 30).sorted { $0.ruleName < $1.ruleName }
+        #expect(stats.count == 2)
+        #expect(stats[0].ruleName == "Archive PDFs")
+        #expect(stats[0].successCount == 2)
+        #expect(stats[0].failedCount == 1)
+        #expect(stats[1].ruleName == "Run Script")
+        #expect(stats[1].successCount == 0)
+        #expect(stats[1].failedCount == 1)
     }
 
     @Test func migrationRejectsNewerSchemaVersions() throws {

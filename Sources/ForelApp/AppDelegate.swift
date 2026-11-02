@@ -15,27 +15,93 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import AppKit
+import Combine
+import ForelCore
+import Lab421Licensing
 
 /// Closing the window hides it instead of quitting; Forel keeps running in
 /// the menu bar. Quit is only available from the status item menu.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    /// Set by `ForelMacApp` as soon as the model and updater exist, so the
+    /// menu bar icon can be created at launch instead of waiting for the main
+    /// window's `onAppear`: macOS doesn't open that window when it starts
+    /// Forel as a login item, so `onAppear` only fires once the user opens it.
+    static var launchContext: (model: AppModel, updater: UpdaterManager)?
+
     var statusBarController: StatusBarController?
     private var model: AppModel?
     private var updater: UpdaterManager?
+    let license = ForelLicenseManager(
+        isEnabled: BuildCapabilities.current.usesDirectLicensing,
+        productID: ForelLicensing.productID,
+        appName: ForelLicensing.appName,
+        deviceNameFallback: "This Mac",
+        secureStore: ForelKeychainLicenseStore(
+            service: ForelLicensing.keychainService,
+            userDefaultsSuiteName: ForelLicensing.userDefaultsSuite
+        ),
+        deviceIdentifierProvider: HardwareDeviceIdentifierProvider(userDefaultsSuiteName: ForelLicensing.userDefaultsSuite),
+        offlineTokenPublicKeyRaw: ForelLicensing.productionPublicKeyRaw,
+        baseURL: ForelLicensing.baseURL
+    )
+    let settingsNavigation = SettingsNavigation()
+    private var subscriptions = Set<AnyCancellable>()
+    /// The window hosting `ContentView`, reported by `ForelMacApp` through
+    /// `mainWindowDidAttach`. Tracked explicitly rather than looked up in
+    /// `NSApp.windows`, which also holds the menu bar item's own window and
+    /// the Settings window, in no useful order.
+    private weak var mainWindow: NSWindow?
+    /// The main window was asked for before it existed (Forel started as a
+    /// login item); bring it forward as soon as SwiftUI has created it.
+    private var activatesMainWindowWhenAttached = false
+    private var licenseApplied = false
 
     /// `@NSApplicationDelegateAdaptor` requires a zero-argument initializer;
     /// the app's model/updater are handed in afterward once SwiftUI has
-    /// constructed them, from `ForelMacApp`'s `onAppear`.
+    /// constructed them, from `ForelMacApp`'s `onAppear` (or from
+    /// `launchContext` at launch, whichever comes first).
     func configure(model: AppModel, updater: UpdaterManager) {
         self.model = model
         self.updater = updater
         model.applyDockIconPreference()
-        configureMainWindow()
-        if statusBarController == nil {
-            setUpStatusBar()
-        }
+        setUpStatusBar()
         showMainWindowOnFirstLaunch()
+        applyLicense()
+    }
+
+    /// Hands the license to the model once, at launch. Not tied to the main
+    /// window: started as a login item, Forel has none until the user opens
+    /// it, and a Pro license must not be treated as Free until then.
+    private func applyLicense() {
+        guard !licenseApplied, let model else { return }
+        licenseApplied = true
+        model.setLicenseAccessLimited(!license.hasAccess)
+        // `dropFirst()` skips the state already accounted for above, so a
+        // fresh subscriber doesn't double-apply the state it was created
+        // with — matching the `hasAccess` snapshot immediately before this.
+        license.$state
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] state in
+                guard let self else { return }
+                self.model?.setLicenseAccessLimited(state == .free)
+            }
+            .store(in: &subscriptions)
+        license.start()
+    }
+
+    /// Called whenever `ContentView` lands in a window — at launch, or later
+    /// when the window is first created by reopening a login-item launch.
+    func mainWindowDidAttach(_ window: NSWindow) {
+        mainWindow = window
+        window.delegate = self
+        window.title = "Forel"
+        window.titleVisibility = .hidden
+        if activatesMainWindowWhenAttached {
+            activatesMainWindowWhenAttached = false
+            WindowActivation.activateSoon(window, showsDockIcon: model?.showDockIcon != false)
+        }
     }
 
     /// A brand-new install otherwise only shows up as a menu bar icon
@@ -67,30 +133,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
 
+        if model == nil, let context = Self.launchContext {
+            model = context.model
+            updater = context.updater
+        }
+
         // Running as a bare dev executable (no packaged .app/Info.plist) shows
         // a generic Dock icon otherwise; set it explicitly from the bundled artwork.
         if let appIcon = AppIcons.appIcon {
             NSApp.applicationIconImage = appIcon
         }
 
-        if let window = NSApp.windows.first {
-            configureMainWindow(window)
+        // The status item doesn't exist yet, so the only window there can be
+        // at this point is the main one.
+        if mainWindow == nil, let window = NSApp.windows.first {
+            mainWindowDidAttach(window)
         }
         model?.applyDockIconPreference()
-        if model != nil, updater != nil {
-            setUpStatusBar()
-        }
-    }
-
-    private func configureMainWindow() {
-        guard let window = NSApp.windows.first(where: { !($0 is NSPanel) }) else { return }
-        configureMainWindow(window)
-    }
-
-    private func configureMainWindow(_ window: NSWindow) {
-        window.delegate = self
-        window.title = "Forel"
-        window.titleVisibility = .hidden
+        setUpStatusBar()
+        applyLicense()
     }
 
     /// Opening Forel straight from the mounted installer disk image (before
@@ -115,33 +176,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         guard !flag else { return true }
+        guard mainWindow != nil else {
+            // Returning true lets SwiftUI create the window it skipped at
+            // launch; `mainWindowDidAttach` then brings it forward.
+            activatesMainWindowWhenAttached = true
+            return true
+        }
+        // The window exists but is hidden: show it ourselves, and return
+        // false so SwiftUI doesn't open a second one next to it.
         openMainWindow()
-        return true
+        return false
     }
 
     private func setUpStatusBar() {
-        guard let model, let updater else { return }
+        guard statusBarController == nil, let model, let updater else { return }
         statusBarController = StatusBarController(
             model: model,
             updater: updater,
-            window: NSApp.windows.first
+            license: license,
+            onOpenMainWindow: { [weak self] in self?.openMainWindow() },
+            onOpenLicense: { [weak self] in self?.prepareLicenseSettings() }
         )
     }
 
+    /// Selects the License tab and activates Forel before the quick panel
+    /// opens the Settings scene using SwiftUI's openSettings action.
+    private func prepareLicenseSettings() {
+        settingsNavigation.selectedCategory = .license
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     private func openMainWindow() {
-        let targetWindow = NSApp.windows.first { !($0 is NSPanel) }
-        // Called synchronously from SwiftUI's onAppear, while the window is
-        // still mid-appearance: activating right here races the window
-        // server and can leave Forel behind whatever app was frontmost.
-        // Deferring a tick (and again shortly after, since the regular/
-        // accessory policy switch itself needs a moment to take effect)
-        // matches what `WindowActivationBridge` already does elsewhere.
-        DispatchQueue.main.async {
-            WindowActivation.activate(targetWindow, showsDockIcon: self.model?.showDockIcon != false)
+        guard let mainWindow else {
+            // Started as a login item, Forel has no main window yet; reopening
+            // the app is what makes SwiftUI create it.
+            activatesMainWindowWhenAttached = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: NSWorkspace.OpenConfiguration())
+            return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            WindowActivation.activate(targetWindow, showsDockIcon: self.model?.showDockIcon != false)
-        }
+        WindowActivation.activateSoon(mainWindow, showsDockIcon: model?.showDockIcon != false)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

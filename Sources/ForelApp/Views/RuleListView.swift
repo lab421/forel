@@ -15,32 +15,87 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import SwiftUI
+import AppKit
 import ForelCore
 
 struct RuleListView: View {
     @EnvironmentObject var model: AppModel
     @State private var editingRule: Rule?
+    @State private var selectedRuleIDs: Set<String> = []
+    @State private var copyRequest: RuleCopyRequest?
 
     private var selectedFolder: WatchedFolder? {
         model.folders.first { $0.id == model.selectedFolderId }
     }
 
     var body: some View {
+        GeometryReader { proxy in
+            content
+                .sheet(item: $editingRule) { rule in
+                    RuleEditorView(rule: rule, preferredHeight: editorHeight(for: proxy.size.height)) { saved in
+                        if model.saveRule(saved) { editingRule = nil }
+                    } onCancel: {
+                        editingRule = nil
+                    }
+                }
+                .sheet(item: $model.previewResult) { result in
+                    PreviewSheet(result: result) { model.previewResult = nil }
+                }
+                .sheet(item: $copyRequest) { request in
+                    CopyRulesSheet(
+                        ruleCount: request.ruleIDs.count,
+                        sourceFolderID: request.sourceFolderID,
+                        folders: model.folders, isPro: model.isPro,
+                        onCopy: { destination in
+                            try model.copyRules(request.ruleIDs, fromFolderID: request.sourceFolderID, toFolderID: destination)
+                            copyRequest = nil
+                        },
+                        onCancel: { copyRequest = nil }
+                    )
+                }
+        }
+        .onChange(of: model.selectedFolderId) { _, _ in selectedRuleIDs.removeAll() }
+        .onChange(of: model.rules.map(\.id)) { _, ids in selectedRuleIDs.formIntersection(ids) }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            actionBar
-
-            if let runNowMessage = model.runNowMessage {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text(runNowMessage)
+            if let notice = model.planNotice {
+                HStack {
+                    Text(notice)
+                    .font(.caption)
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Discover Pro") {
+                        model.proUpgrade = model.selectedFolderIsAllowed ? .monthlyFiles : .folders
+                    }
+                        .buttonStyle(.link)
                 }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(ForelTheme.success)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(ForelTheme.success.opacity(0.14)))
-                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            if model.paused, model.selectedFolderId != nil {
+                pausedBanner
+            }
+            if !model.rules.isEmpty {
+                actionBar
+            }
+            if !selectedRuleIDs.isEmpty {
+                HStack {
+                    Text("\(selectedRuleIDs.count) rule\(selectedRuleIDs.count == 1 ? "" : "s") selected")
+                        .font(.caption)
+                        .foregroundStyle(ForelTheme.secondaryText)
+                    Button("Copy rules to folder…") { requestCopy(selectedRuleIDs) }
+                        .buttonStyle(SecondaryButtonStyle())
+                    Button("Deselect all") { selectedRuleIDs.removeAll() }
+                        .buttonStyle(SecondaryButtonStyle())
+                    Spacer()
+                }
+            }
+
+            if let runNowMessage = model.runNowMessageForSelectedFolder {
+                runNowBanner(runNowMessage)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             if model.rules.isEmpty {
@@ -50,9 +105,38 @@ struct RuleListView: View {
                     Spacer(minLength: 0)
                 }
             } else {
-                List {
+                List(selection: $selectedRuleIDs) {
                     ForEach(Array(model.rules.enumerated()), id: \.element.id) { index, rule in
-                        RuleCard(rule: rule, order: index + 1, onEdit: { editingRule = rule })
+                        VStack(alignment: .leading, spacing: 4) {
+                            if !model.selectedFolderIsAllowed || (!model.isPro && FreePlan.requiredFeature(for: rule) != nil) {
+                                Button("Kept for Pro — not running") {
+                                    if let feature = FreePlan.requiredFeature(for: rule) {
+                                        model.proUpgrade = .feature(feature)
+                                    } else {
+                                        model.proUpgrade = .folders
+                                    }
+                                }
+                                    .buttonStyle(.link)
+                                    .font(.caption)
+                                    .foregroundStyle(ForelTheme.secondaryText)
+                            }
+                            if !rule.isSupported {
+                                Label("Created with a newer version of Forel — not running. Update Forel to run or edit it.", systemImage: "exclamationmark.triangle")
+                                    .font(.caption)
+                                    .foregroundStyle(ForelTheme.secondaryText)
+                            }
+                            RuleCard(
+                            rule: rule,
+                            order: index + 1,
+                            isExpanded: model.isRuleExpanded(rule),
+                            isSelected: selectedRuleIDs.contains(rule.id),
+                            onToggleExpanded: { model.toggleRuleExpanded(rule) },
+                            onEdit: { editingRule = rule },
+                            onCopy: { requestCopy([rule.id]) }
+                            )
+                        }
+                            .tag(rule.id)
+                            .background(RuleListSelectionAppearance())
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -62,23 +146,25 @@ struct RuleListView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.never)
+                .contextMenu(forSelectionType: String.self) { ids in
+                    Button("Copy rules to folder…") { requestCopy(ids) }
+                        .disabled(ids.isEmpty)
+                }
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: model.runNowMessage)
+        .animation(.easeInOut(duration: 0.25), value: model.runNowMessageForSelectedFolder)
         .padding(16)
         .frame(minWidth: 460)
         .background(ForelTheme.background)
-        .sheet(item: $editingRule) { rule in
-            RuleEditorView(rule: rule) { saved in
-                model.saveRule(saved)
-                editingRule = nil
-            } onCancel: {
-                editingRule = nil
-            }
-        }
-        .sheet(item: $model.previewResult) { result in
-            PreviewSheet(result: result) { model.previewResult = nil }
-        }
+    }
+
+    private func editorHeight(for availableHeight: CGFloat) -> CGFloat {
+        max(680, availableHeight - 64)
+    }
+
+    private func requestCopy(_ ruleIDs: Set<String>) {
+        guard let sourceFolderID = model.selectedFolderId, !ruleIDs.isEmpty else { return }
+        copyRequest = RuleCopyRequest(sourceFolderID: sourceFolderID, ruleIDs: ruleIDs)
     }
 
     private func moveRules(from source: IndexSet, to destination: Int) {
@@ -87,17 +173,48 @@ struct RuleListView: View {
         model.reorderRules(ids)
     }
 
+    @ViewBuilder
+    private func runNowBanner(_ message: AppModel.RunNowMessage) -> some View {
+        let tint = message.hasFailures ? Color.orange : ForelTheme.success
+        HStack(spacing: 6) {
+            Image(systemName: message.hasFailures ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+            Text(message.text)
+            if message.hasFailures {
+                Button {
+                    model.dismissRunNowMessage()
+                    model.showActivity(forFolder: message.folderId)
+                } label: {
+                    Text("Show in Activity").underline()
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 4)
+                Button {
+                    model.dismissRunNowMessage()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .help("Dismiss")
+            }
+        }
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(tint)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Capsule().fill(tint.opacity(0.14)))
+    }
+
     private var header: some View {
         ViewHeader(
             title: selectedFolder.map { ($0.path as NSString).lastPathComponent } ?? "Rules",
             subtitle: model.selectedFolderId == nil
                 ? "Select a folder to manage its rules"
-                : "\(model.rules.count) rule\(model.rules.count == 1 ? "" : "s") · drag to reorder",
+                : "\(model.rules.count) rules · drag to reorder",
             systemImage: selectedFolder == nil ? nil : "folder.fill"
         ) {
             Button {
-                model.reloadHistory()
-                model.detailRoute = .history
+                model.showActivity()
             } label: {
                 Image(systemName: "clock.arrow.circlepath")
             }
@@ -110,12 +227,17 @@ struct RuleListView: View {
         HStack(spacing: 8) {
             Button {
                 guard let folderId = model.selectedFolderId else { return }
+                guard model.canAddRule else {
+                    model.proUpgrade = .folders
+                    return
+                }
                 editingRule = Rule(folderId: folderId, name: "New Rule")
             } label: {
                 Label("New Rule", systemImage: "plus")
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(model.selectedFolderId == nil)
+            .disabled(!model.canAddRule)
+            .opacity(model.canAddRule ? 1 : 0.45)
 
             Button {
                 model.runNow()
@@ -130,7 +252,8 @@ struct RuleListView: View {
                 }
             }
             .buttonStyle(SecondaryButtonStyle())
-            .disabled(model.selectedFolderId == nil || model.isRunningNow)
+            .disabled(!model.selectedFolderIsAllowed || model.isRunningNow)
+            .opacity(model.selectedFolderIsAllowed ? 1 : 0.45)
 
             Button {
                 model.preview()
@@ -145,26 +268,86 @@ struct RuleListView: View {
                 }
             }
             .buttonStyle(SecondaryButtonStyle())
-            .disabled(model.selectedFolderId == nil || model.isPreviewing)
+            .disabled(!model.selectedFolderIsAllowed || model.isPreviewing)
+            .opacity(model.selectedFolderIsAllowed ? 1 : 0.45)
 
             Spacer()
         }
     }
 
+    private var pausedBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pause.circle.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.orange)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Automatic watching is paused")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(ForelTheme.primaryText)
+                Text("Rules only run when you choose Run Now.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(ForelTheme.secondaryText)
+            }
+
+            Spacer(minLength: 8)
+
+            Button("Resume Watching", action: model.togglePaused)
+                .buttonStyle(SecondaryButtonStyle())
+        }
+        .padding(.vertical, 9)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.orange.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.30))
+        )
+    }
+
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Image(systemName: model.selectedFolderId == nil ? "sidebar.left" : "list.bullet.rectangle")
-                .font(.system(size: 28))
-                .foregroundStyle(ForelTheme.secondaryText)
-            Text(model.selectedFolderId == nil ? "No folder selected" : "No rules yet")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(ForelTheme.primaryText)
-            Text(model.selectedFolderId == nil
-                 ? "Pick a folder on the left to see its rules."
-                 : "Create a rule to automate files in this folder.")
-                .font(.system(size: 11))
-                .foregroundStyle(ForelTheme.secondaryText)
-                .multilineTextAlignment(.center)
+            if model.selectedFolderId == nil {
+                Image(systemName: "sidebar.left")
+                    .font(.system(size: 28))
+                    .foregroundStyle(ForelTheme.secondaryText)
+                Text("No folder selected")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(ForelTheme.primaryText)
+                Text("Pick a folder on the left to see its rules.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .multilineTextAlignment(.center)
+            } else {
+                Image(systemName: "list.bullet.rectangle")
+                    .font(.system(size: 28))
+                    .foregroundStyle(ForelTheme.secondaryText)
+                Text("No rules yet")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(ForelTheme.primaryText)
+                Text(model.canAddRule
+                     ? "Create a rule to automate files in this folder."
+                     : "Reorder folders or activate Pro to add rules in this folder.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .multilineTextAlignment(.center)
+                Button {
+                    guard let folderId = model.selectedFolderId else { return }
+                    guard model.canAddRule else {
+                        model.proUpgrade = .folders
+                        return
+                    }
+                    editingRule = Rule(folderId: folderId, name: "New Rule")
+                } label: {
+                    Label("New Rule", systemImage: "plus")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .padding(.top, 8)
+                .disabled(!model.canAddRule)
+                .opacity(model.canAddRule ? 1 : 0.45)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 50)
@@ -175,61 +358,124 @@ private struct RuleCard: View {
     @EnvironmentObject var model: AppModel
     let rule: Rule
     let order: Int
+    let isExpanded: Bool
+    let isSelected: Bool
+    let onToggleExpanded: () -> Void
     let onEdit: () -> Void
+    let onCopy: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: 11))
                     .foregroundStyle(ForelTheme.secondaryText.opacity(0.6))
-                ZStack {
-                    Circle().fill(ForelTheme.accent.opacity(0.16))
-                    Text("\(order)")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(ForelTheme.accent)
+                    .frame(width: 18, height: 24)
+                    .pointingHandCursor()
+
+                Button(action: onToggleExpanded) {
+                    HStack(spacing: 8) {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(ForelTheme.secondaryText.opacity(0.75))
+                            .frame(width: 12)
+
+                        ZStack {
+                            Circle().fill(ForelTheme.accent.opacity(0.16))
+                            Text("\(order)")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(ForelTheme.accent)
+                        }
+                        .frame(width: 22, height: 22)
+                    }
+                    .frame(width: 54, height: 30)
+                    .contentShape(Rectangle())
                 }
-                .frame(width: 22, height: 22)
-            }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
 
-            Toggle("", isOn: enabledBinding)
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .tint(ForelTheme.accent)
-                .controlSize(.small)
+                Toggle("", isOn: enabledBinding)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .tint(ForelTheme.accent)
+                    .controlSize(.small)
+                    .disabled(!model.selectedFolderIsAllowed)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(rule.name)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(ForelTheme.primaryText)
-                HStack(spacing: 6) {
-                    metaPill(icon: "line.3.horizontal.decrease.circle", text: "\(rule.conditions.count)")
-                    metaPill(icon: "bolt.fill", text: "\(rule.actions.count)")
-                    Text(rule.conditionMatch == .all ? "match all" : "match any")
-                        .font(.system(size: 10))
-                        .foregroundStyle(ForelTheme.secondaryText)
+                Button(action: onToggleExpanded) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(rule.name)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(ForelTheme.primaryText)
+                        HStack(spacing: 6) {
+                            metaPill(icon: "line.3.horizontal.decrease.circle", text: "\(rule.conditions.count)")
+                            metaPill(icon: "bolt.fill", text: "\(rule.actions.count)")
+                            if let stats = model.runStats(for: rule) {
+                                let totalRuns = stats.successCount + stats.failedCount
+                                if totalRuns > 0 {
+                                    Text("\(totalRuns) run\(totalRuns == 1 ? "" : "s") (30d)")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(ForelTheme.secondaryText)
+                                        .help("Last 30 days: \(stats.successCount) successful, \(stats.failedCount) failed")
+                                }
+                            }
+                        }
+                    }
                 }
-            }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
 
-            Spacer(minLength: 8)
+                Spacer(minLength: 8)
 
-            Button(action: onEdit) {
-                Image(systemName: "pencil")
-            }
-            .buttonStyle(IconButtonStyle())
+                Button(action: onCopy) {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(IconButtonStyle())
+                .disabled(!rule.isSupported)
 
-            Button(role: .destructive) {
-                model.deleteRule(rule)
-            } label: {
-                Image(systemName: "trash")
+                Button(action: onEdit) {
+                    Image(systemName: "pencil")
+                }
+                .buttonStyle(IconButtonStyle())
+                .disabled(!rule.isSupported)
+
+                Button(role: .destructive) {
+                    model.deleteRule(rule)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(IconButtonStyle(role: .destructive))
             }
-            .buttonStyle(IconButtonStyle(role: .destructive))
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+
+            if isExpanded {
+                Divider()
+                    .overlay(ForelTheme.divider)
+                    .padding(.horizontal, 12)
+                Group {
+                    if rule.isSupported {
+                        RuleDetails(rule: rule)
+                    } else {
+                        // This version would show its guess for what it
+                        // doesn't know, which would be wrong.
+                        Text("This version of Forel can't show this rule's details.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(ForelTheme.secondaryText)
+                    }
+                }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+            }
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 12)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ForelTheme.surface))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
-        .opacity(rule.enabled ? 1 : 0.6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(
+                    isSelected ? ForelTheme.accent : (isExpanded ? ForelTheme.accent.opacity(0.55) : ForelTheme.surfaceBorder),
+                    lineWidth: isSelected ? 1.5 : 1
+                )
+        )
+        .opacity(rule.enabled && rule.isSupported && model.selectedFolderIsAllowed ? 1 : 0.6)
     }
 
     private func metaPill(icon: String, text: String) -> some View {
@@ -240,8 +486,234 @@ private struct RuleCard: View {
         .foregroundStyle(ForelTheme.secondaryText)
     }
 
+
     private var enabledBinding: Binding<Bool> {
-        Binding(get: { rule.enabled }, set: { model.toggleRule(rule, enabled: $0) })
+        Binding(get: { rule.enabled && model.selectedFolderIsAllowed }, set: { model.toggleRule(rule, enabled: $0) })
+    }
+}
+
+/// Keep native List selection and keyboard handling without drawing a second,
+/// rectangular selection background behind the rounded rule cards.
+private struct RuleListSelectionAppearance: NSViewRepresentable {
+    func makeNSView(context: Context) -> SelectionAppearanceView { SelectionAppearanceView() }
+
+    func updateNSView(_ view: SelectionAppearanceView, context: Context) {
+        view.removeNativeHighlight()
+    }
+
+    final class SelectionAppearanceView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            removeNativeHighlight()
+        }
+
+        override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview()
+            removeNativeHighlight()
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        func removeNativeHighlight() {
+            var ancestor = superview
+            while let view = ancestor {
+                if let table = view as? NSTableView {
+                    table.selectionHighlightStyle = .none
+                    return
+                }
+                ancestor = view.superview
+            }
+        }
+    }
+}
+
+private struct RuleCopyRequest: Identifiable {
+    let id = UUID()
+    let sourceFolderID: String
+    let ruleIDs: Set<String>
+}
+
+private struct RuleDetails: View {
+    let rule: Rule
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            detailSection(
+                label: "IF",
+                rows: conditionRows,
+                emptyText: "Matches every file in scope."
+            )
+
+            detailSection(
+                label: "DO",
+                rows: actionRows,
+                emptyText: "No actions configured."
+            )
+        }
+        .textSelection(.enabled)
+    }
+
+    private var conditionRows: [RuleDetailRow] {
+        rule.conditions.map { condition in
+            RuleDetailRow(
+                icon: condition.kind.iconSystemName,
+                badge: condition.kind.label,
+                title: "\(condition.operator.label) \(condition.value)",
+                detail: nil
+            )
+        }
+    }
+
+    private var actionRows: [RuleDetailRow] {
+        rule.actions.sorted { $0.position < $1.position }.map { action in
+            let summary = actionSummary(action)
+            return RuleDetailRow(
+                icon: action.kind.iconSystemName,
+                badge: action.kind.label,
+                title: summary.title,
+                detail: summary.detail
+            )
+        }
+    }
+
+    private func detailSection(label: String, rows: [RuleDetailRow], emptyText: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .frame(width: 22, alignment: .trailing)
+                .padding(.top, rows.isEmpty ? 1 : 6)
+
+            VStack(alignment: .leading, spacing: 6) {
+                if rows.isEmpty {
+                    Text(emptyText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(ForelTheme.secondaryText)
+                        .frame(minHeight: 24, alignment: .center)
+                } else {
+                    ForEach(rows) { row in
+                        ruleDetailRow(row)
+                    }
+                }
+            }
+        }
+    }
+
+    private func ruleDetailRow(_ row: RuleDetailRow) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: row.icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(ForelTheme.accent)
+                .frame(width: 14)
+
+            Text(row.badge.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(ForelTheme.accent)
+                .lineLimit(1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(ForelTheme.accent.opacity(0.14))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(ForelTheme.accent.opacity(0.25))
+                )
+
+            Text(row.title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(ForelTheme.primaryText)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            if let detail = row.detail, !detail.isEmpty {
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 2)
+    }
+
+    private func actionSummary(_ action: Action) -> (title: String, detail: String?) {
+        switch action.kind {
+        case .moveToFolder:
+            return ("to folder", action.params[ActionParam.destination]?.stringValue)
+        case .copyToFolder:
+            return ("to folder", action.params[ActionParam.destination]?.stringValue)
+        case .rename:
+            return ("to \(action.params[ActionParam.pattern]?.stringValue ?? "")", action.params[ActionParam.cleanFileName]?.boolValue == true ? "clean file name" : nil)
+        case .moveToTrash:
+            return ("move to Trash", nil)
+        case .delete:
+            return ("delete permanently", nil)
+        case .addTag:
+            return ("add \(tagList(action))", nil)
+        case .removeTag:
+            return ("remove \(tagList(action))", nil)
+        case .setColorLabel:
+            let color = action.params[ActionParam.color]?.stringValue ?? ""
+            return (color.isEmpty ? "clear color label" : "set to \(color)", nil)
+        case .runScript:
+            let script = action.params[ActionParam.script]?.stringValue ?? ""
+            let firstLine = script.split(separator: "\n").first.map(String.init) ?? ""
+            return (firstLine.isEmpty ? "run script" : firstLine, nil)
+        case .runShortcut:
+            let name = action.params[ActionParam.shortcutName]?.stringValue ?? ""
+            return (name.isEmpty ? "run shortcut" : name, ActionExecutor.shortcutInputMode(action).label)
+        case .openApplication:
+            let path = action.params[ActionParam.applicationPath]?.stringValue ?? ""
+            let appName = path.isEmpty ? "open application" : ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+            let detail = ActionExecutor.passesFileToApplication(action) ? "with matched file" : nil
+            return (appName, detail)
+        case .importToLibrary:
+            let library = LibraryType(rawValue: action.params[ActionParam.libraryType]?.stringValue ?? "")?.label ?? "Library"
+            let playlist = action.params[ActionParam.targetPlaylist]?.stringValue ?? ""
+            return ("import to \(library)", playlist.isEmpty ? nil : playlist)
+        case .uncompress:
+            return ("uncompress ZIP", MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
+        case .compress:
+            let name = action.params[ActionParam.archiveName]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let destination = action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            var details = [name.isEmpty ? "{name}.zip" : name]
+            if !destination.isEmpty { details.append("to \(destination)") }
+            if ActionExecutor.deletesSourceAfterCompression(action) { details.append("permanently delete source after success") }
+            return ("create ZIP", details.joined(separator: " · "))
+        }
+    }
+
+    private func tagList(_ action: Action) -> String {
+        if let tags = action.params[ActionParam.tags]?.arrayValue?.compactMap(\.stringValue), !tags.isEmpty {
+            return tags.joined(separator: ", ")
+        }
+        if let tag = action.params["tag"]?.stringValue, !tag.isEmpty {
+            return tag
+        }
+        return "tag"
+    }
+}
+
+private struct RuleDetailRow: Identifiable {
+    let id = UUID()
+    let icon: String
+    let badge: String
+    let title: String
+    let detail: String?
+}
+
+private extension View {
+    func pointingHandCursor() -> some View {
+        onHover { isHovering in
+            if isHovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
     }
 }
 
@@ -353,6 +825,13 @@ private struct PreviewSheet: View {
                                                     .font(.system(size: 10))
                                                     .foregroundStyle(ForelTheme.secondaryText)
                                             }
+                                            if let warning = action.warning {
+                                                Text(warning)
+                                                    .font(.system(size: 10))
+                                                    .foregroundStyle(.orange)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                                    .textSelection(.enabled)
+                                            }
                                         }
                                         .padding(.leading, 6)
                                     }
@@ -396,6 +875,7 @@ private extension ConditionPreview {
 
 private extension ActionPreview {
     var statusLabel: String {
+        if warning != nil { return "Likely to fail" }
         switch status {
         case .wouldRun: return "Would run"
         case .wouldSkip: return "Would skip"
@@ -405,6 +885,7 @@ private extension ActionPreview {
     }
 
     var statusIcon: String {
+        if warning != nil { return "exclamationmark.triangle.fill" }
         switch status {
         case .wouldRun: return "arrow.turn.down.right"
         case .wouldSkip: return "minus.circle"
@@ -414,6 +895,7 @@ private extension ActionPreview {
     }
 
     @MainActor var statusColor: Color {
+        if warning != nil { return .orange }
         switch status {
         case .wouldRun: return ForelTheme.accent
         case .wouldSkip: return ForelTheme.secondaryText

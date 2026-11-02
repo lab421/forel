@@ -24,15 +24,22 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 280, ideal: 270, max: 320)
-                .toolbar(removing: .sidebarToggle)
+                .modifier(SidebarToggleRemovalModifier())
         } detail: {
-            switch model.detailRoute {
-            case .rules:
-                RuleListView()
-            case .history:
-                HistoryView()
-            case .settings:
-                SettingsView()
+            Group {
+                switch model.detailRoute {
+                case .rules:
+                    RuleListView()
+                case .history:
+                    HistoryView()
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if !model.isPro {
+                    Button("Discover Pro") { model.proUpgrade = .folders }
+                        .buttonStyle(.link)
+                        .padding(16)
+                }
             }
         }
         .toolbarBackground(ForelTheme.background, for: .windowToolbar)
@@ -41,8 +48,10 @@ struct ContentView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
-        .preferredColorScheme(model.appTheme.colorScheme)
         .tint(ForelTheme.accent)
+        .sheet(item: $model.proUpgrade) { context in
+            ProUpgradeView(context: context)
+        }
         // ForelTheme.accent is a plain static var, not observable; bumping the
         // identity here forces every descendant to rebuild and re-read it.
         .id(model.accentVersion)
@@ -58,5 +67,17 @@ struct ContentView: View {
                 }
             }
         )
+    }
+}
+
+/// `.toolbar(removing: .sidebarToggle)` requires macOS 14+; there's no
+/// equivalent way to remove the default sidebar toggle on macOS 13.
+private struct SidebarToggleRemovalModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.toolbar(removing: .sidebarToggle)
+        } else {
+            content
+        }
     }
 }

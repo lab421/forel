@@ -137,11 +137,11 @@ struct HistoryView: View {
         entries.filter { $0.status == .applied && $0.reversible }.count
     }
 
-    /// Shows the leading portion of the ISO timestamp; good enough as a header
-    /// without pulling in date parsing for the grouped batch label.
     private func relativeLabel(_ iso: String?) -> String {
-        guard let iso, iso.count >= 16 else { return "Earlier" }
-        return String(iso.prefix(16)).replacingOccurrences(of: "T", with: " ")
+        guard let iso, let localized = HistoryTimestampFormatter.localized(iso) else {
+            return "Earlier"
+        }
+        return localized
     }
 }
 

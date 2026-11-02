@@ -13,6 +13,10 @@
 
 <br/>
 
+**New** · project from the Forel team — check out [Ombrelle](https://ombrelle.app) →
+
+<br/>
+
 This project is built and maintained on my personal time. A ⭐ on the repo is the simplest way to say thanks and helps Forel get discovered by others who might need it. For anyone who wants to go further, you can support the work with a [buy me a coffee](https://buymeacoffee.com/lionelguic9) ☕ 
 
 
@@ -22,7 +26,7 @@ This project is built and maintained on my personal time. A ⭐ on the repo is t
 </div>
 
 
-> **Open source, 100% on-device, local-first, no account, no telemetry.**
+> **Open source, 100% on-device**
 
 **Install with [Homebrew](https://brew.sh):**
 
@@ -40,7 +44,7 @@ Define rules once watch folders, match files, and move, rename, tag, or label th
 
 ## What Forel does
 
-Forel watches your folders and organizes your files automatically based on rules you define — by filename, extension, kind, size, date, tags, or color label.
+Forel watches your folders and organizes your files automatically based on rules you define — by filename, extension, kind, size, date, tags, color label, or file contents. On-device OCR lets you match text in images and scanned PDFs, too.
 
 ```
 Downloads/
@@ -52,15 +56,15 @@ Downloads/
 
 Set up a rule once. Forel handles the rest — even when the window is closed.
 
-And everything happens **on your Mac**. No cloud. No API keys. Your files never leave your machine.
+File matching and processing happen **locally on your Mac**. Forel does not upload your files to a processing service. Your configured destinations and scripts determine where files go, including network volumes.
 
 ---
 
 ## Highlights
 
 - **Open source (GPLv3)** — source code available, community-driven development.
-- **100% on-device** — no cloud, no API keys, no account. Your files never leave your Mac.
-- **Rule-based** — match by name, extension, kind, size, date, tags, or color label.
+- **On-device processing** — file matching and OCR run locally, without a cloud processing service or AI API keys.
+- **Rule-based** — match by name, extension, kind, size, date, tags, color label, or file contents.
 - **Native menu-bar app** — runs quietly in the background; toggle rules without opening the window.
 - **Community-driven** — built in the open, contributions welcome.
 
@@ -69,14 +73,48 @@ And everything happens **on your Mac**. No cloud. No API keys. Your files never 
 ## Features
 
 - **Rule-based automation** — Create flexible rules combining filename patterns, file types, sizes, dates, tags, and Finder color labels.
-- **Folder watching** — Monitor any number of folders in real time with native macOS FSEvents.
+- **Content matching & OCR** — Match text inside documents, images, and scanned PDFs using local extraction and on-device OCR. See [Content matching](#content-matching) for supported formats and limits.
+- **Folder watching** — Monitor folders in real time with native macOS FSEvents: up to 2 in Free, unlimited in Pro.
+- **Dry Run & Run Now** — Preview matching files and planned actions without changing files, then run rules manually on existing files when ready.
+- **Copy rules** — Copy a rule to another watched folder, or select several with ⌘-click and choose **Copy rules to folder…**. Copies are independent and keep their action destinations.
+- **History & Undo** — Review action results and undo supported actions when it is safe to do so.
 - **Menu bar app** — Forel lives in your menu bar. Toggle individual rules on/off without opening the main window.
-- **Actions** — Move, copy, rename, tag, trash, delete, or run a custom script.
+- **Actions** — Move, copy, rename, compress, uncompress, tag, trash, delete, or run a custom script. Move and copy destinations accept date tokens like `~/Archive/{year}/{month}`.
 - **SQLite persistence** — Rules, folders, and history are stored locally in a bundled SQLite database.
 
 ---
 
 ## Installation
+
+Forel Free is available indefinitely without a license. Pro is a paid license; there is no trial.
+
+### Free and Pro
+
+| Feature | Free | Pro |
+|---|---|---|
+| Watched folders | 2, including disabled folders | Unlimited |
+| Files processed | 300 per calendar month | Unlimited |
+| Rules per folder and actions per rule | Unlimited | Unlimited |
+| Background watching and Run Now | Included | Included |
+| Move, copy, rename, tags, labels, trash, delete, uncompress, open app | Included | Included |
+| Filename, type, size, dates, tags, and download metadata conditions | Included | Included |
+| Text matching in documents and PDFs with a text layer | Included | Included |
+| On-device OCR for images and scanned PDFs | — | Included |
+| Custom scripts and Apple Shortcuts | Included | Included |
+| Imports into Photos, Music, and TV | — | Included |
+| Dry Run preview, history, and supported Undo | Included | Included |
+| File processing on your Mac | Included | Included |
+| [Scheduler](#roadmap) | — | Planned |
+| [Sync actions](#roadmap) | — | Planned |
+| [AI features](#roadmap) | — | Planned |
+
+**Free:** organize your everyday folders automatically with rules, custom scripts, and Apple Shortcuts. **Pro:** automate all your folders, process unlimited files, and recognize scanned documents.
+
+[View pricing and buy Forel Pro](https://forel-app.github.io/), then activate your license in **Settings → License**. The Free badge in the quick panel also opens License settings. Monthly file usage is visible in the app; attempting a Pro action or reaching a quota explains the benefit and offers a purchase or activation link.
+
+Free includes **2 watched folders and 300 processed files per calendar month**, with unlimited rules and actions. Each item counts once per run when an action is applied; Dry Run does not count. The allowance renews on the first day of each month. At the limit, files stay in place and automatic processing resumes after renewal or Pro activation.
+
+Switching back to Free keeps your configuration. Reorder folders to choose which 2 remain available. OCR for images and scanned PDFs, and media library imports, require Pro.
 
 ### Homebrew
 
@@ -116,11 +154,26 @@ To build and package the app, use the Swift package tooling and the existing rel
 ## Quick Start
 
 1. Launch Forel — the icon appears in your **menu bar**.
-2. Click the icon to see active rules, or open the main window.
-3. Click **New Rule** and choose a folder to watch.
-4. Define your conditions — by name, extension, kind, size, date, tags, or color label.
-5. Set an action: move, rename, tag, copy, or run a script.
-6. Enable the rule. Forel handles the rest — even when the window is closed.
+2. Open the main window from the menu bar icon.
+3. Click **+** next to **Watched Folders** to add a folder, then select it in the sidebar.
+4. Click **New Rule** and define your conditions — by name, extension, kind, size, date, tags, color label, or file contents.
+5. Set an action: move, rename, tag, copy, or run a script, then save the rule.
+6. Use **Dry Run** to preview matches and planned actions without changing files. Use **Run Now** to process existing files manually.
+7. Keep the rule enabled and **Watching** on for automatic processing — even when the window is closed. Review results in the history and use **Undo** for supported actions.
+
+### Example: lowercase filenames and replace spaces with underscores
+
+Add a watched folder and create an enabled rule with a **Kind → is → File** condition. Choose **Run script** and paste this Bash command:
+
+```bash
+file="$FOREL_FILE"; dir="${file%/*}"; name="${file##*/}"; new_name=$(printf '%s' "$name" | LC_ALL=C tr '[:upper:] ' '[:lower:]_'); target="$dir/$new_name"; if [ "$file" != "$target" ]; then if { [ -e "$target" ] || [ -L "$target" ]; } && ! [ "$file" -ef "$target" ]; then printf 'Cannot rename: destination exists: %s\n' "$target" >&2; exit 1; fi; mv "$file" "$target"; fi
+```
+
+For example, `My Report.PDF` becomes `my_report.pdf`. This example lowercases ASCII letters (including the extension), replaces each space with an underscore, and leaves the parent folder unchanged. It refuses to replace a different existing file and supports changes to letter case on a case-insensitive Mac volume. Already-normalized names are left alone.
+
+Forel runs `/bin/bash -c` **once per matching file**, with its **full path** in the `FOREL_FILE` environment variable. Always quote `"$FOREL_FILE"` to handle spaces and shell characters. No filenames are passed as positional arguments, and the script's working directory is not set to the watched folder. Do not use `for f in *`: Forel already iterates over matching files.
+
+Use **Dry Run** to check which files match, then **Run Now** to rename existing files. With **Watching** on, the same script runs automatically for arriving files. Dry Run does not execute scripts or predict their resulting names. Script actions cannot be undone by Forel, and Forel cannot track a path changed by a script, so keep this rename script as the last action in the rule. The native **Rename** action supports previews and Undo; its **Clean file name** option produces hyphens instead of underscores.
 
 ---
 
@@ -147,7 +200,7 @@ forel/
 | File watching | Native FSEvents wrapper | Low-latency, battery-friendly folder monitoring |
 | Database | SQLite | Embedded, no server, predictable schema and queries |
 | Persistence layer | Custom Swift database wrapper | Direct control over transactions, migrations, and rule round-trips |
-| Updates | GitHub Releases check | Detects new tagged releases; ad-hoc signed builds are updated by manual reinstall, not in-place patching |
+| Updates | GitHub Releases | Checks for new releases and can download and install updates in place |
 | Build | Swift Package Manager | Single toolchain for development, test, and release |
 
 **Execution pipeline:**
@@ -185,23 +238,33 @@ History / Undo (SQLite)
 - [x] Action history & undo
 - [x] Automatic updates
 - [x] Preferences: launch at login
-- [x] Shortcuts actions
 - [x] Drag & drop to reorder rules
 - [x] Rules based metadata files
 - [x] Activity logs
 - [x] Automatic cleaning database
-- [ ] Archive / Unarchive actions
-- [ ] Compress actions
-- [ ] Sync actions
+- [x] Uncompress actions
+- [x] Shortcuts actions
+- [x] Open App actions
+- [x] Validate actions / conditions before save
+- [x] Native notifications on rule actions
+- [ ] Export / Import rules
+- [ ] Toggle extension hidden / visible
+- [ ] Move folder based on criteria
+- [ ] Scheduler — **Pro · Coming soon**
+- [x] Copy rules across watched folders
+- [x] Compress actions
+- [ ] Sync actions — **Pro · Coming soon**
+- [x] Dynamic destination folders with date tokens (e.g. `~/Screenshots/{year}/{month}`)
 - [ ] Upload actions
-- [ ] Native notifications on rule actions
-- [ ] AI features
+- [ ] AI features — **Pro · Coming soon**
 
 ## Content matching
 
 The **Contents** condition matches text found *inside* files. Everything is read
 locally — no cloud, OCR runs on-device. When a file's text can't be read, the Dry
 Run tells you why.
+
+Document text matching is available in Free and Pro. Vision OCR for images and scanned PDFs requires Pro; Free never runs OCR. The technical extraction limits below apply to both plans where the feature is available.
 
 ```
 File path

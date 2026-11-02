@@ -26,7 +26,9 @@ struct ForelMacApp: App {
     init() {
         let model = try! AppModel()
         _model = StateObject(wrappedValue: model)
-        _updater = StateObject(wrappedValue: UpdaterManager(db: model.db))
+        let updater = UpdaterManager(db: model.db)
+        _updater = StateObject(wrappedValue: updater)
+        AppDelegate.launchContext = (model, updater)
     }
 
     var body: some Scene {
@@ -34,7 +36,10 @@ struct ForelMacApp: App {
             ContentView()
                 .environmentObject(model)
                 .environmentObject(updater)
+                .environmentObject(appDelegate.license)
+                .environmentObject(appDelegate.settingsNavigation)
                 .frame(minWidth: 960, minHeight: 520)
+                .background(WindowAccessor { appDelegate.mainWindowDidAttach($0) })
                 .onAppear {
                     appDelegate.configure(model: model, updater: updater)
                 }
@@ -42,5 +47,53 @@ struct ForelMacApp: App {
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 900, height: 620)
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Forel") {
+                    var options: [NSApplication.AboutPanelOptionKey: Any] = [
+                        .applicationName: AppInfo.name,
+                        .applicationVersion: AppInfo.version,
+                        .version: "Build \(AppInfo.build)",
+                        .credits: Self.aboutCredits,
+                    ]
+
+                    if let icon = Bundle.module.url(forResource: "AppIcon", withExtension: "png")
+                        .flatMap({ NSImage(contentsOf: $0) }) {
+                        options[.applicationIcon] = icon
+                    }
+
+                    NSApplication.shared.orderFrontStandardAboutPanel(options: options)
+                }
+            }
+        }
+
+        // A real `Settings` scene (not an in-app route) so Settings behaves
+        // like every other macOS app: its own window, a "Settings…" item
+        // under the Forel menu, and the standard ⌘, shortcut, all wired up
+        // automatically by SwiftUI.
+        Settings {
+            SettingsView()
+                .environmentObject(model)
+                .environmentObject(updater)
+                .environmentObject(appDelegate.license)
+                .environmentObject(appDelegate.settingsNavigation)
+        }
+        .windowResizability(.contentSize)
+    }
+
+    private static var aboutCredits: NSAttributedString {
+        let credits = NSMutableAttributedString(
+            string: "\nGitHub Repository",
+            attributes: [.link: AppInfo.repositoryURL]
+        )
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        credits.addAttribute(
+            .paragraphStyle,
+            value: paragraphStyle,
+            range: NSRange(location: 0, length: credits.length)
+        )
+        return credits
     }
 }

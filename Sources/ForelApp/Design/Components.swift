@@ -193,51 +193,42 @@ struct ForelSwitch: View {
     }
 }
 
-/// Small stat tile, e.g. "Rules — 4", used for the activity summary row.
-struct StatTile: View {
-    let icon: String
-    let label: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 10)).foregroundStyle(ForelTheme.secondaryText)
-                Text(label).font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
-            }
-            Text(value).font(.system(size: 18, weight: .bold)).foregroundStyle(ForelTheme.primaryText)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ForelTheme.surface))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
-    }
-}
-
 /// A watched-folder row: icon, name, enabled switch — laid out like the
 /// volume-mixer rows in the reference design.
 struct QuickFolderRow: View {
     let folder: WatchedFolder
     @Binding var isOn: Bool
+    var isBlocked = false
 
     var body: some View {
         HStack(spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(ForelTheme.accent.opacity(0.18))
-                Image(systemName: "folder.fill").font(.system(size: 12)).foregroundStyle(ForelTheme.accent)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isBlocked ? ForelTheme.secondaryText.opacity(0.08) : ForelTheme.accent.opacity(0.18))
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(isBlocked ? ForelTheme.secondaryText : ForelTheme.accent)
             }
             .frame(width: 26, height: 26)
 
             Text((folder.path as NSString).lastPathComponent)
                 .font(.system(size: 13))
-                .foregroundStyle(ForelTheme.primaryText)
+                .foregroundStyle(isBlocked ? ForelTheme.secondaryText : ForelTheme.primaryText)
                 .lineLimit(1)
 
             Spacer()
-            ForelSwitch(isOn: $isOn, compact: true)
+            if isBlocked {
+                Label("Pro", systemImage: "lock.fill")
+                    .font(.caption)
+                    .foregroundStyle(ForelTheme.pro)
+            }
+            ForelSwitch(isOn: isBlocked ? .constant(false) : $isOn, compact: true)
+                .disabled(isBlocked)
+                .opacity(isBlocked ? 0.5 : 1)
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 14)
+        .help(isBlocked ? "Reorder folders or activate Pro to use this folder." : folder.path)
     }
 }
 
@@ -284,6 +275,30 @@ struct SettingsActionRow: View {
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 14)
+    }
+}
+
+/// Bordered pill footer action sized to fill equally with its siblings, used
+/// by the menu-bar quick panel — mirrors how native macOS widgets (Control
+/// Center, the Notification Center weather widget) lay out footer actions.
+struct QuickPanelFooterButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: systemImage).font(.system(size: 10, weight: .medium))
+                Text(title).font(.system(size: 11, weight: .medium))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(ForelTheme.primaryText)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ForelTheme.surface))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
     }
 }
 
@@ -484,29 +499,44 @@ struct GlassField: View {
     }
 }
 
-/// A read-only folder path field with a "Choose…" button opening the native
-/// macOS Finder directory picker. Used everywhere a folder is selected.
+/// A folder path field with a "Choose…" button opening the native macOS
+/// Finder directory picker, and an editable text field underneath so paths
+/// with date tokens (e.g. `/Volumes/Archive/{year}/{month}`) can be typed.
+/// Used everywhere a folder is selected.
 struct FolderField: View {
     let placeholder: String
     @Binding var path: String
+    /// Shown under the field only while the user is typing in it.
+    var hint: String? = nil
+    @FocusState private var isEditing: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
-                Text(path.isEmpty ? placeholder : path)
-                    .font(.system(size: 12))
-                    .foregroundStyle(path.isEmpty ? ForelTheme.secondaryText : ForelTheme.primaryText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
+                    TextField(placeholder, text: $path)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(ForelTheme.primaryText)
+                        .lineLimit(1)
+                        .focused($isEditing)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
 
-            Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+                Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+            }
+
+            if let hint, isEditing {
+                Text(hint)
+                    .font(.system(size: 10))
+                    .foregroundStyle(ForelTheme.secondaryText)
+                    .padding(.leading, 10)
+            }
         }
     }
 
@@ -528,7 +558,10 @@ enum FolderPicker {
         if let path, !path.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: path)
         }
-        return panel.runModal() == .OK ? panel.url?.path : nil
+        guard panel.runModal() == .OK, let path = panel.url?.path else { return nil }
+        // A share picked through "Network" while already connected comes back
+        // as its temporary second mount (/Volumes/<name>-1): keep the first.
+        return VolumePaths.canonical(path)
     }
 }
 

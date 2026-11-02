@@ -16,6 +16,10 @@
 
 import Foundation
 import UniformTypeIdentifiers
+import ZIPFoundation
+#if canImport(AppKit)
+import AppKit
+#endif
 #if canImport(Photos)
 import Photos
 #endif
@@ -177,6 +181,11 @@ public struct ActionPlan: Equatable, Sendable {
     public let finalPath: String
     public let copiedPath: String?
     public let isTerminal: Bool
+    /// Why the action is expected to fail when it runs, if a problem is
+    /// already visible while planning (e.g. an unreachable destination).
+    /// Only informs the preview: execution still attempts the action, so a
+    /// wrong guess here can never block a run that would have worked.
+    public let warning: String?
 
     public init(
         kind: ActionKind,
@@ -186,7 +195,8 @@ public struct ActionPlan: Equatable, Sendable {
         status: DryRunStatus,
         finalPath: String,
         copiedPath: String?,
-        isTerminal: Bool
+        isTerminal: Bool,
+        warning: String? = nil
     ) {
         self.kind = kind
         self.description = description
@@ -196,6 +206,7 @@ public struct ActionPlan: Equatable, Sendable {
         self.finalPath = finalPath
         self.copiedPath = copiedPath
         self.isTerminal = isTerminal
+        self.warning = warning
     }
 }
 
@@ -205,7 +216,7 @@ public enum ActionExecutor {
     public static func execute(_ action: Action, path: String, root: String? = nil) throws -> Applied {
         switch action.kind {
         case .moveToFolder:
-            let destDir = try stringParam(action, ActionParam.destination, "MoveToFolder")
+            let destDir = try expandedDestination(stringParam(action, ActionParam.destination, "MoveToFolder"), fileAtPath: path)
             return try moveIntoDir(path: path, destDir: destDir, resolution: conflictResolution(action))
         case .copyToFolder:
             return try copyToFolder(action, path: path)
@@ -228,8 +239,14 @@ public enum ActionExecutor {
             return try runScript(action, path: path)
         case .runShortcut:
             return try runShortcut(action, path: path)
+        case .openApplication:
+            return try openApplication(action, path: path)
         case .importToLibrary:
             return try importToLibrary(action, path: path)
+        case .uncompress:
+            return try uncompress(action, path: path)
+        case .compress:
+            return try compress(action, path: path)
         }
     }
 
@@ -245,22 +262,215 @@ public enum ActionExecutor {
     /// `resolveDestination`). Trash/delete have no user-facing conflict
     /// choice and always use the `.rename` default.
     private static func moveIntoDir(path: String, destDir: String, resolution: MoveConflictResolution = .rename) throws -> Applied {
-        try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
-        let fileName = (path as NSString).lastPathComponent
-        let naiveDest = (destDir as NSString).appendingPathComponent(fileName)
-        let dest = try resolveDestination(naiveDest: naiveDest, dir: destDir, fileName: fileName, resolution: resolution)
-        try FileManager.default.moveItem(atPath: path, toPath: dest)
-        return Applied(newPath: dest, undo: .move(from: path, to: dest))
+        try explainingDisconnectedVolume(destDir) {
+            try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
+            let fileName = (path as NSString).lastPathComponent
+            let naiveDest = (destDir as NSString).appendingPathComponent(fileName)
+            let dest = try resolveDestination(naiveDest: naiveDest, dir: destDir, fileName: fileName, resolution: resolution)
+            try FileManager.default.moveItem(atPath: path, toPath: dest)
+            return Applied(newPath: dest, undo: .move(from: path, to: dest))
+        }
+    }
+
+    /// Resolves the date tokens a destination template may contain —
+    /// `{year}`, `{month}`, `{day}`, with month/day zero-padded — from the
+    /// file's creation date (the date a "sort my downloads by month" workflow
+    /// means; it survives moves). Unknown `{...}` sequences are left as-is.
+    /// A typed `~` is expanded to the home folder.
+    private static func expandedDestination(_ rawTemplate: String, fileAtPath: String) -> String {
+        let template = (rawTemplate as NSString).expandingTildeInPath
+        guard template.contains("{") else { return template }
+        let attrs = try? FileManager.default.attributesOfItem(atPath: fileAtPath)
+        let date = (attrs?[.creationDate] as? Date) ?? (attrs?[.modificationDate] as? Date) ?? Date()
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        var result = template
+        if let year = parts.year { result = result.replacingOccurrences(of: "{year}", with: String(year)) }
+        if let month = parts.month { result = result.replacingOccurrences(of: "{month}", with: String(format: "%02d", month)) }
+        if let day = parts.day { result = result.replacingOccurrences(of: "{day}", with: String(format: "%02d", day)) }
+        return result
+    }
+
+    /// Runs `body` as is. Only when it fails and the destination is on a disk
+    /// or share that isn't mounted, the error says so by name instead of the
+    /// file system's message, which can blame the startup disk.
+    private static func explainingDisconnectedVolume<T>(_ destDir: String, _ body: () throws -> T) throws -> T {
+        do {
+            return try body()
+        } catch {
+            if let volume = VolumePaths.unmountedVolume(of: destDir) {
+                throw ActionError(volumeNotConnectedMessage(volume))
+            }
+            throw error
+        }
+    }
+
+    private static func volumeNotConnectedMessage(_ volume: String) -> String {
+        "“\(volume)” isn't connected. Connect the disk or network share, or choose the destination folder again."
     }
 
     private static func copyToFolder(_ action: Action, path: String) throws -> Applied {
-        let destDir = try stringParam(action, ActionParam.destination, "CopyToFolder")
-        try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
-        let fileName = (path as NSString).lastPathComponent
-        let naiveDest = (destDir as NSString).appendingPathComponent(fileName)
-        let dest = try resolveDestination(naiveDest: naiveDest, dir: destDir, fileName: fileName, resolution: conflictResolution(action))
-        try FileManager.default.copyItem(atPath: path, toPath: dest)
-        return Applied(newPath: path, undo: .none, copiedPath: dest)
+        let destDir = try expandedDestination(stringParam(action, ActionParam.destination, "CopyToFolder"), fileAtPath: path)
+        return try explainingDisconnectedVolume(destDir) {
+            try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
+            let fileName = (path as NSString).lastPathComponent
+            let naiveDest = (destDir as NSString).appendingPathComponent(fileName)
+            let dest = try resolveDestination(naiveDest: naiveDest, dir: destDir, fileName: fileName, resolution: conflictResolution(action))
+            try FileManager.default.copyItem(atPath: path, toPath: dest)
+            return Applied(newPath: path, undo: .none, copiedPath: dest)
+        }
+    }
+
+    private struct ZipExtractionPlan {
+        let target: String
+        let topLevelItems: [String]
+        let usesWrapperFolder: Bool
+        let conflicts: Bool
+        let resolution: MoveConflictResolution
+    }
+
+    private static func uncompress(_ action: Action, path: String) throws -> Applied {
+        let plan = try zipExtractionPlan(action, path: path)
+        if plan.conflicts, plan.resolution == .skip {
+            throw ActionError("Skip — a file already exists at \(plan.target)")
+        }
+
+        let fm = FileManager.default
+        let archiveURL = URL(fileURLWithPath: path)
+        let replacementDir = try fm.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: archiveURL,
+            create: true
+        ).path
+        let tempDir = (replacementDir as NSString).appendingPathComponent(".forel-uncompress-\(UUID().uuidString)")
+        try fm.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(atPath: replacementDir) }
+
+        do {
+            try fm.unzipItem(at: archiveURL, to: URL(fileURLWithPath: tempDir))
+        } catch {
+            throw ActionError("Could not uncompress ZIP archive: \(error)")
+        }
+
+        if plan.conflicts, plan.resolution == .replace {
+            _ = try moveIntoDir(path: plan.target, destDir: try trashDir())
+        }
+
+        if plan.usesWrapperFolder {
+            try fm.createDirectory(atPath: plan.target, withIntermediateDirectories: true)
+            for item in plan.topLevelItems {
+                let extracted = (tempDir as NSString).appendingPathComponent(item)
+                let destination = (plan.target as NSString).appendingPathComponent(item)
+                try fm.moveItem(atPath: extracted, toPath: destination)
+            }
+        } else if let item = plan.topLevelItems.first {
+            let extracted = (tempDir as NSString).appendingPathComponent(item)
+            try fm.moveItem(atPath: extracted, toPath: plan.target)
+        }
+
+        _ = try moveIntoDir(path: path, destDir: try trashDir())
+        return Applied(newPath: plan.target, undo: .none)
+    }
+
+    /// Creates a ZIP using the configured name and destination. Cleanup only
+    /// removes the source after the archive has been written successfully.
+    private static func compress(_ action: Action, path: String) throws -> Applied {
+        let dir = try compressionDirectory(action, path: path)
+        let fileName = try compressArchiveName(action, path: path)
+        return try explainingDisconnectedVolume(dir) {
+            try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            let dest = try resolveDestination(
+                naiveDest: (dir as NSString).appendingPathComponent(fileName),
+                dir: dir, fileName: fileName, resolution: .rename
+            )
+            do {
+                try FileManager.default.zipItem(at: URL(fileURLWithPath: path), to: URL(fileURLWithPath: dest), compressionMethod: .deflate)
+            } catch {
+                // A failed write can leave an incomplete archive. Keep the
+                // source and remove only the new archive we tried to create.
+                try? FileManager.default.removeItem(atPath: dest)
+                throw ActionError("Could not create ZIP archive. The source was kept. \(error)")
+            }
+            if deletesSourceAfterCompression(action) {
+                do {
+                    try FileManager.default.removeItem(atPath: path)
+                } catch {
+                    throw ActionError("ZIP created at \(dest), but the source could not be deleted: \(error)")
+                }
+                return Applied(newPath: dest, undo: .none)
+            }
+            return Applied(newPath: path, undo: .none, copiedPath: dest)
+        }
+    }
+
+    public static func deletesSourceAfterCompression(_ action: Action) -> Bool {
+        action.params[ActionParam.deleteSourceAfterCompression]?.boolValue == true
+    }
+
+    /// Empty means next to the source. Custom destinations must be absolute;
+    /// a relative path must never silently resolve against the app's directory.
+    static func archiveDestinationPath(_ value: String) throws -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let expanded = (trimmed as NSString).expandingTildeInPath
+        guard expanded.hasPrefix("/"), !expanded.contains("\0") else {
+            throw ActionError("Archive destination must be an absolute folder path or start with ~/.")
+        }
+        return (expanded as NSString).standardizingPath
+    }
+
+    private static func compressionDirectory(_ action: Action, path: String) throws -> String {
+        let configured = try archiveDestinationPath(action.params[ActionParam.destination]?.stringValue ?? "")
+        let directory = configured.map { expandedDestination($0, fileAtPath: path) }
+            ?? (path as NSString).deletingLastPathComponent
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue {
+            let source = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().pathComponents
+            let destination = URL(fileURLWithPath: directory).standardizedFileURL.resolvingSymlinksInPath().pathComponents
+            guard !destination.starts(with: source) else {
+                throw ActionError("Choose an archive destination outside the source folder. A ZIP inside it would include itself and could be deleted with the source.")
+            }
+        }
+        return directory
+    }
+
+    private static func compressArchiveName(_ action: Action, path: String) throws -> String {
+        let name = (path as NSString).lastPathComponent
+        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+        let isFolder = (attributes?[.type] as? FileAttributeType) == .typeDirectory
+        return try archiveFileName(
+            pattern: action.params[ActionParam.archiveName]?.stringValue ?? "",
+            sourceName: isFolder ? name : (name as NSString).deletingPathExtension
+        )
+    }
+
+    /// Resolves an archive name for execution, validation, and editor previews.
+    /// Dates use the local time zone; ZIP is appended when omitted.
+    public static func archiveFileName(pattern: String, sourceName: String, at date: Date = Date()) throws -> String {
+        let trimmed = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        let template = trimmed.isEmpty ? "{name}.zip" : trimmed
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        let day = formatter.string(from: date)
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        // Insert the source name last so braces in its name stay literal.
+        var result = template
+            .replacingOccurrences(of: "{current_date}", with: day)
+            .replacingOccurrences(of: "{timestamp}", with: formatter.string(from: date))
+            .replacingOccurrences(of: "{name}", with: sourceName)
+        guard !result.isEmpty, result != ".", result != "..",
+              !result.contains("/"), !result.contains("\0"),
+              !result.hasSuffix("."), !result.hasSuffix(" ") else {
+            throw ActionError("Archive name must be a filename, without '/' or null characters, and cannot end with a dot or space.")
+        }
+        if !result.lowercased().hasSuffix(".zip") { result += ".zip" }
+        guard result.utf8.count <= 255 else {
+            throw ActionError("Archive name is too long (maximum 255 bytes including .zip).")
+        }
+        return result
     }
 
     private static func syncFolders(_ action: Action, path: String, root: String?) throws -> Applied {
@@ -357,16 +567,17 @@ public enum ActionExecutor {
         process.environment = env
         try process.run()
 
-        let group = DispatchGroup()
-        group.enter()
-        DispatchQueue.global(qos: .utility).async {
-            process.waitUntilExit()
-            group.leave()
+        let startTime = Date()
+        while process.isRunning && Date().timeIntervalSince(startTime) < scriptDefaultTimeout {
+            Thread.sleep(forTimeInterval: 0.01)
         }
 
-        if group.wait(timeout: DispatchTime.now() + scriptDefaultTimeout) == .timedOut {
+        if process.isRunning {
             process.terminate()
-            _ = group.wait(timeout: DispatchTime.now() + 2)
+            Thread.sleep(forTimeInterval: 0.1)
+            if process.isRunning {
+                process.interrupt()
+            }
             throw ActionError("script timed out after \(Int(scriptDefaultTimeout))s")
         }
 
@@ -381,6 +592,30 @@ public enum ActionExecutor {
         let inputMode = shortcutInputMode(action)
         try ShortcutRunner.run(name: name, input: shortcutInput(mode: inputMode, path: path))
         return Applied(newPath: path, undo: .none)
+    }
+
+    private static func openApplication(_ action: Action, path: String) throws -> Applied {
+        #if canImport(AppKit)
+        let appPath = try stringParam(action, ActionParam.applicationPath, "OpenApplication")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !appPath.isEmpty else {
+            throw ActionError("Open Application requires '\(ActionParam.applicationPath)' param")
+        }
+        guard FileManager.default.fileExists(atPath: appPath) else {
+            throw ActionError("Application not found at \(appPath)")
+        }
+
+        let appURL = URL(fileURLWithPath: appPath)
+        let configuration = NSWorkspace.OpenConfiguration()
+        if passesFileToApplication(action) {
+            NSWorkspace.shared.open([URL(fileURLWithPath: path)], withApplicationAt: appURL, configuration: configuration)
+        } else {
+            NSWorkspace.shared.openApplication(at: appURL, configuration: configuration)
+        }
+        return Applied(newPath: path, undo: .none)
+        #else
+        throw ActionError("Open Application is not available on this platform")
+        #endif
     }
 
     // MARK: - Import to Library
@@ -834,7 +1069,7 @@ public enum ActionExecutor {
 
         switch action.kind {
         case .moveToFolder:
-            let destDir = action.params[ActionParam.destination]?.stringValue ?? ""
+            let destDir = expandedDestination(action.params[ActionParam.destination]?.stringValue ?? "", fileAtPath: path)
 
             // A file already directly in its destination folder is a no-op,
             // never a rename-to-avoid-itself collision — and since nothing
@@ -882,10 +1117,11 @@ public enum ActionExecutor {
                 status: .wouldRun,
                 finalPath: target,
                 copiedPath: nil,
-                isTerminal: true
+                isTerminal: true,
+                warning: destinationWarning(destDir)
             )
         case .copyToFolder:
-            let destDir = action.params[ActionParam.destination]?.stringValue ?? ""
+            let destDir = expandedDestination(action.params[ActionParam.destination]?.stringValue ?? "", fileAtPath: path)
             let naiveTarget = (destDir as NSString).appendingPathComponent(fileName)
             let resolution = conflictResolution(action)
             let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
@@ -915,7 +1151,8 @@ public enum ActionExecutor {
                 status: .wouldRun,
                 finalPath: path,
                 copiedPath: target,
-                isTerminal: false
+                isTerminal: false,
+                warning: destinationWarning(destDir)
             )
         case .syncFolders:
             let sourceRoot = root ?? (path as NSString).deletingLastPathComponent
@@ -977,7 +1214,7 @@ public enum ActionExecutor {
                 description: "Move to Trash",
                 sourcePath: path,
                 targetPath: target,
-                status: conflictStatus(target),
+                status: .wouldRun,
                 finalPath: target,
                 copiedPath: nil,
                 isTerminal: true
@@ -1063,6 +1300,22 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .openApplication:
+            let appPath = action.params[ActionParam.applicationPath]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let appName = appPath.isEmpty ? "" : ((appPath as NSString).lastPathComponent as NSString).deletingPathExtension
+            let passesFile = passesFileToApplication(action)
+            return ActionPlan(
+                kind: action.kind,
+                description: appName.isEmpty
+                    ? "Open application"
+                    : passesFile ? "Open \(appName) with file" : "Open \(appName)",
+                sourcePath: path,
+                targetPath: nil,
+                status: appPath.isEmpty ? .wouldSkip : .wouldRun,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: false
+            )
         case .importToLibrary:
             let libraryTypeRaw = action.params[ActionParam.libraryType]?.stringValue ?? LibraryType.music.rawValue
             guard let libraryType = LibraryType(rawValue: libraryTypeRaw) else {
@@ -1112,6 +1365,63 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .uncompress:
+            let extraction = try zipExtractionPlan(action, path: path)
+            if extraction.conflicts, extraction.resolution == .skip {
+                return ActionPlan(
+                    kind: action.kind,
+                    description: "Skip — a file already exists at \(extraction.target)",
+                    sourcePath: path,
+                    targetPath: extraction.target,
+                    status: .wouldSkip,
+                    finalPath: path,
+                    copiedPath: nil,
+                    isTerminal: true
+                )
+            }
+
+            let suffix = extraction.conflicts && extraction.resolution == .replace
+                ? " (replacing existing file)"
+                : extraction.conflicts && extraction.resolution == .rename
+                    ? " (renamed to avoid an existing file)"
+                    : ""
+            return ActionPlan(
+                kind: action.kind,
+                description: "Uncompress to \(extraction.target)\(suffix)",
+                sourcePath: path,
+                targetPath: extraction.target,
+                status: .wouldRun,
+                finalPath: extraction.target,
+                copiedPath: nil,
+                isTerminal: false
+            )
+        case .compress:
+            let dir = try compressionDirectory(action, path: path)
+            let fileName = try compressArchiveName(action, path: path)
+            let naiveTarget = (dir as NSString).appendingPathComponent(fileName)
+            let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
+            // Existing archives are always preserved by numbering the new one.
+            let target = try resolveDestination(naiveDest: naiveTarget, dir: dir, fileName: fileName, resolution: .rename)
+            let cleanup = deletesSourceAfterCompression(action)
+            var description = "Compress to \(target)"
+            if conflicts { description += " (renamed to avoid an existing archive)" }
+            if cleanup { description += "; permanently delete source after success" }
+            let cleanupWarning = cleanup
+                ? "The original file or folder and all its contents will be permanently deleted after the ZIP is created. "
+                    + "This cannot be undone. Following actions apply to the ZIP."
+                : nil
+            let warning = [destinationWarning(dir), cleanupWarning].compactMap { $0 }.joined(separator: " ")
+            return ActionPlan(
+                kind: action.kind,
+                description: description,
+                sourcePath: path,
+                targetPath: target,
+                status: .wouldRun,
+                finalPath: cleanup ? target : path,
+                copiedPath: cleanup ? nil : target,
+                isTerminal: false,
+                warning: warning.isEmpty ? nil : warning
+            )
         }
     }
 
@@ -1130,7 +1440,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .syncFolders, .moveToTrash, .delete, .runScript, .runShortcut, .importToLibrary:
+        case .moveToFolder, .copyToFolder, .syncFolders, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress, .compress:
             return true
         }
     }
@@ -1183,6 +1493,10 @@ public enum ActionExecutor {
         return []
     }
 
+    public static func passesFileToApplication(_ action: Action) -> Bool {
+        action.params[ActionParam.passFileToApplication]?.boolValue ?? true
+    }
+
     public static func shortcutInputMode(_ action: Action) -> ShortcutInputMode {
         guard let raw = action.params[ActionParam.shortcutInputMode]?.stringValue else {
             return .matchedFile
@@ -1214,6 +1528,67 @@ public enum ActionExecutor {
         FileManager.default.fileExists(atPath: target) ? .blockedByConflict : .wouldRun
     }
 
+    private static func zipExtractionPlan(_ action: Action, path: String) throws -> ZipExtractionPlan {
+        let url = URL(fileURLWithPath: path)
+        guard url.pathExtension.lowercased() == "zip" else {
+            throw ActionError("Only ZIP archives can be uncompressed right now.")
+        }
+
+        let topLevelItems = try zipTopLevelItems(path: path)
+        guard !topLevelItems.isEmpty else {
+            throw ActionError("ZIP archive is empty.")
+        }
+
+        let parent = (path as NSString).deletingLastPathComponent
+        let resolution = conflictResolution(action)
+        let usesWrapperFolder = topLevelItems.count != 1
+        let naiveTarget: String
+        if usesWrapperFolder {
+            naiveTarget = (parent as NSString).appendingPathComponent(url.deletingPathExtension().lastPathComponent)
+        } else {
+            naiveTarget = (parent as NSString).appendingPathComponent(topLevelItems[0])
+        }
+
+        let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
+        let target: String
+        if conflicts, resolution == .rename {
+            target = uniqueDest(dir: parent, fileName: (naiveTarget as NSString).lastPathComponent)
+        } else {
+            target = naiveTarget
+        }
+
+        return ZipExtractionPlan(
+            target: target,
+            topLevelItems: topLevelItems,
+            usesWrapperFolder: usesWrapperFolder,
+            conflicts: conflicts,
+            resolution: resolution
+        )
+    }
+
+    private static func zipTopLevelItems(path: String) throws -> [String] {
+        let archive: Archive
+        do {
+            archive = try Archive(url: URL(fileURLWithPath: path), accessMode: .read, pathEncoding: nil)
+        } catch {
+            throw ActionError("Could not read ZIP archive: \(error)")
+        }
+
+        var items: Set<String> = []
+        for entry in archive {
+            guard let first = entry.path.split(separator: "/", omittingEmptySubsequences: true).first else {
+                continue
+            }
+            let item = String(first)
+            if item == "__MACOSX" { continue }
+            if item == "." || item == ".." {
+                throw ActionError("ZIP archive contains an invalid entry path.")
+            }
+            items.insert(item)
+        }
+        return items.sorted()
+    }
+
     /// Shared by `moveToFolder`/`copyToFolder` planning: the resolved target
     /// path and a human-readable description, for whichever resolution
     /// doesn't just skip outright (that's handled separately by the caller).
@@ -1231,6 +1606,26 @@ public enum ActionExecutor {
             // separately by the caller), so this behaves like a plain move/copy.
             return (naiveTarget, "\(verb) to \(naiveTarget)")
         }
+    }
+
+    /// A move/copy creates its destination folder on demand, so what has to
+    /// be writable is that folder or, when it doesn't exist yet, its nearest
+    /// existing ancestor. A network share that isn't mounted or that Forel
+    /// isn't allowed to access shows up here as a missing folder under a
+    /// location that can't be written to.
+    private static func destinationWarning(_ destDir: String) -> String? {
+        guard !destDir.isEmpty else { return nil }
+        var candidate = normalizedPath(destDir)
+        while !FileManager.default.fileExists(atPath: candidate) {
+            let parent = (candidate as NSString).deletingLastPathComponent
+            guard parent != candidate, !parent.isEmpty else { break }
+            candidate = parent
+        }
+        guard !FileManager.default.isWritableFile(atPath: candidate) else { return nil }
+        if let volume = VolumePaths.unmountedVolume(of: destDir) {
+            return volumeNotConnectedMessage(volume)
+        }
+        return "The destination folder can't be reached or written to right now. Check that the disk or network share is connected and that Forel is allowed to access it."
     }
 
     private static func normalizedPath(_ path: String) -> String {
@@ -1292,16 +1687,25 @@ public enum ActionExecutor {
         return result
     }
 
-    /// Converts a filename to kebab-case: strips diacritics and special
-    /// characters, lowercases, replaces spaces and underscores with hyphens,
-    /// splits camelCase boundaries, and collapses adjacent hyphens.
+    /// Converts a filename to a universal ASCII slug: transliterates any
+    /// script to Latin (Cyrillic, Arabic, CJK…), strips diacritics,
+    /// lowercases, replaces spaces and underscores with hyphens, splits
+    /// camelCase boundaries, removes remaining non-alphanumeric characters,
+    /// and collapses adjacent hyphens.
     public static func cleanFileName(_ name: String) -> String {
         let nsName = name as NSString
         let ext = nsName.pathExtension
         let stem = ext.isEmpty ? (name as NSString).deletingPathExtension : nsName.deletingPathExtension
 
-        // Strip diacritics: "café" → "cafe"
-        var cleaned = stem.applyingTransform(.stripDiacritics, reverse: false) ?? stem
+        // Transliterate any script to Latin, then reduce to ASCII:
+        //   "straße" → "strasse",  "Привет" → "Privet",  "中文" → "zhong wen"
+        var cleaned = stem
+            .applyingTransform(.toLatin, reverse: false)
+            .map { (latin: String) -> String in
+                let mutable = NSMutableString(string: latin)
+                CFStringTransform(mutable, nil, "Latin-ASCII" as NSString, false)
+                return mutable as String
+            } ?? stem
 
         cleaned = cleaned
             .replacingOccurrences(of: " ", with: "-")
@@ -1321,7 +1725,7 @@ public enum ActionExecutor {
         cleaned = cleaned.lowercased()
 
         // Remove remaining characters that aren't alphanumeric or hyphens
-        cleaned = String(cleaned.filter { $0.isLetter || $0.isNumber || $0 == "-" })
+        cleaned = String(cleaned.filter { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") })
 
         // Collapse and strip hyphens
         while cleaned.contains("--") { cleaned = cleaned.replacingOccurrences(of: "--", with: "-") }

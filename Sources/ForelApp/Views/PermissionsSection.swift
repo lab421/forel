@@ -52,11 +52,21 @@ struct PermissionsSection: View {
         }
         .onAppear {
             photosStatus = PermissionsChecker.photosAccessStatus()
+            // `isAppRunning` talks to System Events over AppleScript, which
+            // can take a noticeable moment (especially the first time it's
+            // launched this session) — run it off the main thread so opening
+            // this tab shows the pane right away instead of hitching on it.
             // Only auto-check Music/TV if they're already running — querying
             // automation status otherwise means launching them, which Settings
             // should never do just by being opened (see `onCheck`/`check`).
-            if PermissionsChecker.isAppRunning("Music") { check(app: "Music") }
-            if PermissionsChecker.isAppRunning("TV") { check(app: "TV") }
+            Task.detached(priority: .userInitiated) {
+                let musicRunning = PermissionsChecker.isAppRunning("Music")
+                let tvRunning = PermissionsChecker.isAppRunning("TV")
+                await MainActor.run {
+                    if musicRunning { check(app: "Music") }
+                    if tvRunning { check(app: "TV") }
+                }
+            }
         }
     }
 

@@ -26,7 +26,12 @@ enum AppIcons {
 
     private static func loadImage(_ name: String) -> NSImage? {
         let candidates: [URL?] = [
+            Bundle.module.url(forResource: name, withExtension: "png"),
+            Bundle.module.url(forResource: name, withExtension: "png", subdirectory: "Resources"),
             Bundle.main.resourceURL?.appendingPathComponent("Forel_ForelApp.bundle/Resources/\(name).png"),
+            Bundle.main.resourceURL?.appendingPathComponent("Forel_ForelApp.bundle/Resources/Resources/\(name).png"),
+            Bundle.main.resourceURL?.appendingPathComponent("Forel_ForelApp.bundle/Contents/Resources/\(name).png"),
+            Bundle.main.resourceURL?.appendingPathComponent("Forel_ForelApp.bundle/Contents/Resources/Resources/\(name).png"),
             Bundle.main.resourceURL?.appendingPathComponent("\(name).png"),
             Bundle.main.bundleURL.appendingPathComponent("Resources/\(name).png")
         ]

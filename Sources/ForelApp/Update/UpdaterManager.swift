@@ -59,7 +59,7 @@ final class UpdaterManager: ObservableObject {
     private static let checkInterval: TimeInterval = 12 * 60 * 60
     private static let settingKey = "auto_update_checks"
 
-    /// Matches the `dmg_suffix` naming in build.sh.
+    /// Fallback for releases that still use the old per-architecture DMG names.
     private static var archSuffix: String {
         #if arch(arm64)
         return "darwin-arm64"
@@ -81,23 +81,22 @@ final class UpdaterManager: ObservableObject {
 
     init(db: Database) {
         self.db = db
-        let stored = try? db.getSetting(Self.settingKey)
-        autoCheck = stored.map { $0 != "0" } ?? true
-        if autoCheck {
+        let stored = db.withLock { db in try? db.getSetting(Self.settingKey) }
+        automaticallyChecksForUpdates = stored.map { $0 != "0" } ?? true
+        if automaticallyChecksForUpdates {
             scheduleAutomaticChecks()
             checkForUpdates()
         }
     }
 
-    private var autoCheck: Bool
-
-    var automaticallyChecksForUpdates: Bool {
-        get { autoCheck }
-        set {
-            guard newValue != autoCheck else { return }
-            autoCheck = newValue
-            try? db.setSetting(Self.settingKey, newValue ? "1" : "0")
-            if newValue {
+    /// Published so Settings redraws its switch when this changes; `didSet`
+    /// does not run for the initial value assigned in `init`.
+    @Published var automaticallyChecksForUpdates: Bool {
+        didSet {
+            guard automaticallyChecksForUpdates != oldValue else { return }
+            let enabled = automaticallyChecksForUpdates
+            db.withLock { db in try? db.setSetting(Self.settingKey, enabled ? "1" : "0") }
+            if enabled {
                 scheduleAutomaticChecks()
                 checkForUpdates()
             } else {
@@ -107,17 +106,18 @@ final class UpdaterManager: ObservableObject {
         }
     }
 
-    /// A dev build (`swift run` / `./build.sh dev`) is a bare executable, not
-    /// a packaged `.app` — there's no Info.plist, so `CFBundleShortVersionString`
-    /// reads as `nil` and falls back to "0", which makes literally any real
-    /// release look newer. Nothing to install anyway outside a packaged app
-    /// (see `installUpdate()`'s own check), so just don't check at all.
-    private var isPackagedApp: Bool {
-        Bundle.main.bundleURL.pathExtension == "app"
+    /// A bare `swift run` executable is not a packaged `.app` — there's no
+    /// Info.plist, so `CFBundleShortVersionString` reads as `nil` and falls
+    /// back to "0", which makes literally any real release look newer. A
+    /// `./build.sh dev` bundle is a real `.app` but is stamped `0.0.0-dev`,
+    /// which has the same problem. Nothing to install in either case (see
+    /// `installUpdate()`'s own check), so just don't check at all.
+    private var canCheckForUpdates: Bool {
+        Bundle.main.bundleURL.pathExtension == "app" && !AppInfo.isDevelopmentBuild
     }
 
     func checkForUpdates() {
-        guard isPackagedApp else { return }
+        guard canCheckForUpdates else { return }
         guard !isChecking else { return }
         isChecking = true
         Task {
@@ -134,9 +134,7 @@ final class UpdaterManager: ObservableObject {
             // isn't attached yet. Don't announce an update the user can't
             // actually download; the next check (or "Check Now") will pick it
             // up once the asset shows up.
-            guard let asset = release.assets.first(where: {
-                $0.name.hasSuffix(".dmg") && $0.name.contains(Self.archSuffix)
-            }) else { return }
+            guard let asset = Self.preferredDownloadAsset(for: release) else { return }
 
             updateAvailable = true
             latestVersion = latest
@@ -203,6 +201,14 @@ final class UpdaterManager: ObservableObject {
 
     private static func version(of release: GitHubRelease) -> String {
         release.tagName.hasPrefix("v") ? String(release.tagName.dropFirst()) : release.tagName
+    }
+
+    private static func preferredDownloadAsset(for release: GitHubRelease) -> GitHubRelease.Asset? {
+        let dmgAssets = release.assets.filter { $0.name.hasSuffix(".dmg") }
+        let canonicalName = "Forel-\(release.tagName).dmg"
+        return dmgAssets.first { $0.name == canonicalName }
+            ?? dmgAssets.first { $0.name.contains("darwin-universal") }
+            ?? dmgAssets.first { $0.name.contains(archSuffix) }
     }
 
     static func isNewer(_ candidate: String, than current: String) -> Bool {

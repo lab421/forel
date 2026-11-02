@@ -1,6 +1,14 @@
 {
-  "originHash" : "6a52ce3a8c505da1d0b43bc0a234ca222fd5934b94a1b0173fa9bb152f4512b0",
+  "originHash" : "4635c24d818c123c67a5775b9ea03e9669a5cb0303be43e84ec0e6ec81144137",
   "pins" : [
+    {
+      "identity" : "licensing",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/lab421/licensing.git",
+      "state" : {
+        "revision" : "1569b2038595862084a466d8dea806b360642608"
+      }
+    },
     {
       "identity" : "zipfoundation",
       "kind" : "remoteSourceControl",

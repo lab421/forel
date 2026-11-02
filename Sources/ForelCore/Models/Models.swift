@@ -130,7 +130,10 @@ public enum ActionKind: String, Codable, Equatable, Sendable {
     case setColorLabel = "set_color_label"
     case runScript = "run_script"
     case runShortcut = "run_shortcut"
+    case openApplication = "open_application"
     case importToLibrary = "import_to_library"
+    case compress
+    case uncompress
 
     public init(dbValue: String) {
         self = ActionKind(rawValue: dbValue) ?? .moveToFolder
@@ -189,6 +192,12 @@ public struct Rule: Codable, Equatable, Sendable {
     public var actions: [Action]
     public var priority: Int64
     public var createdAt: String
+    /// Conditions, operators, or actions saved by a newer Forel that this
+    /// version doesn't know, as stored. Such a rule never runs and can't be
+    /// edited or copied: saving it would replace them with a guess.
+    public var unsupportedParts: [String] = []
+
+    public var isSupported: Bool { unsupportedParts.isEmpty }
 
     public init(
         id: String = UUID().uuidString,
@@ -212,6 +221,13 @@ public struct Rule: Codable, Equatable, Sendable {
         self.actions = actions
         self.priority = priority
         self.createdAt = createdAt
+    }
+}
+
+public struct UnsupportedRuleError: Error, LocalizedError {
+    public init() {}
+    public var errorDescription: String? {
+        "This rule was created with a newer version of Forel. Update Forel to edit, copy, or run it."
     }
 }
 
@@ -276,5 +292,21 @@ public struct HistoryEntry: Codable, Equatable, Sendable {
         self.status = status
         self.message = message
         self.createdAt = createdAt
+    }
+}
+
+/// Success ("applied"/"undone") vs. failed run counts for one rule over a
+/// time window, used by the rule list and the menu-bar quick panel.
+public struct RuleRunStats: Codable, Equatable, Sendable, Identifiable {
+    public var id: String
+    public var ruleName: String
+    public var successCount: Int
+    public var failedCount: Int
+
+    public init(id: String, ruleName: String, successCount: Int, failedCount: Int) {
+        self.id = id
+        self.ruleName = ruleName
+        self.successCount = successCount
+        self.failedCount = failedCount
     }
 }

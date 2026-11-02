@@ -3,13 +3,145 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.1.1] - 2026-11-02
+
+### Added
+- Copy one or more rules to another watched folder without recreating their conditions and actions.
+- Date conditions now support hours, with an "is not in the last" option for excluding recently added, created, or modified files.
+- New Compress action: zips the matched file or folder into "<name>.zip" next to it, numbering the archive if one already exists.
+- Move to folder and Copy to folder destinations now accept {year}, {month}, and {day} date tokens (e.g. ~/Archive/{year}/{month}), resolved from each file's creation date. The destination field can now also be typed into.
+
+### Changed
+- The menu bar icon now follows light and dark mode like other menu bar icons, without the green status dot. Paused watching shows an outlined leaf, and an available update shows a small dot.
+
+### Fixed
+- Symbolic links to folders no longer cause automatic rules to process files outside the watched folder.
+- Date Added conditions no longer crash when reading a file's timestamp.
+- Moving a folder into a watched folder now applies matching rules to the files inside it automatically, the same way Run Now does.
+- Rules no longer reach inside apps, Photos libraries, and other packages: Run Now, Dry Run, and automatic watching treat them as a single item, so a rule can no longer move a file out of an app and break it.
+- Editing the number in a relative date or size condition no longer resets its unit, which could silently turn "2 Months" into "2 Days".
+
+## [1.1.0] - 2026-10-22
+
+### Added
+- Right-clicking a watched folder in the sidebar now offers Show in Finder.
+- Activity can now be opened from the bottom of the sidebar, next to Settings.
+- When Run Now has failed actions, its result now stays on screen with a Show in Activity link to see what went wrong.
+- Automatic rules now notify you once when a disk or network share they move or copy to isn't connected, and run again on the waiting files as soon as it's back.
+- Added a getting-started example for lowercasing filenames and replacing spaces with underscores, with guidance on how scripts receive files.
+- The menu bar quick panel now shows recent activity across all folders, showing the 10 latest actions first and loading more as you scroll.
+
+### Changed
+- Forel now comes in Free and Pro. Details in [this discussion](https://github.com/lab421/forel/discussions/75).
+- Forel now requires macOS 14 Sonoma or later.
+- The menu bar quick panel no longer shows the Last 30 Days success and failure counters, and its folder, rule, and history counts now appear in a simpler Overview row.
+- The menu bar quick panel now counts the rules of all folders instead of only the folder selected in the main window.
+- Settings → About now shows the version, build, copyright, and repository link, matching the About Forel window.
+
+### Fixed
+- The menu bar icon now appears when Forel starts at login, without having to reopen the app.
+- Turning off Automatic updates in Settings now works: the switch used to stay on, and clicking it again turned the setting back on.
+- Run Now no longer reports failed actions as applied: its result now counts applied, failed, skipped, and pending actions separately.
+- Dry Run now warns when a Move or Copy destination can't be reached or written to, such as a disconnected disk or network share.
+- Folders on a network share chosen through Network in the folder picker no longer stop working later.
+- When a Move or Copy fails because a disk or network share isn't connected, Activity and Dry Run now name it.
+- Rules with a Size condition no longer crash when the entered size is an extremely large number.
+- Rules no longer move or change macOS system files such as a folder's custom icon file, so folders keep their custom icons. iCloud placeholders, volume system folders, and Windows `Thumbs.db` / `desktop.ini` files are ignored too.
+- Automatic rules now wait until an arriving file or folder has finished being written before acting on it, so AirDrop transfers, Finder copies, and other in-progress files are no longer moved while incomplete or left behind as empty duplicates. Pausing automatic watching during a transfer also keeps rules from running when it completes. Files still being copied by Finder are also skipped by Dry Run and Run Now.
+- Files downloaded with Firefox are no longer moved before the download finishes, which left an empty file at the destination and the real download renamed with " (1)".
+
+## [1.0.9] - 2026-10-02
+
+### Fixed
+- About Forel now displays the app name, version, build number, copyright, and repository link.
+- Automatic rules now keep processing simultaneous file arrivals when an earlier file takes time to move to another disk or network folder.
+- Activity timestamps now follow the Mac's current locale, time zone, and clock format instead of displaying UTC.
+- Automatic watching can now be paused or resumed from the main window and Settings, with a clear explanation above paused rules.
+- File actions no longer crash when macOS or a network volume returns a file identifier outside the signed integer range.
+
+## [1.0.8] - 2026-07-24
+
+### Fixed
+- The Forel logo now appears correctly in the menu-bar quick panel and app header in universal builds.
+
+## [1.0.7] - 2026-07-24
+
+### Changed
+- Releases now provide one universal DMG for Apple Silicon and Intel Macs, while automatic updates remain compatible with older architecture-specific downloads.
+
+### Fixed
+- Add Tag and Remove Tag actions now require at least one tag before a rule can be saved.
+- Rule editor sheets now grow taller with the main window instead of staying fixed at their default height.
+- Rule editor validation errors now appear together at the top of the editor instead of inside separate sections.
+
+## [1.0.6] - 2026-07-15
+
+### Added
+- Added an Open Application action that launches a chosen app, with an option to pass the matched file to it.
+- Watcher notifications: a new toggle in Settings lets you enable or disable system notifications when automatic rules process files.
+
+### Changed
+- Settings now opens in its own window, with a "Settings…" item under the Forel menu and the standard ⌘, shortcut, instead of being a pane inside the main window.
+- Forel now requires macOS 13 Ventura or later, down from macOS 14 Sonoma.
+
+### Fixed
+- Opening Forel's main window from the menu-bar quick panel now reliably switches the top menu bar to Forel's own menu (Forel, File, Edit, View…) instead of sometimes leaving the previous app's menu showing.
+- Opening the Permissions tab in Settings no longer hitches while it checks whether Music/TV are running.
+
+## [1.0.5] - 2026-07-06
+
+### Added
+- Rule editor now validates conditions and actions before saving — empty condition values, invalid regex, empty destination or rename pattern are reported on save instead of silently causing wrong behaviour.
+- About Forel panel now shows the app icon, name and version.
+
+### Changed
+- Removed the Light/Dark theme override from Settings; Forel now always follows the system appearance.
+- When no rules exist, the action bar is hidden and a centered "New Rule" button is shown in the empty state.
+- The "Clean file name" option in Rename actions now transliterates any script (Cyrillic, Arabic, CJK, German ß…) to a universal ASCII slug.
+
+### Fixed
+- Move to Trash no longer blocks with a "file already at destination" error when an identically-named file is already in the Trash.
+
+## [1.0.4] - 2026-07-01
+
+### Changed
+- Release downloads are now signed with an Apple Developer ID certificate and notarized by Apple so macOS can verify their publisher.
+
+### Fixed
+- Fixed exact Name exclusions with file extensions being ignored when combined with other conditions.
+
+## [1.0.3] - 2026-06-22
+
+### Added
+- Added grouped watcher notifications that summarize automatically applied rule actions without sending one alert per file, with a Settings toggle to turn them on or off.
+- Added an Uncompress action for ZIP archives, with conflict handling and action chaining on the extracted item.
+- Added the ability to change the path of an existing watched folder while keeping its rules.
+
+## Fixed
+- Fixed the menu bar panel staying open after clicking elsewhere.
+- Fixed the automatic watcher potentially missing files when macOS reports dropped filesystem events by rescanning the affected folder while still skipping unchanged files.
+
+## [1.0.2] - 2026-06-22
+
+### Added
+- Added an Uncompress action for ZIP archives, with conflict handling and action chaining on the extracted item.
+- Added the ability to change the path of an existing watched folder while keeping its rules.
+- Added expandable rule cards that show each rule's conditions and actions directly in the rule list.
+- Each rule now shows its run count from the last 30 days, hidden when there's nothing to show, and the menu bar quick panel has a "Last 30 Days" section with success and failed totals across all rules.
 
 ### Added
 - Added a Sync Folders action that mirrors relative file changes between two folders, can run two-way, and can move counterpart files to the Trash when deletions are propagated.
 
 ### Changed
 - Dry Run now shows each matched file's full path beneath its name.
+- Refreshed the menu bar quick panel with a cleaner header, bordered footer buttons, and a background that now properly adapts to Light mode instead of always looking dark and hard to read.
+
+### Fixed
+- Fixed expanded/collapsed rule cards resetting after restarting the app.
+- Fixed incomplete browser downloads from Safari, Chrome, Firefox, and other common downloaders being treated as ready documents and moved before the download finished.
+- Fixed the automatic watcher potentially missing files when macOS reports dropped filesystem events by rescanning the affected folder while still skipping unchanged files.
+- Fixed a crash that could happen when dropping a large batch of files into a watched folder while the app window was also active (e.g. running Run Now, switching folders) — all database access from the app now goes through the same lock the watcher already used.
+- Fixed the app icon appearing off-center and larger than other apps' icons in the Dock and Cmd-Tab switcher.
 
 ## [1.0.1] - 2026-06-22
 
