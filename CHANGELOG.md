@@ -11,6 +11,9 @@ All notable changes to Forel are documented here. Format loosely follows
 - New Compress action: zips the matched file or folder into "<name>.zip" next to it, numbering the archive if one already exists.
 - Move to folder and Copy to folder destinations now accept {year}, {month}, and {day} date tokens (e.g. ~/Archive/{year}/{month}), resolved from each file's creation date. The destination field can now also be typed into.
 
+### Changed
+- The menu bar icon now follows light and dark mode like other menu bar icons, without the green status dot. Paused watching shows an outlined leaf, and an available update shows a small dot.
+
 ### Fixed
 - Symbolic links to folders no longer cause automatic rules to process files outside the watched folder.
 - Date Added conditions no longer crash when reading a file's timestamp.
