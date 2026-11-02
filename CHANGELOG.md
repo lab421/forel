@@ -6,6 +6,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [1.1.1] - 2026-11-02
 
 ### Added
+- Rules can now be imported and exported as `.forelrules` files named after their watched folder.
 - Copy one or more rules to another watched folder without recreating their conditions and actions.
 - Date conditions now support hours, with an "is not in the last" option for excluding recently added, created, or modified files.
 - New Compress action: zips the matched file or folder into "<name>.zip" next to it, numbering the archive if one already exists.

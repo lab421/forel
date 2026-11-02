@@ -601,6 +601,39 @@ final class AppModel: ObservableObject {
         reloadRules()
     }
 
+    func exportRules(to url: URL) {
+        guard let folderId = selectedFolderId else { return }
+        do {
+            let data = try RuleTransfer.exportForel(rules)
+            try data.write(to: url, options: .atomic)
+            showRunNowMessage(RunNowMessage(text: "Exported \(rules.count) rule\(rules.count == 1 ? "" : "s")", hasFailures: false, folderId: folderId))
+        } catch {
+            showError(error)
+        }
+    }
+
+    @discardableResult
+    func importRules(from url: URL) -> Bool {
+        guard let folderId = selectedFolderId else { return false }
+        guard selectedFolderIsAllowed else { proUpgrade = .folders; return false }
+        do {
+            let result = try RuleTransfer.importRules(from: RuleTransfer.readFile(at: url), folderId: folderId)
+            try db.withLock { try $0.importRules(result.rules, toFolderID: folderId, isPro: isPro) }
+            reloadRules()
+            showRunNowMessage(RunNowMessage(text: "Imported \(result.rules.count) rule\(result.rules.count == 1 ? "" : "s")", hasFailures: false, folderId: folderId))
+            return true
+        } catch FreePlanError.proFolder {
+            proUpgrade = .folders
+            return false
+        } catch FreePlanError.feature(let feature) {
+            proUpgrade = .feature(feature)
+            return false
+        } catch {
+            showError(error)
+            return false
+        }
+    }
+
     func toggleRule(_ rule: Rule, enabled: Bool) {
         if enabled, !isPro {
             guard FreePlan.allows(folderID: rule.folderId, folders: folders, isPro: false) else {
@@ -843,7 +876,11 @@ final class AppModel: ObservableObject {
     }
 
     private func showError(_ error: any Error) {
-        showError("\(error)")
+        if let description = (error as? any LocalizedError)?.errorDescription, !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            showError(description)
+        } else {
+            showError(String(describing: error))
+        }
     }
 
     private func showError(_ message: String) {
