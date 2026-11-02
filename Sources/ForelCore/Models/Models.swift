@@ -191,6 +191,12 @@ public struct Rule: Codable, Equatable, Sendable {
     public var actions: [Action]
     public var priority: Int64
     public var createdAt: String
+    /// Conditions, operators, or actions saved by a newer Forel that this
+    /// version doesn't know, as stored. Such a rule never runs and can't be
+    /// edited or copied: saving it would replace them with a guess.
+    public var unsupportedParts: [String] = []
+
+    public var isSupported: Bool { unsupportedParts.isEmpty }
 
     public init(
         id: String = UUID().uuidString,
@@ -214,6 +220,13 @@ public struct Rule: Codable, Equatable, Sendable {
         self.actions = actions
         self.priority = priority
         self.createdAt = createdAt
+    }
+}
+
+public struct UnsupportedRuleError: Error, LocalizedError {
+    public init() {}
+    public var errorDescription: String? {
+        "This rule was created with a newer version of Forel. Update Forel to edit, copy, or run it."
     }
 }
 

@@ -79,7 +79,7 @@ File matching and processing happen **locally on your Mac**. Forel does not uplo
 - **Copy rules** — Copy a rule to another watched folder, or select several with ⌘-click and choose **Copy rules to folder…**. Copies are independent and keep their action destinations.
 - **History & Undo** — Review action results and undo supported actions when it is safe to do so.
 - **Menu bar app** — Forel lives in your menu bar. Toggle individual rules on/off without opening the main window.
-- **Actions** — Move, copy, rename, tag, trash, delete, or run a custom script.
+- **Actions** — Move, copy, rename, compress, uncompress, tag, trash, delete, or run a custom script. Move and copy destinations accept date tokens like `~/Archive/{year}/{month}`.
 - **SQLite persistence** — Rules, folders, and history are stored locally in a bundled SQLite database.
 
 ---
@@ -252,9 +252,9 @@ History / Undo (SQLite)
 - [ ] Move folder based on criteria
 - [ ] Scheduler — **Pro · Coming soon**
 - [x] Copy rules across watched folders
-- [ ] Compress actions
+- [x] Compress actions
 - [ ] Sync actions — **Pro · Coming soon**
-- [ ] Dynamic destination folders with date tokens (e.g. `~/Screenshots/{year}/{month}`)
+- [x] Dynamic destination folders with date tokens (e.g. `~/Screenshots/{year}/{month}`)
 - [ ] Upload actions
 - [ ] AI features — **Pro · Coming soon**
 

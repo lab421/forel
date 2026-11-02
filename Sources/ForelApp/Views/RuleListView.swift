@@ -120,6 +120,11 @@ struct RuleListView: View {
                                     .font(.caption)
                                     .foregroundStyle(ForelTheme.secondaryText)
                             }
+                            if !rule.isSupported {
+                                Label("Created with a newer version of Forel — not running. Update Forel to run or edit it.", systemImage: "exclamationmark.triangle")
+                                    .font(.caption)
+                                    .foregroundStyle(ForelTheme.secondaryText)
+                            }
                             RuleCard(
                             rule: rule,
                             order: index + 1,
@@ -425,11 +430,13 @@ private struct RuleCard: View {
                     Image(systemName: "doc.on.doc")
                 }
                 .buttonStyle(IconButtonStyle())
+                .disabled(!rule.isSupported)
 
                 Button(action: onEdit) {
                     Image(systemName: "pencil")
                 }
                 .buttonStyle(IconButtonStyle())
+                .disabled(!rule.isSupported)
 
                 Button(role: .destructive) {
                     model.deleteRule(rule)
@@ -445,7 +452,17 @@ private struct RuleCard: View {
                 Divider()
                     .overlay(ForelTheme.divider)
                     .padding(.horizontal, 12)
-                RuleDetails(rule: rule)
+                Group {
+                    if rule.isSupported {
+                        RuleDetails(rule: rule)
+                    } else {
+                        // This version would show its guess for what it
+                        // doesn't know, which would be wrong.
+                        Text("This version of Forel can't show this rule's details.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(ForelTheme.secondaryText)
+                    }
+                }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 12)
             }
@@ -458,7 +475,7 @@ private struct RuleCard: View {
                     lineWidth: isSelected ? 1.5 : 1
                 )
         )
-        .opacity(rule.enabled && model.selectedFolderIsAllowed ? 1 : 0.6)
+        .opacity(rule.enabled && rule.isSupported && model.selectedFolderIsAllowed ? 1 : 0.6)
     }
 
     private func metaPill(icon: String, text: String) -> some View {

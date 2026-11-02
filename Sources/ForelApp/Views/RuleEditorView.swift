@@ -1074,7 +1074,11 @@ private struct ActionOptionsView: View {
                 .controlSize(.small)
                 .font(.system(size: 12))
             if ActionExecutor.deletesSourceAfterCompression(action) {
-                Label("After the ZIP is created successfully, the original file or folder and all its contents are permanently deleted. This cannot be undone. Following actions apply to the ZIP.", systemImage: "exclamationmark.triangle")
+                Label(
+                    "After the ZIP is created successfully, the original file or folder and all its contents are permanently deleted. "
+                        + "This cannot be undone. Following actions apply to the ZIP.",
+                    systemImage: "exclamationmark.triangle"
+                )
                     .font(.system(size: 11))
                     .foregroundStyle(ForelTheme.primaryText)
                     .fixedSize(horizontal: false, vertical: true)

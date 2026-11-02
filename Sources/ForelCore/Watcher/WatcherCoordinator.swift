@@ -222,15 +222,32 @@ public final class WatcherCoordinator: @unchecked Sendable {
             scheduleSettleCheck(path, after: min(backoff, maxStalledInterval))
             return
         }
+        // Contents a folder arrived with never get their own FSEvents events —
+        // they were created outside the watched tree — so its subtree is
+        // walked, the way Run Now does. The snapshot already waited for them
+        // to stop changing. A folder the watcher already knows was only
+        // renamed or moved inside the watched folder: nothing new arrived.
+        // Checked before `handle` records the folder under its new path.
+        let arrivedWithContents = state.includesContents && isRealDirectory(path) && !wasEvaluatedBefore(path)
         settling[path] = nil
         handle(path: path)
-        // Contents a folder arrived with never get their own FSEvents events —
-        // they were created outside the watched tree — so a folder that
-        // settles must have its subtree walked, the way Run Now does. The
-        // includesContents snapshot already waited for everything inside to
-        // stop changing, so the entries can be evaluated right away.
-        if state.hasDeferredDescendants || (state.includesContents && isRealDirectory(path)) {
+        if state.hasDeferredDescendants {
             handleRescanSubtree(root: path, waitsForSettledFiles: false)
+        } else if arrivedWithContents {
+            handleRescanSubtree(root: path, waitsForSettledFiles: false, skipsKnownItems: true)
+        }
+    }
+
+    /// Whether the watcher already evaluated this item in the same watched
+    /// folder, under another path before a rename or a move. Coming from
+    /// another watched folder, it still gets this folder's rules.
+    private func wasEvaluatedBefore(_ path: String) -> Bool {
+        guard let identity = FileFingerprint.identity(path) else { return false }
+        return db.withLock { db in
+            guard let root = try? db.folderForPath(path)?.path,
+                  let paths = try? db.watchedPaths(volumeId: identity.volumeId, fileId: identity.fileId)
+            else { return false }
+            return paths.contains { Self.isPath($0, under: root) }
         }
     }
 
@@ -335,7 +352,9 @@ public final class WatcherCoordinator: @unchecked Sendable {
         }
     }
 
-    private func handleRescanSubtree(root: String, waitsForSettledFiles: Bool) {
+    /// `skipsKnownItems` leaves out what the watcher already evaluated under
+    /// another path, e.g. files inside a folder that was renamed.
+    private func handleRescanSubtree(root: String, waitsForSettledFiles: Bool, skipsKnownItems: Bool = false) {
         guard FileManager.default.fileExists(atPath: root) else { return }
         guard isRealDirectory(root) else {
             handle(event: .pathArrived(root), waitsForSettledFiles: waitsForSettledFiles)
@@ -356,6 +375,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
         // A rescan can find files that are still being written just like a
         // live arrival can, so each one goes through the same wait.
         let process: (String, Int) -> Void = { [self] path, depth in
+            if skipsKnownItems, wasEvaluatedBefore(path) { return }
             if waitsForSettledFiles {
                 awaitSettled(path, includingContents: false)
             } else {

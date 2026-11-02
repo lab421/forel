@@ -238,6 +238,90 @@ import Foundation
         #expect(try db.listHistory().count == 2)
     }
 
+    @Test func renamingAFolderInsideTheWatchedFolderDoesNotRerunItsFiles() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let backup = TempDir()
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "back up pdf", recursionDepth: nil)
+        rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
+        rule.actions = [makeAction(.copyToFolder, .object(["destination": .string(backup.path)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let coordinator = WatcherCoordinator(db: db, settleInterval: 0.05)
+
+        let sub = dir.dir("Sub")
+        let pdf = (sub as NSString).appendingPathComponent("a.pdf")
+        try "a".write(toFile: pdf, atomically: true, encoding: .utf8)
+        coordinator.enqueue(event: .pathArrived(pdf))
+        coordinator.waitForPendingEvents()
+        #expect(try FileManager.default.contentsOfDirectory(atPath: backup.path) == ["a.pdf"])
+
+        // FSEvents reports a rename the same way as a folder moved in.
+        let renamed = (dir.path as NSString).appendingPathComponent("Sub 2")
+        try FileManager.default.moveItem(atPath: sub, toPath: renamed)
+        coordinator.enqueue(event: .pathArrived(renamed))
+        coordinator.waitForPendingEvents()
+
+        #expect(try FileManager.default.contentsOfDirectory(atPath: backup.path) == ["a.pdf"])
+        #expect(try db.listHistory().count == 1)
+    }
+
+    @Test func folderMovedFromAnotherWatchedFolderGetsThisFolderRules() throws {
+        let db = try makeDB()
+        let first = TempDir()
+        let second = TempDir()
+        let backup = TempDir()
+        let firstFolder = WatchedFolder(path: first.path)
+        let secondFolder = WatchedFolder(path: second.path)
+        try db.insertFolder(firstFolder)
+        try db.insertFolder(secondFolder)
+        for (folder, ext) in [(firstFolder, "txt"), (secondFolder, "pdf")] {
+            var rule = makeRule(folderId: folder.id, name: "back up \(ext)", recursionDepth: nil)
+            rule.conditions = [makeCondition(.extension_, .is, ext, ruleId: rule.id)]
+            rule.actions = [makeAction(.copyToFolder, .object(["destination": .string(backup.path)]), position: 0, ruleId: rule.id)]
+            try db.insertRule(rule)
+        }
+        let coordinator = WatcherCoordinator(db: db, settleInterval: 0.05)
+
+        // Seen by the first watched folder, whose rules ignore PDFs.
+        let sub = first.dir("Sub")
+        try "a".write(toFile: (sub as NSString).appendingPathComponent("a.pdf"), atomically: true, encoding: .utf8)
+        coordinator.enqueue(event: .pathArrived(sub))
+        coordinator.waitForPendingEvents()
+        #expect(try FileManager.default.contentsOfDirectory(atPath: backup.path).isEmpty)
+
+        let moved = (second.path as NSString).appendingPathComponent("Sub")
+        try FileManager.default.moveItem(atPath: sub, toPath: moved)
+        coordinator.enqueue(event: .pathArrived(moved))
+        coordinator.waitForPendingEvents()
+
+        #expect(try FileManager.default.contentsOfDirectory(atPath: backup.path) == ["a.pdf"])
+    }
+
+    @Test func appArrivingInTheWatchedFolderKeepsItsContents() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let images = TempDir()
+        let folder = WatchedFolder(path: dir.path)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sort png", recursionDepth: nil)
+        rule.conditions = [makeCondition(.extension_, .is, "png", ruleId: rule.id)]
+        rule.actions = [makeAction(.moveToFolder, .object(["destination": .string(images.path)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let app = dir.dir("Some.app")
+        _ = dir.dir("Some.app/Contents/Resources")
+        let icon = (app as NSString).appendingPathComponent("Contents/Resources/icon.png")
+        try "x".write(toFile: icon, atomically: true, encoding: .utf8)
+        let coordinator = WatcherCoordinator(db: db, settleInterval: 0.05)
+        coordinator.enqueue(event: .pathArrived(app))
+        coordinator.waitForPendingEvents()
+
+        #expect(FileManager.default.fileExists(atPath: icon))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: images.path).isEmpty)
+    }
+
     @Test(arguments: ["preview", "manual", "watcher-arrival", "watcher-rescan"])
     func directorySymlinksDoNotProcessExternalContents(execution: String) throws {
         let db = try makeDB()

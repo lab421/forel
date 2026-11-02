@@ -141,7 +141,7 @@ public enum RuleEngine {
             for ruleIndex in target.startRuleIndex..<rules.count {
                 let rule = rules[ruleIndex]
                 guard !blockedRuleIds.contains(rule.id) else { continue }
-                guard rule.enabled, isPro || FreePlan.requiredFeature(for: rule) == nil,
+                guard rule.enabled, rule.isSupported, isPro || FreePlan.requiredFeature(for: rule) == nil,
                       ruleMatches(rule, path: currentPath, depth: currentDepth, allowOCR: isPro) else { continue }
                 if !checkedBusyContents {
                     checkedBusyContents = true
@@ -217,7 +217,7 @@ public enum RuleEngine {
             for ruleIndex in target.startRuleIndex..<rules.count {
                 let rule = rules[ruleIndex]
                 guard !blockedRuleIds.contains(rule.id) else { continue }
-                guard rule.enabled, isPro || FreePlan.requiredFeature(for: rule) == nil,
+                guard rule.enabled, rule.isSupported, isPro || FreePlan.requiredFeature(for: rule) == nil,
                       ruleInScope(rule, depth: currentDepth) else { continue }
                 let conditions = conditionPreviews(rule, path: currentPath, allowOCR: isPro)
                 guard conditionResultsMatch(conditions.map(\.matched), rule.conditionMatch) else { continue }
@@ -354,10 +354,17 @@ public enum RuleEngine {
 
     public static func forEachEntry(root: String, maxDepth: Int?, _ visit: (ScopedPath) -> Void) {
         var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue else {
+        guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue, !isPackage(root) else {
             return
         }
         walkEntriesInner(root: root, maxDepth: maxDepth, depth: 0, visit: visit)
+    }
+
+    /// Apps, Photos libraries, .rtfd documents… look like single files in
+    /// Finder. Rules see the package itself, never the files inside it:
+    /// moving one of those out would break it.
+    static func isPackage(_ path: String) -> Bool {
+        (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isPackageKey]))?.isPackage == true
     }
 
     private static func walkEntriesInner(root: String, maxDepth: Int?, depth: Int, visit: (ScopedPath) -> Void) {
@@ -372,7 +379,8 @@ public enum RuleEngine {
             if let attrs = try? FileManager.default.attributesOfItem(atPath: childPath) {
                 isSymlink = (attrs[.type] as? FileAttributeType) == .typeSymbolicLink
             }
-            guard FileManager.default.fileExists(atPath: childPath, isDirectory: &isDir), isDir.boolValue, !isSymlink else {
+            guard FileManager.default.fileExists(atPath: childPath, isDirectory: &isDir), isDir.boolValue, !isSymlink,
+                  !isPackage(childPath) else {
                 continue
             }
             if let limit = maxDepth, depth >= limit { continue }

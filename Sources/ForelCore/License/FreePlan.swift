@@ -83,6 +83,6 @@ extension Database {
     public func executionRules(folderID: String, isPro: Bool) throws -> [Rule] {
         guard FreePlan.allows(folderID: folderID, folders: try listFolders(), isPro: isPro) else { return [] }
         return try listRules(folderId: folderID)
-            .filter { $0.enabled && (isPro || FreePlan.requiredFeature(for: $0) == nil) }
+            .filter { $0.enabled && $0.isSupported && (isPro || FreePlan.requiredFeature(for: $0) == nil) }
     }
 }

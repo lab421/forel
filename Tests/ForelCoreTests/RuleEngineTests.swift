@@ -382,6 +382,20 @@ import Foundation
         #expect(entries.allSatisfy { $0.depth == 0 })
     }
 
+    /// Shared by Run Now and Dry Run: an app is one item, its contents stay out.
+    @Test func walkEntriesListsPackagesWithoutTheirContents() throws {
+        let dir = TempDir()
+        let app = dir.dir("Some.app")
+        _ = dir.dir("Some.app/Contents/Resources")
+        try "x".write(toFile: (app as NSString).appendingPathComponent("Contents/Resources/icon.png"), atomically: true, encoding: .utf8)
+        let plain = dir.dir("Plain")
+        let inside = (plain as NSString).appendingPathComponent("photo.png")
+        try "x".write(toFile: inside, atomically: true, encoding: .utf8)
+
+        #expect(RuleEngine.walkEntries(root: dir.path, maxDepth: nil).map(\.path) == [plain, inside, app])
+        #expect(RuleEngine.walkEntries(root: app, maxDepth: nil).isEmpty)
+    }
+
     @Test func walkEntriesSkipsMacOSAndOfficeSystemFiles() throws {
         let dir = TempDir()
         let real = dir.file("report.pdf")

@@ -18,6 +18,7 @@ All notable changes to Forel are documented here. Format loosely follows
 - Symbolic links to folders no longer cause automatic rules to process files outside the watched folder.
 - Date Added conditions no longer crash when reading a file's timestamp.
 - Moving a folder into a watched folder now applies matching rules to the files inside it automatically, the same way Run Now does.
+- Rules no longer reach inside apps, Photos libraries, and other packages: Run Now, Dry Run, and automatic watching treat them as a single item, so a rule can no longer move a file out of an app and break it.
 - Editing the number in a relative date or size condition no longer resets its unit, which could silently turn "2 Months" into "2 Days".
 
 ## [1.1.0] - 2026-10-22

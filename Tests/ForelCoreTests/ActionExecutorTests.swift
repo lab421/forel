@@ -84,6 +84,17 @@ import Foundation
         try assertZip(at: applied.copiedPath!, contains: ["report.txt"], with: ["report.txt": "hello"])
     }
 
+    @Test func compressWritesToItsConfiguredDestination() throws {
+        let dir = TempDir()
+        let file = dir.file("report.txt", contents: "hello")
+        let archives = (dir.path as NSString).appendingPathComponent("Archives/{year}")
+        let year = Calendar.current.component(.year, from: Date())
+
+        let applied = try ActionExecutor.execute(makeAction(.compress, .object([ActionParam.destination: .string(archives)])), path: file)
+
+        #expect(applied.copiedPath == (dir.path as NSString).appendingPathComponent("Archives/\(year)/report.zip"))
+    }
+
     @Test func compressFolderArchivesItsContentsRecursively() throws {
         let dir = TempDir()
         let folder = dir.dir("Export")
@@ -229,6 +240,20 @@ import Foundation
 
         #expect(FileManager.default.fileExists(atPath: file))
         #expect(applied.copiedPath == (dir.path as NSString).appendingPathComponent("Screenshots/2026/07/shot.png"))
+    }
+
+    @Test func destinationStartingWithTildeResolvesToTheHomeFolder() throws {
+        let dir = TempDir()
+        let file = dir.file("receipt.pdf", contents: "pdf")
+        let year = Calendar.current.component(.year, from: Date())
+        let home = NSHomeDirectory() as NSString
+
+        for (destination, expected) in [("~/Archive", "Archive"), ("~/Archive/{year}", "Archive/\(year)")] {
+            for kind in [ActionKind.moveToFolder, .copyToFolder] {
+                let plan = try ActionExecutor.plan(makeAction(kind, .object([ActionParam.destination: .string(destination)])), path: file)
+                #expect(plan.targetPath == (home.appendingPathComponent(expected) as NSString).appendingPathComponent("receipt.pdf"))
+            }
+        }
     }
 
     @Test func destinationTokensWithUnknownBracesAreLeftAlone() throws {

@@ -250,7 +250,9 @@ public enum ActionExecutor {
     /// `{year}`, `{month}`, `{day}`, with month/day zero-padded — from the
     /// file's creation date (the date a "sort my downloads by month" workflow
     /// means; it survives moves). Unknown `{...}` sequences are left as-is.
-    private static func expandedDestination(_ template: String, fileAtPath: String) -> String {
+    /// A typed `~` is expanded to the home folder.
+    private static func expandedDestination(_ rawTemplate: String, fileAtPath: String) -> String {
+        let template = (rawTemplate as NSString).expandingTildeInPath
         guard template.contains("{") else { return template }
         let attrs = try? FileManager.default.attributesOfItem(atPath: fileAtPath)
         let date = (attrs?[.creationDate] as? Date) ?? (attrs?[.modificationDate] as? Date) ?? Date()
@@ -1320,8 +1322,11 @@ public enum ActionExecutor {
             var description = "Compress to \(target)"
             if conflicts { description += " (renamed to avoid an existing archive)" }
             if cleanup { description += "; permanently delete source after success" }
-            let warning = [destinationWarning(dir), cleanup ? "The original file or folder and all its contents will be permanently deleted after the ZIP is created. This cannot be undone. Following actions apply to the ZIP." : nil]
-                .compactMap { $0 }.joined(separator: " ")
+            let cleanupWarning = cleanup
+                ? "The original file or folder and all its contents will be permanently deleted after the ZIP is created. "
+                    + "This cannot be undone. Following actions apply to the ZIP."
+                : nil
+            let warning = [destinationWarning(dir), cleanupWarning].compactMap { $0 }.joined(separator: " ")
             return ActionPlan(
                 kind: action.kind,
                 description: description,
