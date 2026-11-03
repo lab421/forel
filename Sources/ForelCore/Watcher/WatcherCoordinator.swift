@@ -68,6 +68,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
     /// Files to run the rules on again, by the /Volumes name of the disk or
     /// share they wait for. Only touched on `processingQueue`; not persisted.
     var waitingForVolume: [String: Set<String>] = [:]
+    var waitingForSyncOnlyPaths: Set<String> = []
 
     private struct SettlingState {
         var fingerprint: String?
@@ -323,7 +324,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
         defer { endProcessing(root: folder.path) }
 
         guard let depth = RuleEngine.pathDepth(root: folder.path, path: path) else { return }
-        runAndRecord(path: path, depth: depth, rules: rules, watchedRoot: folder.path, isPro: isPro)
+        runAndRecord(path: path, depth: depth, rules: rules, watchedRoot: folder.path, isPro: isPro, syncOnly: syncOnly)
     }
 
     private func beginProcessing(root: String) {
@@ -350,20 +351,50 @@ public final class WatcherCoordinator: @unchecked Sendable {
             do {
                 guard try !ActionExecutor.isSyncDestinationPath(match.action, path: path) else { continue }
                 let counterpart = try ActionExecutor.syncCounterpartPath(match.action, path: path, root: match.folder.path)
-                // The deleted file is gone, so the rule is checked on what is left.
-                guard FileManager.default.fileExists(atPath: counterpart), syncRuleApplies(match, to: counterpart) else { continue }
-                if policy == .delete {
-                    try FileManager.default.removeItem(atPath: counterpart)
-                    insertSyncHistory(match: match, batchId: UUID().uuidString, originalPath: path, resultPath: counterpart, undo: .none)
-                } else {
-                    let trash = try moveToTrash(counterpart)
-                    insertSyncHistory(
-                        match: match,
-                        batchId: UUID().uuidString,
-                        originalPath: path,
-                        resultPath: trash,
-                        undo: .move(from: counterpart, to: trash)
-                    )
+                guard (try? FileManager.default.attributesOfItem(atPath: counterpart)) != nil else { continue }
+                let batchId = UUID().uuidString
+                // Moving a folder out can report only the folder itself.
+                // Match bottom-up before changing anything. A directory can
+                // only be removed if every child is eligible too.
+                let candidates = syncRemovalCandidates(match, counterpart: counterpart)
+                var eligible = Set<String>()
+                func originalPath(_ candidate: String) -> String {
+                    let suffix = (candidate as NSString).pathComponents.dropFirst((counterpart as NSString).pathComponents.count)
+                    return suffix.reduce(path) { ($0 as NSString).appendingPathComponent($1) }
+                }
+                for candidate in candidates {
+                    let original = originalPath(candidate)
+                    guard try !ActionExecutor.isSyncDestinationPath(match.action, path: original) else { continue }
+                    _ = try ActionExecutor.syncCounterpartPath(match.action, path: original, root: match.folder.path)
+                    guard syncRuleApplies(match, to: candidate) else { continue }
+                    if isRealDirectory(candidate) {
+                        let children = try FileManager.default.contentsOfDirectory(atPath: candidate)
+                        guard children.allSatisfy({ eligible.contains((candidate as NSString).appendingPathComponent($0)) }) else { continue }
+                    }
+                    eligible.insert(candidate)
+                }
+                for candidate in candidates where eligible.contains(candidate) {
+                    // Move an eligible subtree as one item. This preserves
+                    // directory Undo instead of trashing parents and children
+                    // separately with colliding restore operations.
+                    var parent = (candidate as NSString).deletingLastPathComponent
+                    var covered = false
+                    while isPathPrefix(counterpart, of: parent) {
+                        if eligible.contains(parent) { covered = true; break }
+                        let next = (parent as NSString).deletingLastPathComponent
+                        if next == parent { break }
+                        parent = next
+                    }
+                    if covered { continue }
+                    let original = originalPath(candidate)
+                    if policy == .delete {
+                        try FileManager.default.removeItem(atPath: candidate)
+                        insertSyncHistory(match: match, batchId: batchId, originalPath: original, resultPath: candidate, undo: .none)
+                    } else {
+                        let trash = try moveToTrash(candidate)
+                        insertSyncHistory(match: match, batchId: batchId, originalPath: original, resultPath: trash,
+                                          undo: .move(from: candidate, to: trash))
+                    }
                 }
             } catch {
                 insertSyncHistory(
@@ -376,6 +407,28 @@ public final class WatcherCoordinator: @unchecked Sendable {
                     undo: .none
                 )
             }
+        }
+    }
+
+    private func syncRemovalCandidates(_ match: SyncRuleMatch, counterpart: String) -> [String] {
+        var candidates = [counterpart]
+        if isRealDirectory(counterpart),
+           let target = try? ActionExecutor.syncCounterpartPath(match.action, path: match.folder.path, root: match.folder.path),
+           let depth = RuleEngine.pathDepth(root: target, path: counterpart) {
+            let isRoot = (counterpart as NSString).standardizingPath == (target as NSString).standardizingPath
+            let childDepth = isRoot ? 0 : depth + 1
+            if let limit = match.rule.recursionDepth {
+                if childDepth <= max(0, Int(limit)) {
+                    candidates += RuleEngine.walkEntries(root: counterpart, maxDepth: max(0, Int(limit)) - childDepth).map(\.path)
+                }
+            } else {
+                candidates += RuleEngine.walkEntries(root: counterpart, maxDepth: nil).map(\.path)
+            }
+        }
+        return candidates.sorted {
+            let lhs = ($0 as NSString).pathComponents.count
+            let rhs = ($1 as NSString).pathComponents.count
+            return lhs == rhs ? $0 < $1 : lhs > rhs
         }
     }
 
@@ -553,7 +606,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
             if waitsForSettledFiles {
                 awaitSettled(path, includingContents: false, syncOnly: syncOnly)
             } else {
-                handle(path: path, depth: depth, rules: rules, watchedRoot: folder.path, isPro: isPro)
+                handle(path: path, depth: depth, rules: rules, watchedRoot: folder.path, isPro: isPro, syncOnly: syncOnly)
             }
         }
 
@@ -577,19 +630,19 @@ public final class WatcherCoordinator: @unchecked Sendable {
         }
     }
 
-    private func handle(path: String, depth: Int, rules: [Rule], watchedRoot: String, isPro: Bool) {
+    private func handle(path: String, depth: Int, rules: [Rule], watchedRoot: String, isPro: Bool, syncOnly: Bool = false) {
         guard FileManager.default.fileExists(atPath: path) else { return }
         guard hasPathChangedSinceLastEvaluation(path) else { return }
 
-        runAndRecord(path: path, depth: depth, rules: rules, watchedRoot: watchedRoot, isPro: isPro)
+        runAndRecord(path: path, depth: depth, rules: rules, watchedRoot: watchedRoot, isPro: isPro, syncOnly: syncOnly)
     }
 
-    private func runAndRecord(path: String, depth: Int, rules: [Rule], watchedRoot: String, isPro: Bool) {
+    private func runAndRecord(path: String, depth: Int, rules: [Rule], watchedRoot: String, isPro: Bool, syncOnly: Bool = false) {
         do {
             let result = try monthlyUsage.runWithFreePlan(path: path, depth: depth, rules: rules,
                                                batchId: UUID().uuidString, root: watchedRoot, isPro: isPro, at: now())
             monthlyUsage.removeQuotaPendingFile(path)
-            record(matched: result.matched, history: result.history, path: path, rules: rules)
+            record(matched: result.matched, history: result.history, path: path, rules: rules, syncOnly: syncOnly)
         } catch FreePlanError.monthlyFileLimit {
             monthlyUsage.queueQuotaPendingFile(path)
             onMonthlyQuotaReached?()
@@ -642,7 +695,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
     }
 
     /// Persists what a run on `path` did and tells whoever listens.
-    private func record(matched: [String], history: [HistoryEntry], path: String, rules: [Rule]) {
+    private func record(matched: [String], history: [HistoryEntry], path: String, rules: [Rule], syncOnly: Bool = false) {
         for ruleName in matched {
             onRuleMatched?(ruleName, path)
         }
@@ -653,7 +706,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
             recordEvaluatedResultStates(history)
             notifyActivity(from: history)
             onHistoryRecorded?()
-            waitForDisconnectedVolumes(history, path: path, rules: rules)
+            waitForDisconnectedVolumes(history, path: path, rules: rules, syncOnly: syncOnly)
         }
         recordEvaluatedState(path)
     }

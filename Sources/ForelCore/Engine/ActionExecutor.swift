@@ -467,23 +467,25 @@ public enum ActionExecutor {
         guard try !isSyncDestinationPath(action, path: path) else { return Applied(newPath: path, undo: .none) }
         let sourceRoot = root ?? (path as NSString).deletingLastPathComponent
         let syncTarget = try syncCounterpartPath(action, path: path, root: sourceRoot)
-        var isDirectory: ObjCBool = false
-        FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
-
-        if isDirectory.boolValue {
-            var targetIsDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: syncTarget, isDirectory: &targetIsDirectory), !targetIsDirectory.boolValue {
-                _ = try syncResolvedTarget(action, naiveTarget: syncTarget)
+        return try explainingDisconnectedVolume(syncTarget) {
+            let source = try FileManager.default.attributesOfItem(atPath: path)
+            if (source[.type] as? FileAttributeType) == .typeDirectory {
+                let target = try? FileManager.default.attributesOfItem(atPath: syncTarget)
+                if let type = target?[.type] as? FileAttributeType, type != .typeDirectory {
+                    _ = try syncResolvedTarget(action, naiveTarget: syncTarget)
+                }
+                try FileManager.default.createDirectory(atPath: syncTarget, withIntermediateDirectories: true)
+                return Applied(newPath: path, undo: .none, copiedPath: syncTarget)
             }
-            try FileManager.default.createDirectory(atPath: syncTarget, withIntermediateDirectories: true)
-            return Applied(newPath: path, undo: .none, copiedPath: syncTarget)
-        }
 
-        let target = try syncResolvedTarget(action, naiveTarget: syncTarget)
-        let parent = (target as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(atPath: parent, withIntermediateDirectories: true)
-        try FileManager.default.copyItem(atPath: path, toPath: target)
-        return Applied(newPath: path, undo: .none, copiedPath: target)
+            // copyItem copies a symbolic link itself, without traversing the
+            // directory it may point to.
+            let target = try syncResolvedTarget(action, naiveTarget: syncTarget)
+            let parent = (target as NSString).deletingLastPathComponent
+            try FileManager.default.createDirectory(atPath: parent, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(atPath: path, toPath: target)
+            return Applied(newPath: path, undo: .none, copiedPath: target)
+        }
     }
 
     /// Resolves the actual path a move/copy should write to, given the
@@ -1153,8 +1155,8 @@ public enum ActionExecutor {
             }
             let naiveTarget = try syncCounterpartPath(action, path: path, root: sourceRoot)
             let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
-            var isDirectory: ObjCBool = false
-            FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+            let source = try? FileManager.default.attributesOfItem(atPath: path)
+            let isDirectory = (source?[.type] as? FileAttributeType) == .typeDirectory
 
             if isAlreadySynced(path, naiveTarget) {
                 return ActionPlan(
@@ -1170,7 +1172,7 @@ public enum ActionExecutor {
             }
 
             let description: String
-            if isDirectory.boolValue {
+            if isDirectory {
                 description = conflicts ? "Sync folder at \(naiveTarget)" : "Create synced folder at \(naiveTarget)"
             } else {
                 description = conflicts ? "Sync to \(naiveTarget), updating existing file" : "Sync to \(naiveTarget)"
@@ -1183,7 +1185,8 @@ public enum ActionExecutor {
                 status: .wouldRun,
                 finalPath: path,
                 copiedPath: naiveTarget,
-                isTerminal: false
+                isTerminal: false,
+                warning: destinationWarning(try syncDestinationRoot(action))
             )
         case .rename:
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
@@ -1451,10 +1454,17 @@ public enum ActionExecutor {
         guard let relative = relativePath(root: root, path: path) else {
             throw ActionError("Sync folders can only sync files inside the watched folder")
         }
-        let counterpart = (targetRoot as NSString).appendingPathComponent(relative)
-        let destination = try resolvedSyncPath(targetRoot).pathComponents
-        guard try resolvedSyncPath(counterpart).pathComponents.starts(with: destination) else {
-            throw ActionError("The sync destination contains a symbolic link pointing outside the destination folder. No file was changed.")
+        let counterpart = relative.isEmpty ? targetRoot : (targetRoot as NSString).appendingPathComponent(relative)
+        // The configured root may be an alias selected by the user. Below
+        // that root, never follow parent symlinks, even ones pointing to a
+        // different counterpart within the same destination.
+        var parent = targetRoot
+        for part in (relative as NSString).pathComponents.dropLast() {
+            parent = (parent as NSString).appendingPathComponent(part)
+            let attributes = try? FileManager.default.attributesOfItem(atPath: parent)
+            if (attributes?[.type] as? FileAttributeType) == .typeSymbolicLink {
+                throw ActionError("The sync destination contains a symbolic link in a parent folder. No file was changed.")
+            }
         }
         return counterpart
     }
@@ -1463,7 +1473,10 @@ public enum ActionExecutor {
     static func isSyncDestinationPath(_ action: Action, path: String) throws -> Bool {
         let target = try syncDestinationRoot(action)
         if relativePath(root: target, path: path) != nil { return true }
-        let source = try resolvedSyncPath(path).pathComponents
+        // Compare the item's containing directory, not the destination of a
+        // leaf symlink: the symlink itself is an input we can safely copy.
+        let parent = try resolvedSyncPath((path as NSString).deletingLastPathComponent)
+        let source = parent.appendingPathComponent((path as NSString).lastPathComponent).pathComponents
         return try source.starts(with: resolvedSyncPath(target).pathComponents)
     }
 
@@ -1502,6 +1515,11 @@ public enum ActionExecutor {
               let type = source[.type] as? FileAttributeType, type == other[.type] as? FileAttributeType
         else { return false }
         if type == .typeDirectory { return true }
+        if type == .typeSymbolicLink {
+            guard let source = try? FileManager.default.destinationOfSymbolicLink(atPath: path),
+                  let target = try? FileManager.default.destinationOfSymbolicLink(atPath: counterpart) else { return false }
+            return source == target
+        }
         return source[.size] as? UInt64 == other[.size] as? UInt64
             && source[.modificationDate] as? Date == other[.modificationDate] as? Date
     }
@@ -1509,6 +1527,13 @@ public enum ActionExecutor {
     private static func syncResolvedTarget(_ action: Action, naiveTarget: String) throws -> String {
         let parent = (naiveTarget as NSString).deletingLastPathComponent
         let fileName = (naiveTarget as NSString).lastPathComponent
+        let attributes = try? FileManager.default.attributesOfItem(atPath: naiveTarget)
+        if (attributes?[.type] as? FileAttributeType) == .typeSymbolicLink {
+            // This also handles dangling links, which fileExists ignores.
+            let displaced = uniqueDest(dir: try trashDir(), fileName: fileName)
+            try FileManager.default.moveItem(atPath: naiveTarget, toPath: displaced)
+            return naiveTarget
+        }
         return try resolveDestination(naiveDest: naiveTarget, dir: parent, fileName: fileName, resolution: .replace)
     }
 
