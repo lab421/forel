@@ -893,6 +893,8 @@ private struct ActionRow: View {
                 path: paramBinding(ActionParam.destination),
                 hint: "Add {year}, {month}, or {day} for dated folders, e.g. …/Archive/{year}/{month}"
             )
+        case .syncFolders:
+            FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
         case .rename:
             RenamePatternEditor(pattern: paramBinding(ActionParam.pattern), cleanFileName: action.params[ActionParam.cleanFileName]?.boolValue == true)
         case .addTag, .removeTag:
@@ -964,6 +966,8 @@ private struct ActionRow: View {
                 var params: [String: JSONValue] = [:]
                 if newKind == .importToLibrary {
                     params[ActionParam.libraryType] = .string(LibraryType.music.rawValue)
+                } else if newKind == .syncFolders {
+                    params[ActionParam.syncDeletePolicy] = .string(SyncDeletePolicy.keepOtherSide.rawValue)
                 } else if newKind == .openApplication {
                     params[ActionParam.passFileToApplication] = .bool(true)
                 }
@@ -1026,6 +1030,8 @@ private struct ActionOptionsView: View {
                 openApplicationOptions
             case .moveToFolder, .copyToFolder, .importToLibrary, .uncompress:
                 conflictResolutionOptions
+            case .syncFolders:
+                syncOptions
             case .rename:
                 renameOptions
             case .compress:
@@ -1129,6 +1135,30 @@ private struct ActionOptionsView: View {
                 label: { value in ShortcutInputMode(rawValue: value)?.label ?? value }
             )
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var syncOptions: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Deletes")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(ForelTheme.secondaryText)
+
+            StringSelectMenu(
+                selection: paramBinding(ActionParam.syncDeletePolicy, defaultValue: SyncDeletePolicy.keepOtherSide.rawValue),
+                options: SyncDeletePolicy.allCases.map(\.rawValue),
+                label: { value in SyncDeletePolicy(rawValue: value)?.label ?? value }
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if ActionExecutor.syncDeletePolicy(action) == .delete {
+                Label(
+                    "When a file is deleted from the watched folder, its copy in the destination is permanently deleted too. This cannot be undone.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                    .font(.system(size: 11))
+                    .foregroundStyle(ForelTheme.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

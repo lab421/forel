@@ -41,6 +41,7 @@ extension WatcherCoordinator {
 
     /// Forgets the waiting files `isWatched` rejects.
     func keepWaiting(where isWatched: (String) -> Bool) {
+        waitingForSyncOnlyPaths = waitingForSyncOnlyPaths.filter(isWatched)
         waitingForVolume = waitingForVolume.compactMapValues { paths in
             let kept = paths.filter(isWatched)
             return kept.isEmpty ? nil : kept
@@ -56,25 +57,31 @@ extension WatcherCoordinator {
                 let kept = waiting.subtracting([path])
                 return kept.isEmpty ? nil : kept
             }
-            handle(path: path, retrying: true)
+            let syncOnly = waitingForSyncOnlyPaths.remove(path) != nil
+            handle(path: path, retrying: true, syncOnly: syncOnly)
         }
     }
 
     /// Reports a failed move or copy whose destination disk or share isn't
     /// connected, and keeps the file to run its rules again when it is.
-    func waitForDisconnectedVolumes(_ history: [HistoryEntry], path: String, rules: [Rule]) {
+    func waitForDisconnectedVolumes(_ history: [HistoryEntry], path: String, rules: [Rule], syncOnly: Bool = false) {
         let volumes = Self.disconnectedVolumes(in: history, rules: rules)
         guard !volumes.isEmpty else { return }
-        // Running the rules again redoes every action on the file: only safe
-        // when none was applied this time (a copy made before the failed move
-        // would be made twice).
-        let willRetry = !history.contains { $0.status == .applied }
+        // A failed Sync can be retried on its own: already updated mirrors
+        // are skipped, and arrival actions must not be repeated. Other kinds
+        // still require that no action changed the file on the first run.
+        let applied = history.contains { $0.status == .applied }
+        let failed = history.filter { $0.status == .failed }
+        let canRetrySync = !failed.isEmpty && failed.allSatisfy { $0.actionKind == .syncFolders }
+            && FileManager.default.fileExists(atPath: path)
+        let willRetry = !applied || canRetrySync
         if willRetry {
+            if syncOnly || (applied && canRetrySync) { waitingForSyncOnlyPaths.insert(path) }
+            else { waitingForSyncOnlyPaths.remove(path) }
             for volume in volumes {
                 waitingForVolume[volume, default: []].insert(path)
             }
         }
-        let failed = history.filter { $0.status == .failed }
         onVolumeUnavailable?(VolumeUnavailableEvent(
             volumes: volumes,
             ruleNames: Array(Set(failed.map(\.ruleName))).sorted(),
@@ -86,7 +93,7 @@ extension WatcherCoordinator {
     /// `history` were headed to and that aren't connected.
     static func disconnectedVolumes(in history: [HistoryEntry], rules: [Rule]) -> [String] {
         var volumes = Set<String>()
-        for entry in history where entry.status == .failed && [.moveToFolder, .copyToFolder, .compress].contains(entry.actionKind) {
+        for entry in history where entry.status == .failed && [.moveToFolder, .copyToFolder, .compress, .syncFolders].contains(entry.actionKind) {
             guard let rule = rules.first(where: { $0.id == entry.ruleId }) else { continue }
             for action in rule.actions where action.kind == entry.actionKind {
                 guard let destination = action.params[ActionParam.destination]?.stringValue,

@@ -441,6 +441,211 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: numberedDuplicate))
     }
 
+    @Test func syncFolderDeletionMovesCounterpartToTrash() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(target),
+            ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.moveToTrash.rawValue),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let deleted = (source as NSString).appendingPathComponent("a.txt")
+        let counterpart = (target as NSString).appendingPathComponent("a.txt")
+        try writeSyncCopy("other", to: counterpart, from: (source as NSString).appendingPathComponent("a.txt"))
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .pathRemoved(deleted))
+
+        #expect(!FileManager.default.fileExists(atPath: counterpart))
+        let history = try db.listHistory()
+        #expect(history.count == 1)
+        #expect(history[0].actionKind == .syncFolders)
+        #expect(history[0].reversible)
+    }
+
+    @Test func syncFolderDeletionKeepsCounterpartByDefault() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([ActionParam.destination: .string(target)]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let counterpart = (target as NSString).appendingPathComponent("a.txt")
+        try writeSyncCopy("other", to: counterpart, from: (source as NSString).appendingPathComponent("a.txt"))
+
+        WatcherCoordinator(db: db).handle(event: .pathRemoved((source as NSString).appendingPathComponent("a.txt")))
+
+        #expect(FileManager.default.fileExists(atPath: counterpart))
+        #expect(try db.listHistory().isEmpty)
+    }
+
+    @Test func syncFolderDeletionCanDeleteCounterpartPermanently() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(target),
+            ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.delete.rawValue),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let counterpart = (target as NSString).appendingPathComponent("a.txt")
+        try writeSyncCopy("other", to: counterpart, from: (source as NSString).appendingPathComponent("a.txt"))
+
+        WatcherCoordinator(db: db).handle(event: .pathRemoved((source as NSString).appendingPathComponent("a.txt")))
+
+        #expect(!FileManager.default.fileExists(atPath: counterpart))
+        let history = try db.listHistory()
+        #expect(history.map(\.status) == [.applied])
+        #expect(history.map(\.reversible) == [false])
+    }
+
+    @Test func syncFolderWatchedFolderRenamedAwayKeepsTheMirror() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(target),
+            ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.delete.rawValue),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let counterpart = (target as NSString).appendingPathComponent("a.txt")
+        try writeSyncCopy("a", to: counterpart, from: (source as NSString).appendingPathComponent("a.txt"))
+
+        // Renaming the watched folder, or moving it to the Trash, reports it
+        // where it used to be.
+        try FileManager.default.moveItem(atPath: source, toPath: source + " old")
+        WatcherCoordinator(db: db).handle(event: .pathArrived(source))
+
+        #expect(FileManager.default.fileExists(atPath: counterpart))
+        #expect(try db.listHistory().isEmpty)
+    }
+
+    @Test func syncFolderDeletionRemovesFoldersWithSystemFilesAndPackages() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(target),
+            ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.delete.rawValue),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let sub = (target as NSString).appendingPathComponent("Sub")
+        try makeSyncCopyFolder(sub, from: (source as NSString).appendingPathComponent("Sub"))
+        try writeSyncCopy("a", to: (sub as NSString).appendingPathComponent("a.txt"), from: (source as NSString).appendingPathComponent("Sub/a.txt"))
+        try "finder".write(toFile: (sub as NSString).appendingPathComponent(".DS_Store"), atomically: true, encoding: .utf8)
+        let package = (target as NSString).appendingPathComponent("Notes.rtfd")
+        try makeSyncCopyFolder(package, from: (source as NSString).appendingPathComponent("Notes.rtfd"))
+        try "hello".write(toFile: (package as NSString).appendingPathComponent("TXT.rtf"), atomically: true, encoding: .utf8)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .pathRemoved((source as NSString).appendingPathComponent("Sub")))
+        coordinator.handle(event: .pathRemoved((source as NSString).appendingPathComponent("Notes.rtfd")))
+
+        #expect(!FileManager.default.fileExists(atPath: sub))
+        #expect(!FileManager.default.fileExists(atPath: package))
+    }
+
+    @Test func syncFolderPathRenamedAwayIsTreatedAsDeletion() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(target),
+            ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.moveToTrash.rawValue),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        let deleted = (source as NSString).appendingPathComponent("a.txt")
+        let counterpart = (target as NSString).appendingPathComponent("a.txt")
+        try writeSyncCopy("other", to: counterpart, from: (source as NSString).appendingPathComponent("a.txt"))
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .pathArrived(deleted))
+
+        #expect(!FileManager.default.fileExists(atPath: counterpart))
+        let history = try db.listHistory()
+        #expect(history.count == 1)
+        #expect(history[0].actionKind == .syncFolders)
+    }
+
+    @Test func syncFolderRemovalOfARecreatedFileKeepsCounterpart() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(target),
+            ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.moveToTrash.rawValue),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+
+        // A safe save removes the file and writes it again at once.
+        let saved = (source as NSString).appendingPathComponent("a.txt")
+        try "saved".write(toFile: saved, atomically: true, encoding: .utf8)
+        let counterpart = (target as NSString).appendingPathComponent("a.txt")
+        try writeSyncCopy("other", to: counterpart, from: (source as NSString).appendingPathComponent("a.txt"))
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .pathRemoved(saved))
+
+        #expect(try String(contentsOfFile: counterpart, encoding: .utf8) == "saved")
+    }
+
+    @Test func syncFolderDeletionOnlyTrashesFilesTheRuleCovers() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync pdf", recursionDepth: nil)
+        rule.conditions = [makeCondition(.extension_, .is, "pdf", ruleId: rule.id)]
+        rule.actions = [makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(target),
+            ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.moveToTrash.rawValue),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let notes = (target as NSString).appendingPathComponent("notes.txt")
+        let invoice = (target as NSString).appendingPathComponent("invoice.pdf")
+        try writeSyncCopy("notes", to: notes, from: (source as NSString).appendingPathComponent("notes.txt"))
+        try writeSyncCopy("pdf", to: invoice, from: (source as NSString).appendingPathComponent("invoice.pdf"))
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .pathRemoved((source as NSString).appendingPathComponent("notes.txt")))
+        coordinator.handle(event: .pathRemoved((source as NSString).appendingPathComponent("invoice.pdf")))
+
+        #expect(FileManager.default.fileExists(atPath: notes))
+        #expect(!FileManager.default.fileExists(atPath: invoice))
+    }
+
     @Test func recordedHistoryIsSignalledForFailuresToo() throws {
         let db = try makeDB()
         let dir = TempDir()

@@ -3,6 +3,11 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Added a Sync Folders action that mirrors a watched folder into another folder, keeping its subfolder structure. Deletions can optionally move the mirrored copy to the Trash or delete it permanently.
+
 ## [1.1.1] - 2026-11-02
 
 ### Added

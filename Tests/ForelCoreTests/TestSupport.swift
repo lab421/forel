@@ -55,6 +55,19 @@ func makeRule(folderId: String = "folder", name: String, enabled: Bool = true, c
     Rule(folderId: folderId, name: name, enabled: enabled, conditionMatch: conditionMatch, recursionDepth: recursionDepth, conditions: conditions, actions: actions)
 }
 
+/// Writes a file in a Sync Folders destination as if Forel had copied it
+/// there from `source`, the only kind of file a removal may touch.
+func writeSyncCopy(_ contents: String, to path: String, from source: String) throws {
+    try contents.write(toFile: path, atomically: true, encoding: .utf8)
+    ActionExecutor.markSyncCopy(path, of: (source as NSString).standardizingPath)
+}
+
+/// Creates a folder in a Sync Folders destination as if Forel had, from `source`.
+func makeSyncCopyFolder(_ path: String, from source: String) throws {
+    try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+    ActionExecutor.markSyncCopy(path, of: (source as NSString).standardizingPath)
+}
+
 /// Writes a `kMDItemWhereFroms`-style xattr (a binary-plist-encoded
 /// `[String]`), the same shape macOS browsers/downloaders write.
 func setWhereFroms(_ path: String, _ values: [String]) throws {

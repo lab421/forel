@@ -645,6 +645,8 @@ private struct RuleDetails: View {
             return ("to folder", action.params[ActionParam.destination]?.stringValue)
         case .copyToFolder:
             return ("to folder", action.params[ActionParam.destination]?.stringValue)
+        case .syncFolders:
+            return ("with folder", action.params[ActionParam.destination]?.stringValue)
         case .rename:
             return ("to \(action.params[ActionParam.pattern]?.stringValue ?? "")", action.params[ActionParam.cleanFileName]?.boolValue == true ? "clean file name" : nil)
         case .moveToTrash:

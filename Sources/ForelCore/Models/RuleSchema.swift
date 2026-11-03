@@ -194,6 +194,7 @@ public enum FileKindCatalog {
 public enum ActionParam {
     public static let destination = "destination"
     public static let onConflict = "on_conflict"
+    public static let syncDeletePolicy = "sync_delete_policy"
     public static let pattern = "pattern"
     public static let archiveName = "archive_name"
     public static let deleteSourceAfterCompression = "delete_source_after_compression"
@@ -240,6 +241,7 @@ public extension ActionKind {
         switch self {
         case .moveToFolder: return "Move to folder"
         case .copyToFolder: return "Copy to folder"
+        case .syncFolders: return "Sync folders"
         case .rename: return "Rename"
         case .moveToTrash: return "Move to Trash"
         case .delete: return "Delete"
@@ -260,6 +262,7 @@ public extension ActionKind {
         switch self {
         case .moveToFolder: return "arrow.right.doc.on.clipboard"
         case .copyToFolder: return "doc.on.doc"
+        case .syncFolders: return "arrow.triangle.2.circlepath"
         case .rename: return "pencil"
         case .moveToTrash, .delete: return "trash"
         case .addTag, .removeTag: return "tag"
@@ -279,7 +282,7 @@ public extension ActionKind {
     /// have none, instead of showing an empty "No options" popover.
     var hasOptions: Bool {
         switch self {
-        case .moveToFolder, .copyToFolder, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress, .compress:
+        case .moveToFolder, .copyToFolder, .syncFolders, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress, .compress:
             return true
         case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
             return false
@@ -290,7 +293,7 @@ public extension ActionKind {
     /// that take none (trash/delete).
     var params: [ActionParamSpec] {
         switch self {
-        case .moveToFolder, .copyToFolder:
+        case .moveToFolder, .copyToFolder, .syncFolders:
             return [ActionParamSpec(key: ActionParam.destination, kind: .folderPath)]
         case .rename:
             return [ActionParamSpec(key: ActionParam.pattern, kind: .renamePattern)]
@@ -357,7 +360,7 @@ public enum RuleSchema {
     public static let conditionKinds: [ConditionKind] = conditionKindGroups.flatMap(\.kinds)
 
     public static let actionKindGroups: [ActionKindGroup] = [
-        ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .rename, .compress, .uncompress]),
+        ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .syncFolders, .rename, .compress, .uncompress]),
         ActionKindGroup(title: "Tags", kinds: [.addTag, .removeTag, .setColorLabel]),
         ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut, .openApplication]),
         ActionKindGroup(title: "Disposal", kinds: [.moveToTrash, .delete]),

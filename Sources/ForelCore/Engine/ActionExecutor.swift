@@ -189,13 +189,15 @@ public struct ActionPlan: Equatable, Sendable {
 public enum ActionExecutor {
     /// Executes the action on the file at `path`, returning the new path and an
     /// `Undo` describing how to reverse it.
-    public static func execute(_ action: Action, path: String) throws -> Applied {
+    public static func execute(_ action: Action, path: String, root: String? = nil) throws -> Applied {
         switch action.kind {
         case .moveToFolder:
             let destDir = try expandedDestination(stringParam(action, ActionParam.destination, "MoveToFolder"), fileAtPath: path)
             return try moveIntoDir(path: path, destDir: destDir, resolution: conflictResolution(action))
         case .copyToFolder:
             return try copyToFolder(action, path: path)
+        case .syncFolders:
+            return try syncFolders(action, path: path, root: root)
         case .rename:
             return try renameFile(action, path: path)
         case .moveToTrash:
@@ -224,7 +226,7 @@ public enum ActionExecutor {
         }
     }
 
-    private static func stringParam(_ action: Action, _ key: String, _ kind: String) throws -> String {
+    static func stringParam(_ action: Action, _ key: String, _ kind: String) throws -> String {
         guard let value = action.params[key]?.stringValue else {
             throw ActionError("\(kind) requires '\(key)' param")
         }
@@ -267,7 +269,7 @@ public enum ActionExecutor {
     /// Runs `body` as is. Only when it fails and the destination is on a disk
     /// or share that isn't mounted, the error says so by name instead of the
     /// file system's message, which can blame the startup disk.
-    private static func explainingDisconnectedVolume<T>(_ destDir: String, _ body: () throws -> T) throws -> T {
+    static func explainingDisconnectedVolume<T>(_ destDir: String, _ body: () throws -> T) throws -> T {
         do {
             return try body()
         } catch {
@@ -1016,7 +1018,7 @@ public enum ActionExecutor {
         try plan(action, path: path).description
     }
 
-    public static func plan(_ action: Action, path: String) throws -> ActionPlan {
+    public static func plan(_ action: Action, path: String, root: String? = nil) throws -> ActionPlan {
         let fileName = (path as NSString).lastPathComponent
 
         switch action.kind {
@@ -1106,6 +1108,8 @@ public enum ActionExecutor {
                 isTerminal: false,
                 warning: destinationWarning(destDir)
             )
+        case .syncFolders:
+            return try planSyncFolders(action, path: path, root: root)
         case .rename:
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             var newName = try applyRenamePattern(pattern, path: path)
@@ -1356,7 +1360,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress, .compress:
+        case .moveToFolder, .copyToFolder, .syncFolders, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress, .compress:
             return true
         }
     }
@@ -1492,7 +1496,7 @@ public enum ActionExecutor {
     /// existing ancestor. A network share that isn't mounted or that Forel
     /// isn't allowed to access shows up here as a missing folder under a
     /// location that can't be written to.
-    private static func destinationWarning(_ destDir: String) -> String? {
+    static func destinationWarning(_ destDir: String) -> String? {
         guard !destDir.isEmpty else { return nil }
         var candidate = normalizedPath(destDir)
         while !FileManager.default.fileExists(atPath: candidate) {
@@ -1507,7 +1511,7 @@ public enum ActionExecutor {
         return "The destination folder can't be reached or written to right now. Check that the disk or network share is connected and that Forel is allowed to access it."
     }
 
-    private static func normalizedPath(_ path: String) -> String {
+    static func normalizedPath(_ path: String) -> String {
         (path as NSString).standardizingPath
     }
 
@@ -1616,7 +1620,7 @@ public enum ActionExecutor {
 
     /// Returns a destination path that does not yet exist, appending ` (N)` to
     /// the stem when the intended name is already taken.
-    private static func uniqueDest(dir: String, fileName: String) -> String {
+    static func uniqueDest(dir: String, fileName: String) -> String {
         let candidate = (dir as NSString).appendingPathComponent(fileName)
         if !FileManager.default.fileExists(atPath: candidate) { return candidate }
 
@@ -1633,7 +1637,7 @@ public enum ActionExecutor {
         }
     }
 
-    private static func trashDir() throws -> String {
+    static func trashDir() throws -> String {
         guard let home = ProcessInfo.processInfo.environment["HOME"] else {
             throw ActionError("HOME not set")
         }

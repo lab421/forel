@@ -148,7 +148,7 @@ public enum RuleEngine {
                     if FileReadiness.containsBusyItem(path) { return ([], []) }
                 }
 
-                let result = runActions(rule, path: currentPath, batchId: batchId)
+                let result = runActions(rule, path: currentPath, batchId: batchId, root: root)
                 history.append(contentsOf: result.history)
                 matched.append(rule.name)
 
@@ -192,7 +192,7 @@ public enum RuleEngine {
         return (matched, history)
     }
 
-    public static func previewFile(path: String, depth: Int, rules: [Rule], isPro: Bool = true) -> FilePreview? {
+    public static func previewFile(path: String, depth: Int, rules: [Rule], root: String? = nil, isPro: Bool = true) -> FilePreview? {
         guard !SystemFileFilter.isExcluded((path as NSString).lastPathComponent), !FileReadiness.isMarkedBusy(path) else {
             return nil
         }
@@ -226,7 +226,7 @@ public enum RuleEngine {
                     if FileReadiness.containsBusyItem(path) { return nil }
                 }
 
-                let result = previewActions(rule, path: currentPath)
+                let result = previewActions(rule, path: currentPath, root: root)
                 matchedRules.append(
                     RulePreview(
                         ruleId: rule.id,
@@ -308,7 +308,7 @@ public enum RuleEngine {
     /// `.any` are order-independent. Used by `run`, which only needs a
     /// yes/no answer; `previewFile` keeps the original order and evaluates
     /// every condition on purpose, to show each one's result in the Dry Run.
-    private static func ruleMatches(_ rule: Rule, path: String, depth: Int, allowOCR: Bool) -> Bool {
+    static func ruleMatches(_ rule: Rule, path: String, depth: Int, allowOCR: Bool) -> Bool {
         guard ruleInScope(rule, depth: depth) else { return false }
         if rule.conditions.isEmpty { return true }
 
@@ -401,7 +401,7 @@ public enum RuleEngine {
     /// the exact same way `previewActions` would (via `ActionExecutor.plan`)
     /// before acting on it — the single place preview and execution can
     /// never disagree.
-    private static func runActions(_ rule: Rule, path: String, batchId: String) -> (history: [HistoryEntry], copiedPaths: [String], finalPath: String, isTerminal: Bool) {
+    private static func runActions(_ rule: Rule, path: String, batchId: String, root: String?) -> (history: [HistoryEntry], copiedPaths: [String], finalPath: String, isTerminal: Bool) {
         let sorted = rule.actions.sorted { $0.position < $1.position }
 
         var history: [HistoryEntry] = []
@@ -412,7 +412,7 @@ public enum RuleEngine {
         for action in sorted {
             let original = current
             do {
-                let actionPlan = try ActionExecutor.plan(action, path: current)
+                let actionPlan = try ActionExecutor.plan(action, path: current, root: root)
 
                 switch actionPlan.status {
                 case .wouldSkip:
@@ -465,7 +465,7 @@ public enum RuleEngine {
                         )
                     )
                 case .wouldRun:
-                    let applied = try ActionExecutor.execute(action, path: current)
+                    let applied = try ActionExecutor.execute(action, path: current, root: root)
                     let resultPath: String
                     if let copiedPath = applied.copiedPath {
                         resultPath = copiedPath
@@ -515,7 +515,7 @@ public enum RuleEngine {
         return (history, copiedPaths, current, stoppedOnTerminal)
     }
 
-    private static func previewActions(_ rule: Rule, path: String) -> (actions: [ActionPreview], copiedPaths: [String], finalPath: String, isTerminal: Bool) {
+    private static func previewActions(_ rule: Rule, path: String, root: String?) -> (actions: [ActionPreview], copiedPaths: [String], finalPath: String, isTerminal: Bool) {
         let sorted = rule.actions.sorted { $0.position < $1.position }
 
         var actions: [ActionPreview] = []
@@ -525,7 +525,7 @@ public enum RuleEngine {
 
         for action in sorted {
             do {
-                let plan = try ActionExecutor.plan(action, path: current)
+                let plan = try ActionExecutor.plan(action, path: current, root: root)
                 actions.append(
                     ActionPreview(
                         kind: plan.kind,

@@ -39,6 +39,12 @@ import Foundation
         #expect(issues.count == 2)
     }
 
+    @Test func syncFoldersWithoutDestinationReportsIssue() {
+        for params: JSONValue in [.object([:]), .object([ActionParam.destination: .string(" ")])] {
+            #expect(RuleValidator.validate([makeAction(.syncFolders, params)]) == [.init(message: "Destination path cannot be empty")])
+        }
+    }
+
     // MARK: - Actions
 
     @Test func moveToFolderWithValidDestinationProducesNoIssues() {

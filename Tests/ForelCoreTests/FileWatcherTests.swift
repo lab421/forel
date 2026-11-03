@@ -26,11 +26,11 @@ import Testing
         #expect(FileWatcher.reportedEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemRenamed)) == .pathArrived("/tmp/report.pdf"))
     }
 
-    @Test func doesNotReportExistingFileMetadataOrContentChanges() {
+    @Test func routesContentChangesSeparatelyAndIgnoresMetadataOnlyChanges() {
         #expect(!FileWatcher.shouldReportEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemModified)))
         #expect(!FileWatcher.shouldReportEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemXattrMod)))
         #expect(!FileWatcher.shouldReportEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemInodeMetaMod)))
-        #expect(FileWatcher.reportedEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemModified)) == nil)
+        #expect(FileWatcher.reportedEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemModified)) == .pathModified("/tmp/report.pdf"))
         #expect(FileWatcher.reportedEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemXattrMod)) == nil)
         #expect(FileWatcher.reportedEvent(path: "/tmp/report.pdf", flags: UInt32(kFSEventStreamEventFlagItemInodeMetaMod)) == nil)
     }

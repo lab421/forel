@@ -40,7 +40,7 @@ public enum RuleValidator {
     public static func validate(_ actions: [Action]) -> [Issue] {
         actions.compactMap { action in
             switch action.kind {
-            case .moveToFolder, .copyToFolder:
+            case .moveToFolder, .copyToFolder, .syncFolders:
                 if action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
                     return Issue(message: "Destination path cannot be empty")
                 }

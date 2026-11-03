@@ -121,6 +121,7 @@ public struct Condition: Codable, Equatable, Sendable {
 public enum ActionKind: String, Codable, Equatable, Sendable {
     case moveToFolder = "move_to_folder"
     case copyToFolder = "copy_to_folder"
+    case syncFolders = "sync_folders"
     case rename
     case moveToTrash = "move_to_trash"
     case delete

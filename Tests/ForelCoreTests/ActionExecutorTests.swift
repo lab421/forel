@@ -19,6 +19,84 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct ActionExecutorTests {
+    @Test func syncFoldersCopiesRelativePathToTarget() throws {
+        let dir = TempDir()
+        let sourceRoot = dir.dir("Source")
+        let sourceSubdir = (sourceRoot as NSString).appendingPathComponent("Docs")
+        try FileManager.default.createDirectory(atPath: sourceSubdir, withIntermediateDirectories: true)
+        let file = (sourceSubdir as NSString).appendingPathComponent("a.txt")
+        try "hello".write(toFile: file, atomically: true, encoding: .utf8)
+        let targetRoot = dir.dir("Target")
+
+        let action = makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(targetRoot),
+        ]))
+
+        let plan = try ActionExecutor.plan(action, path: file, root: sourceRoot)
+        let expected = ((targetRoot as NSString).appendingPathComponent("Docs") as NSString).appendingPathComponent("a.txt")
+        #expect(plan.targetPath == expected)
+
+        let applied = try ActionExecutor.execute(action, path: file, root: sourceRoot)
+        #expect(applied.copiedPath == expected)
+        #expect(try String(contentsOfFile: expected, encoding: .utf8) == "hello")
+    }
+
+    @Test func syncFoldersSkipsItemsAlreadyInATargetNestedInTheWatchedFolder() throws {
+        let dir = TempDir()
+        let sourceRoot = dir.dir("Source")
+        let targetRoot = (sourceRoot as NSString).appendingPathComponent("DMG")
+        try FileManager.default.createDirectory(atPath: targetRoot, withIntermediateDirectories: true)
+        let file = (targetRoot as NSString).appendingPathComponent("a.txt")
+        try "target".write(toFile: file, atomically: true, encoding: .utf8)
+
+        let action = makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(targetRoot),
+        ]))
+
+        #expect(try ActionExecutor.plan(action, path: file, root: sourceRoot).status == .wouldSkip)
+    }
+
+    @Test func syncFoldersCreatesCounterpartDirectoryWithoutRecursiveCopy() throws {
+        let dir = TempDir()
+        let sourceRoot = dir.dir("Source")
+        let targetRoot = dir.dir("Target")
+        let sourceFolder = (sourceRoot as NSString).appendingPathComponent("RENALTO")
+        try FileManager.default.createDirectory(atPath: sourceFolder, withIntermediateDirectories: true)
+        try "nested".write(toFile: (sourceFolder as NSString).appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+
+        let action = makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(targetRoot),
+        ]))
+
+        let applied = try ActionExecutor.execute(action, path: sourceFolder, root: sourceRoot)
+        let counterpart = (targetRoot as NSString).appendingPathComponent("RENALTO")
+        #expect(applied.copiedPath == counterpart)
+        var isDirectory: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: counterpart, isDirectory: &isDirectory))
+        #expect(isDirectory.boolValue)
+        #expect(!FileManager.default.fileExists(atPath: (counterpart as NSString).appendingPathComponent("a.txt")))
+    }
+
+    @Test func syncFoldersUpdatesCounterpartWhenItAlreadyExists() throws {
+        let dir = TempDir()
+        let sourceRoot = dir.dir("Source")
+        let targetRoot = dir.dir("Target")
+        let source = (sourceRoot as NSString).appendingPathComponent("a.txt")
+        let existing = (targetRoot as NSString).appendingPathComponent("a.txt")
+        try "new".write(toFile: source, atomically: true, encoding: .utf8)
+        try "old".write(toFile: existing, atomically: true, encoding: .utf8)
+
+        let action = makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(targetRoot),
+        ]))
+
+        let applied = try ActionExecutor.execute(action, path: source, root: sourceRoot)
+        #expect(applied.copiedPath == existing)
+        #expect(try String(contentsOfFile: existing, encoding: .utf8) == "new")
+        let renamed = (targetRoot as NSString).appendingPathComponent("a (1).txt")
+        #expect(!FileManager.default.fileExists(atPath: renamed))
+    }
+
     @Test func addAndRemoveTagUpdatesFinderTagXattrWithoutDuplicates() throws {
         let dir = TempDir()
         let file = dir.file("document.txt", contents: "hello")
