@@ -31,7 +31,7 @@ extension WatcherCoordinator {
         for scope in scopes {
             if let package = ActionExecutor.syncPackage(containing: path, root: scope.root) {
                 // A package is copied whole: what changed inside it updates it.
-                handle(event: .pathModified(package), waitsForSettledFiles: waitsForSettledFiles)
+                syncChange(insidePackage: package, waitsForSettledFiles: waitsForSettledFiles)
                 continue
             }
             let history = RuleEngine.runSyncRemovals(rules: scope.rules, root: scope.root, path: path,
@@ -40,6 +40,25 @@ extension WatcherCoordinator {
             db.withLock { db in try? db.insertHistoryEntries(history) }
             onHistoryRecorded?()
         }
+    }
+
+    /// The package enclosing `path`, when the folder watching it has a
+    /// Sync Folders action.
+    func syncedPackage(containing path: String) -> String? {
+        db.withLock { db in
+            guard let folder = try? db.folderForPath(path),
+                  let package = ActionExecutor.syncPackage(containing: path, root: folder.path) else { return nil }
+            let rules = (try? db.executionRules(folderID: folder.id, isPro: isPro)) ?? []
+            return rules.contains { $0.actions.contains { $0.kind == .syncFolders } } ? package : nil
+        }
+    }
+
+    /// Updates the copy of a package something changed inside. Editing a
+    /// file deep inside a package leaves the package's own size and date
+    /// unchanged, so its cached state is dropped to evaluate it again.
+    func syncChange(insidePackage package: String, waitsForSettledFiles: Bool) {
+        db.withLock { db in try? db.deleteWatchedPathState(package) }
+        handle(event: .pathModified(package), waitsForSettledFiles: waitsForSettledFiles)
     }
 
     /// The rules' Sync Folders actions alone, for changes that must not

@@ -160,10 +160,16 @@ public final class WatcherCoordinator: @unchecked Sendable {
             // removed then recreated (a safe save) is reported as removed.
             if !FileManager.default.fileExists(atPath: path) {
                 syncRemovals(at: path, waitsForSettledFiles: waitsForSettledFiles)
-            } else if waitsForSettledFiles {
+                return
+            }
+            if waitsForSettledFiles {
                 awaitSettled(path)
             } else {
                 handle(path: path)
+            }
+            // A package is synced whole: what arrives inside it updates it.
+            if let package = syncedPackage(containing: path) {
+                syncChange(insidePackage: package, waitsForSettledFiles: waitsForSettledFiles)
             }
         case .rescanSubtree(let path):
             // Removals may be among the events FSEvents dropped.
@@ -178,6 +184,11 @@ public final class WatcherCoordinator: @unchecked Sendable {
                 return rules.contains { $0.actions.contains { $0.kind == .syncFolders } }
             }
             guard hasSync else { return }
+            // A package is synced whole: what changes inside it updates it.
+            if let package = syncedPackage(containing: path) {
+                syncChange(insidePackage: package, waitsForSettledFiles: waitsForSettledFiles)
+                return
+            }
             if waitsForSettledFiles {
                 awaitSettled(path, syncOnly: true)
             } else {
@@ -205,11 +216,13 @@ public final class WatcherCoordinator: @unchecked Sendable {
         // an unzip creates thousands), so it is evaluated when the folder
         // settles instead.
         if let ancestor = settlingAncestor(of: path) {
+            // The ancestor keeps its own kind of change: a descendant that
+            // arrived must not replay arrival actions on a folder (or
+            // package) that only changed.
             if syncOnly {
                 settling[ancestor]?.hasDeferredSyncDescendants = true
             } else {
                 settling[ancestor]?.hasDeferredDescendants = true
-                settling[ancestor]?.syncOnly = false
             }
             return
         }
@@ -269,7 +282,7 @@ public final class WatcherCoordinator: @unchecked Sendable {
         settling[path] = nil
         handle(path: path, syncOnly: state.syncOnly)
         if state.hasDeferredDescendants {
-            handleRescanSubtree(root: path, waitsForSettledFiles: false, skipsKnownItems: knownFolder, syncOnly: state.syncOnly)
+            handleRescanSubtree(root: path, waitsForSettledFiles: false, skipsKnownItems: knownFolder)
         } else if arrivedWithContents {
             handleRescanSubtree(root: path, waitsForSettledFiles: false, skipsKnownItems: true, syncOnly: state.syncOnly)
         }

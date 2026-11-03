@@ -45,6 +45,11 @@ extension ActionExecutor {
             return ActionPlan(kind: action.kind, description: "Already synced", sourcePath: path,
                               targetPath: nil, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
         }
+        // A package is synced whole, never file by file.
+        if syncPackage(containing: path, root: sourceRoot) != nil {
+            return ActionPlan(kind: action.kind, description: "Synced with its package", sourcePath: path,
+                              targetPath: nil, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
+        }
         let naiveTarget = try syncCounterpartPath(action, path: path, root: sourceRoot)
         let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
 
