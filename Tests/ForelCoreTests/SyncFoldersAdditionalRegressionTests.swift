@@ -46,7 +46,8 @@ import Testing
             } else {
                 #expect(try String(contentsOfFile: deep, encoding: .utf8) == "keep deep")
             }
-            let removals = try db.listHistory().filter { $0.originalPath == source + "/Project/one.txt" && ($0.resultPath != target + "/Project/one.txt" || policy == .delete) }
+            // A removal's history entry is about the copy, which Undo restores.
+            let removals = try db.listHistory().filter { $0.originalPath == target + "/Project/one.txt" }
             #expect(!removals.isEmpty)
             #expect(try db.listHistory().allSatisfy { $0.status == .applied })
         }
@@ -214,7 +215,7 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: target + "/Project"))
         let removals = try db.listHistory().filter(\.reversible)
         try #require(removals.count == 1)
-        #expect(removals[0].originalPath == project)
+        #expect(removals[0].originalPath == target + "/Project")
         #expect(UndoChecker.evaluate(removals[0]) == .safe)
         try ActionExecutor.revert(Undo.fromJSON(removals[0].undo))
         #expect(try String(contentsOfFile: target + "/Project/one.txt", encoding: .utf8) == "one")
@@ -264,6 +265,7 @@ import Testing
         _ = dir.dir("Target/B")
         let protected = dir.file("Target/B/report.txt", contents: "B")
         try FileManager.default.createSymbolicLink(atPath: target + "/A", withDestinationPath: target + "/B")
+        ActionExecutor.markSyncCopy(target + "/A", of: (removed as NSString).standardizingPath)
         let folder = WatchedFolder(path: source)
         try db.insertFolder(folder)
         var rule = makeRule(folderId: folder.id, name: "Sync", recursionDepth: nil)

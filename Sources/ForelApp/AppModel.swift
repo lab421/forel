@@ -658,6 +658,10 @@ final class AppModel: ObservableObject {
                         break
                     }
                 }
+                if !limitReached, errorMessage == nil {
+                    allHistory += RuleEngine.runSyncRemovals(rules: folderRules, root: folder.path, path: folder.path,
+                                                             batchId: batchId, isPro: isPro)
+                }
                 return (history: allHistory, limitReached: limitReached, error: errorMessage)
             }.value
             let allHistory = result.history
@@ -749,6 +753,10 @@ final class AppModel: ObservableObject {
                         reachedMatchLimit = true
                     }
                 }
+                let removals = RuleEngine.previewSyncRemovals(rules: folderRules, root: folder.path, path: folder.path, isPro: isPro)
+                let room = max(0, matchLimit - matches.count)
+                if removals.count > room { reachedMatchLimit = true }
+                matches += removals.prefix(room)
                 return PreviewResult(
                     filesScanned: filesScanned,
                     matches: matches,

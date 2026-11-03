@@ -141,20 +141,6 @@ public enum ShortcutInputMode: String, CaseIterable, Sendable {
     }
 }
 
-public enum SyncDeletePolicy: String, CaseIterable, Sendable {
-    case keepOtherSide = "keep_other_side"
-    case moveToTrash = "move_to_trash"
-    case delete
-
-    public var label: String {
-        switch self {
-        case .keepOtherSide: return "Keep counterpart"
-        case .moveToTrash: return "Move counterpart to Trash"
-        case .delete: return "Delete counterpart permanently"
-        }
-    }
-}
-
 public enum DryRunStatus: String, Codable, Equatable, Sendable {
     case wouldRun = "would_run"
     case wouldSkip = "would_skip"
@@ -240,7 +226,7 @@ public enum ActionExecutor {
         }
     }
 
-    private static func stringParam(_ action: Action, _ key: String, _ kind: String) throws -> String {
+    static func stringParam(_ action: Action, _ key: String, _ kind: String) throws -> String {
         guard let value = action.params[key]?.stringValue else {
             throw ActionError("\(kind) requires '\(key)' param")
         }
@@ -283,7 +269,7 @@ public enum ActionExecutor {
     /// Runs `body` as is. Only when it fails and the destination is on a disk
     /// or share that isn't mounted, the error says so by name instead of the
     /// file system's message, which can blame the startup disk.
-    private static func explainingDisconnectedVolume<T>(_ destDir: String, _ body: () throws -> T) throws -> T {
+    static func explainingDisconnectedVolume<T>(_ destDir: String, _ body: () throws -> T) throws -> T {
         do {
             return try body()
         } catch {
@@ -461,33 +447,6 @@ public enum ActionExecutor {
             throw ActionError("Archive name is too long (maximum 255 bytes including .zip).")
         }
         return result
-    }
-
-    private static func syncFolders(_ action: Action, path: String, root: String?) throws -> Applied {
-        guard try !isSyncDestinationPath(action, path: path) else { return Applied(newPath: path, undo: .none) }
-        let sourceRoot = root ?? (path as NSString).deletingLastPathComponent
-        let syncTarget = try syncCounterpartPath(action, path: path, root: sourceRoot)
-        return try explainingDisconnectedVolume(syncTarget) {
-            let source = try FileManager.default.attributesOfItem(atPath: path)
-            // A package (.app, .rtfd…) is copied whole, like a file: folder
-            // scans don't look inside it.
-            if (source[.type] as? FileAttributeType) == .typeDirectory, !RuleEngine.isPackage(path) {
-                let target = try? FileManager.default.attributesOfItem(atPath: syncTarget)
-                if let type = target?[.type] as? FileAttributeType, type != .typeDirectory {
-                    _ = try syncResolvedTarget(action, naiveTarget: syncTarget)
-                }
-                try FileManager.default.createDirectory(atPath: syncTarget, withIntermediateDirectories: true)
-                return Applied(newPath: path, undo: .none, copiedPath: syncTarget)
-            }
-
-            // copyItem copies a symbolic link itself, without traversing the
-            // directory it may point to.
-            let target = try syncResolvedTarget(action, naiveTarget: syncTarget)
-            let parent = (target as NSString).deletingLastPathComponent
-            try FileManager.default.createDirectory(atPath: parent, withIntermediateDirectories: true)
-            try FileManager.default.copyItem(atPath: path, toPath: target)
-            return Applied(newPath: path, undo: .none, copiedPath: target)
-        }
     }
 
     /// Resolves the actual path a move/copy should write to, given the
@@ -1150,46 +1109,7 @@ public enum ActionExecutor {
                 warning: destinationWarning(destDir)
             )
         case .syncFolders:
-            let sourceRoot = root ?? (path as NSString).deletingLastPathComponent
-            if try isSyncDestinationPath(action, path: path) {
-                return ActionPlan(kind: action.kind, description: "Already synced", sourcePath: path,
-                                  targetPath: nil, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
-            }
-            let naiveTarget = try syncCounterpartPath(action, path: path, root: sourceRoot)
-            let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
-            let source = try? FileManager.default.attributesOfItem(atPath: path)
-            let isDirectory = (source?[.type] as? FileAttributeType) == .typeDirectory && !RuleEngine.isPackage(path)
-
-            if isAlreadySynced(path, naiveTarget) {
-                return ActionPlan(
-                    kind: action.kind,
-                    description: "Already synced",
-                    sourcePath: path,
-                    targetPath: naiveTarget,
-                    status: .wouldSkip,
-                    finalPath: path,
-                    copiedPath: nil,
-                    isTerminal: false
-                )
-            }
-
-            let description: String
-            if isDirectory {
-                description = conflicts ? "Sync folder at \(naiveTarget)" : "Create synced folder at \(naiveTarget)"
-            } else {
-                description = conflicts ? "Sync to \(naiveTarget), updating existing file" : "Sync to \(naiveTarget)"
-            }
-            return ActionPlan(
-                kind: action.kind,
-                description: description,
-                sourcePath: path,
-                targetPath: naiveTarget,
-                status: .wouldRun,
-                finalPath: path,
-                copiedPath: naiveTarget,
-                isTerminal: false,
-                warning: destinationWarning(try syncDestinationRoot(action))
-            )
+            return try planSyncFolders(action, path: path, root: root)
         case .rename:
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             var newName = try applyRenamePattern(pattern, path: path)
@@ -1445,119 +1365,6 @@ public enum ActionExecutor {
         }
     }
 
-    public static func syncDeletePolicy(_ action: Action) -> SyncDeletePolicy {
-        guard let raw = action.params[ActionParam.syncDeletePolicy]?.stringValue else { return .keepOtherSide }
-        return SyncDeletePolicy(rawValue: raw) ?? .keepOtherSide
-    }
-
-    /// Where `path`, inside the watched `root`, is mirrored in the target.
-    public static func syncCounterpartPath(_ action: Action, path: String, root: String) throws -> String {
-        let targetRoot = try syncDestinationRoot(action)
-        guard let relative = relativePath(root: root, path: path) else {
-            throw ActionError("Sync folders can only sync files inside the watched folder")
-        }
-        let counterpart = relative.isEmpty ? targetRoot : (targetRoot as NSString).appendingPathComponent(relative)
-        // The configured root may be an alias selected by the user. Below
-        // that root, never follow parent symlinks, even ones pointing to a
-        // different counterpart within the same destination.
-        var parent = targetRoot
-        for part in (relative as NSString).pathComponents.dropLast() {
-            parent = (parent as NSString).appendingPathComponent(part)
-            let attributes = try? FileManager.default.attributesOfItem(atPath: parent)
-            if (attributes?[.type] as? FileAttributeType) == .typeSymbolicLink {
-                throw ActionError("The sync destination contains a symbolic link in a parent folder. No file was changed.")
-            }
-        }
-        return counterpart
-    }
-
-    /// The mirror itself is never an input, including for removal events.
-    static func isSyncDestinationPath(_ action: Action, path: String) throws -> Bool {
-        let target = try syncDestinationRoot(action)
-        if relativePath(root: target, path: path) != nil { return true }
-        // Compare the item's containing directory, not the destination of a
-        // leaf symlink: the symlink itself is an input we can safely copy.
-        let parent = try resolvedSyncPath((path as NSString).deletingLastPathComponent)
-        let source = parent.appendingPathComponent((path as NSString).lastPathComponent).pathComponents
-        return try source.starts(with: resolvedSyncPath(target).pathComponents)
-    }
-
-    private static func syncDestinationRoot(_ action: Action) throws -> String {
-        let value = normalizedPath(try stringParam(action, ActionParam.destination, "SyncFolders"))
-        guard value.hasPrefix("/"), !value.contains("\0") else {
-            throw ActionError("Choose an absolute destination folder for Sync Folders.")
-        }
-        return value
-    }
-
-    private static func resolvedSyncPath(_ path: String) throws -> URL {
-        // Resolve the existing prefix first: destinations may contain parent
-        // directories that have not been created yet.
-        var existing = URL(fileURLWithPath: normalizedPath(path)).standardizedFileURL
-        var missing: [String] = []
-        while !FileManager.default.fileExists(atPath: existing.path), existing.path != "/" {
-            let attributes = try? FileManager.default.attributesOfItem(atPath: existing.path)
-            if (attributes?[.type] as? FileAttributeType) == .typeSymbolicLink {
-                throw ActionError("The sync path contains a broken symbolic link. Choose a reachable destination folder.")
-            }
-            missing.append(existing.lastPathComponent)
-            existing.deleteLastPathComponent()
-        }
-        var resolved = existing.resolvingSymlinksInPath()
-        for part in missing.reversed() { resolved.appendPathComponent(part) }
-        return resolved
-    }
-
-    /// A folder is synced once it exists on the other side, its files being
-    /// synced one by one. A file is when its size and modification date match,
-    /// which a copy keeps. A package, copied whole, is when everything in it is.
-    private static func isAlreadySynced(_ path: String, _ counterpart: String) -> Bool {
-        guard let source = try? FileManager.default.attributesOfItem(atPath: path),
-              let other = try? FileManager.default.attributesOfItem(atPath: counterpart),
-              let type = source[.type] as? FileAttributeType, type == other[.type] as? FileAttributeType
-        else { return false }
-        if type == .typeDirectory {
-            guard RuleEngine.isPackage(path) else { return true }
-            guard let items = FileManager.default.subpaths(atPath: path),
-                  let others = FileManager.default.subpaths(atPath: counterpart),
-                  Set(items) == Set(others) else { return false }
-            return items.allSatisfy { item in
-                isAlreadySynced((path as NSString).appendingPathComponent(item),
-                                (counterpart as NSString).appendingPathComponent(item))
-            }
-        }
-        if type == .typeSymbolicLink {
-            guard let source = try? FileManager.default.destinationOfSymbolicLink(atPath: path),
-                  let target = try? FileManager.default.destinationOfSymbolicLink(atPath: counterpart) else { return false }
-            return source == target
-        }
-        return source[.size] as? UInt64 == other[.size] as? UInt64
-            && source[.modificationDate] as? Date == other[.modificationDate] as? Date
-    }
-
-    private static func syncResolvedTarget(_ action: Action, naiveTarget: String) throws -> String {
-        let parent = (naiveTarget as NSString).deletingLastPathComponent
-        let fileName = (naiveTarget as NSString).lastPathComponent
-        let attributes = try? FileManager.default.attributesOfItem(atPath: naiveTarget)
-        if (attributes?[.type] as? FileAttributeType) == .typeSymbolicLink {
-            // This also handles dangling links, which fileExists ignores.
-            let displaced = uniqueDest(dir: try trashDir(), fileName: fileName)
-            try FileManager.default.moveItem(atPath: naiveTarget, toPath: displaced)
-            return naiveTarget
-        }
-        return try resolveDestination(naiveDest: naiveTarget, dir: parent, fileName: fileName, resolution: .replace)
-    }
-
-    private static func relativePath(root: String, path: String) -> String? {
-        let rootComponents = (normalizedPath(root) as NSString).pathComponents
-        let pathComponents = (normalizedPath(path) as NSString).pathComponents
-        guard pathComponents.count >= rootComponents.count else { return nil }
-        guard Array(pathComponents.prefix(rootComponents.count)) == rootComponents else { return nil }
-        let suffix = pathComponents.dropFirst(rootComponents.count)
-        guard !suffix.isEmpty else { return "" }
-        return NSString.path(withComponents: Array(suffix))
-    }
-
     private static func paramTags(_ action: Action) -> [String] {
         if let tags = action.params[ActionParam.tags]?.arrayValue {
             return tags.compactMap(\.stringValue)
@@ -1689,7 +1496,7 @@ public enum ActionExecutor {
     /// existing ancestor. A network share that isn't mounted or that Forel
     /// isn't allowed to access shows up here as a missing folder under a
     /// location that can't be written to.
-    private static func destinationWarning(_ destDir: String) -> String? {
+    static func destinationWarning(_ destDir: String) -> String? {
         guard !destDir.isEmpty else { return nil }
         var candidate = normalizedPath(destDir)
         while !FileManager.default.fileExists(atPath: candidate) {
@@ -1704,7 +1511,7 @@ public enum ActionExecutor {
         return "The destination folder can't be reached or written to right now. Check that the disk or network share is connected and that Forel is allowed to access it."
     }
 
-    private static func normalizedPath(_ path: String) -> String {
+    static func normalizedPath(_ path: String) -> String {
         (path as NSString).standardizingPath
     }
 
@@ -1813,7 +1620,7 @@ public enum ActionExecutor {
 
     /// Returns a destination path that does not yet exist, appending ` (N)` to
     /// the stem when the intended name is already taken.
-    private static func uniqueDest(dir: String, fileName: String) -> String {
+    static func uniqueDest(dir: String, fileName: String) -> String {
         let candidate = (dir as NSString).appendingPathComponent(fileName)
         if !FileManager.default.fileExists(atPath: candidate) { return candidate }
 
@@ -1830,7 +1637,7 @@ public enum ActionExecutor {
         }
     }
 
-    private static func trashDir() throws -> String {
+    static func trashDir() throws -> String {
         guard let home = ProcessInfo.processInfo.environment["HOME"] else {
             throw ActionError("HOME not set")
         }

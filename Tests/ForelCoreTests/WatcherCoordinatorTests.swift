@@ -457,7 +457,7 @@ import Foundation
 
         let deleted = (source as NSString).appendingPathComponent("a.txt")
         let counterpart = (target as NSString).appendingPathComponent("a.txt")
-        try "other".write(toFile: counterpart, atomically: true, encoding: .utf8)
+        try writeSyncCopy("other", to: counterpart, from: (source as NSString).appendingPathComponent("a.txt"))
 
         let coordinator = WatcherCoordinator(db: db)
         coordinator.handle(event: .pathRemoved(deleted))
@@ -480,7 +480,7 @@ import Foundation
         rule.actions = [makeAction(.syncFolders, .object([ActionParam.destination: .string(target)]), position: 0, ruleId: rule.id)]
         try db.insertRule(rule)
         let counterpart = (target as NSString).appendingPathComponent("a.txt")
-        try "other".write(toFile: counterpart, atomically: true, encoding: .utf8)
+        try writeSyncCopy("other", to: counterpart, from: (source as NSString).appendingPathComponent("a.txt"))
 
         WatcherCoordinator(db: db).handle(event: .pathRemoved((source as NSString).appendingPathComponent("a.txt")))
 
@@ -502,7 +502,7 @@ import Foundation
         ]), position: 0, ruleId: rule.id)]
         try db.insertRule(rule)
         let counterpart = (target as NSString).appendingPathComponent("a.txt")
-        try "other".write(toFile: counterpart, atomically: true, encoding: .utf8)
+        try writeSyncCopy("other", to: counterpart, from: (source as NSString).appendingPathComponent("a.txt"))
 
         WatcherCoordinator(db: db).handle(event: .pathRemoved((source as NSString).appendingPathComponent("a.txt")))
 
@@ -526,7 +526,7 @@ import Foundation
         ]), position: 0, ruleId: rule.id)]
         try db.insertRule(rule)
         let counterpart = (target as NSString).appendingPathComponent("a.txt")
-        try "a".write(toFile: counterpart, atomically: true, encoding: .utf8)
+        try writeSyncCopy("a", to: counterpart, from: (source as NSString).appendingPathComponent("a.txt"))
 
         // Renaming the watched folder, or moving it to the Trash, reports it
         // where it used to be.
@@ -551,11 +551,11 @@ import Foundation
         ]), position: 0, ruleId: rule.id)]
         try db.insertRule(rule)
         let sub = (target as NSString).appendingPathComponent("Sub")
-        try FileManager.default.createDirectory(atPath: sub, withIntermediateDirectories: true)
-        try "a".write(toFile: (sub as NSString).appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try makeSyncCopyFolder(sub, from: (source as NSString).appendingPathComponent("Sub"))
+        try writeSyncCopy("a", to: (sub as NSString).appendingPathComponent("a.txt"), from: (source as NSString).appendingPathComponent("Sub/a.txt"))
         try "finder".write(toFile: (sub as NSString).appendingPathComponent(".DS_Store"), atomically: true, encoding: .utf8)
         let package = (target as NSString).appendingPathComponent("Notes.rtfd")
-        try FileManager.default.createDirectory(atPath: package, withIntermediateDirectories: true)
+        try makeSyncCopyFolder(package, from: (source as NSString).appendingPathComponent("Notes.rtfd"))
         try "hello".write(toFile: (package as NSString).appendingPathComponent("TXT.rtf"), atomically: true, encoding: .utf8)
 
         let coordinator = WatcherCoordinator(db: db)
@@ -582,7 +582,7 @@ import Foundation
 
         let deleted = (source as NSString).appendingPathComponent("a.txt")
         let counterpart = (target as NSString).appendingPathComponent("a.txt")
-        try "other".write(toFile: counterpart, atomically: true, encoding: .utf8)
+        try writeSyncCopy("other", to: counterpart, from: (source as NSString).appendingPathComponent("a.txt"))
 
         let coordinator = WatcherCoordinator(db: db)
         coordinator.handle(event: .pathArrived(deleted))
@@ -611,7 +611,7 @@ import Foundation
         let saved = (source as NSString).appendingPathComponent("a.txt")
         try "saved".write(toFile: saved, atomically: true, encoding: .utf8)
         let counterpart = (target as NSString).appendingPathComponent("a.txt")
-        try "other".write(toFile: counterpart, atomically: true, encoding: .utf8)
+        try writeSyncCopy("other", to: counterpart, from: (source as NSString).appendingPathComponent("a.txt"))
 
         let coordinator = WatcherCoordinator(db: db)
         coordinator.handle(event: .pathRemoved(saved))
@@ -635,8 +635,8 @@ import Foundation
         try db.insertRule(rule)
         let notes = (target as NSString).appendingPathComponent("notes.txt")
         let invoice = (target as NSString).appendingPathComponent("invoice.pdf")
-        try "mine".write(toFile: notes, atomically: true, encoding: .utf8)
-        try "pdf".write(toFile: invoice, atomically: true, encoding: .utf8)
+        try writeSyncCopy("notes", to: notes, from: (source as NSString).appendingPathComponent("notes.txt"))
+        try writeSyncCopy("pdf", to: invoice, from: (source as NSString).appendingPathComponent("invoice.pdf"))
 
         let coordinator = WatcherCoordinator(db: db)
         coordinator.handle(event: .pathRemoved((source as NSString).appendingPathComponent("notes.txt")))

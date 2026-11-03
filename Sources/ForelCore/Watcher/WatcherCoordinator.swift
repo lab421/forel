@@ -27,10 +27,10 @@ public struct WatcherActivitySummary: Equatable, Sendable {
 /// evaluates them, and persists any resulting action history. Mirrors
 /// `watcher::on_event` / `load_folder_and_rules_for_path`.
 public final class WatcherCoordinator: @unchecked Sendable {
-    private let db: Database
+    let db: Database
     private let monthlyUsage: MonthlyFileUsageStore
     private let watcher: FileWatcher
-    private var isPro = false
+    private(set) var isPro = false
     private let now: @Sendable () -> Date
     private var quotaRetryScheduled = false
 
@@ -159,13 +159,15 @@ public final class WatcherCoordinator: @unchecked Sendable {
             // A path renamed away is reported where it used to be, and one
             // removed then recreated (a safe save) is reported as removed.
             if !FileManager.default.fileExists(atPath: path) {
-                handleDeleted(path: path)
+                syncRemovals(at: path, waitsForSettledFiles: waitsForSettledFiles)
             } else if waitsForSettledFiles {
                 awaitSettled(path)
             } else {
                 handle(path: path)
             }
         case .rescanSubtree(let path):
+            // Removals may be among the events FSEvents dropped.
+            syncRemovals(at: path, waitsForSettledFiles: waitsForSettledFiles)
             handleRescanSubtree(root: path, waitsForSettledFiles: waitsForSettledFiles)
         case .pathModified(let path):
             // Non-sync watched folders keep their arrival-only behavior,
@@ -342,200 +344,6 @@ public final class WatcherCoordinator: @unchecked Sendable {
             activeProcessingRoots[root] = count - 1
         }
         activeProcessingLock.unlock()
-    }
-
-    private func handleDeleted(path: String) {
-        // The watched folder itself going away (renamed, moved to the Trash)
-        // is not a deletion inside it: the whole mirror must stay.
-        for match in syncRuleMatches(forPath: path)
-        where (match.folder.path as NSString).standardizingPath != (path as NSString).standardizingPath {
-            let policy = ActionExecutor.syncDeletePolicy(match.action)
-            guard policy != .keepOtherSide else { continue }
-            do {
-                guard try !ActionExecutor.isSyncDestinationPath(match.action, path: path) else { continue }
-                let counterpart = try ActionExecutor.syncCounterpartPath(match.action, path: path, root: match.folder.path)
-                guard (try? FileManager.default.attributesOfItem(atPath: counterpart)) != nil else { continue }
-                let batchId = UUID().uuidString
-                // Moving a folder out can report only the folder itself.
-                // Match bottom-up before changing anything. A directory can
-                // only be removed if every child is eligible too.
-                let candidates = syncRemovalCandidates(match, counterpart: counterpart)
-                var eligible = Set<String>()
-                func originalPath(_ candidate: String) -> String {
-                    let suffix = (candidate as NSString).pathComponents.dropFirst((counterpart as NSString).pathComponents.count)
-                    return suffix.reduce(path) { ($0 as NSString).appendingPathComponent($1) }
-                }
-                for candidate in candidates {
-                    let original = originalPath(candidate)
-                    guard try !ActionExecutor.isSyncDestinationPath(match.action, path: original) else { continue }
-                    _ = try ActionExecutor.syncCounterpartPath(match.action, path: original, root: match.folder.path)
-                    guard syncRuleApplies(match, to: candidate) else { continue }
-                    // A package is synced as one item, like a file. System
-                    // files such as .DS_Store are never synced, so they don't
-                    // keep a folder from being removed.
-                    if isRealDirectory(candidate), !RuleEngine.isPackage(candidate) {
-                        let children = try FileManager.default.contentsOfDirectory(atPath: candidate)
-                            .filter { !SystemFileFilter.isExcluded($0) }
-                        guard children.allSatisfy({ eligible.contains((candidate as NSString).appendingPathComponent($0)) }) else { continue }
-                    }
-                    eligible.insert(candidate)
-                }
-                for candidate in candidates where eligible.contains(candidate) {
-                    // Move an eligible subtree as one item. This preserves
-                    // directory Undo instead of trashing parents and children
-                    // separately with colliding restore operations.
-                    var parent = (candidate as NSString).deletingLastPathComponent
-                    var covered = false
-                    while isPathPrefix(counterpart, of: parent) {
-                        if eligible.contains(parent) { covered = true; break }
-                        let next = (parent as NSString).deletingLastPathComponent
-                        if next == parent { break }
-                        parent = next
-                    }
-                    if covered { continue }
-                    let original = originalPath(candidate)
-                    if policy == .delete {
-                        try FileManager.default.removeItem(atPath: candidate)
-                        insertSyncHistory(match: match, batchId: batchId, originalPath: original, resultPath: candidate, undo: .none)
-                    } else {
-                        let trash = try moveToTrash(candidate)
-                        insertSyncHistory(match: match, batchId: batchId, originalPath: original, resultPath: trash,
-                                          undo: .move(from: candidate, to: trash))
-                    }
-                }
-            } catch {
-                insertSyncHistory(
-                    match: match,
-                    batchId: UUID().uuidString,
-                    originalPath: path,
-                    resultPath: path,
-                    status: .failed,
-                    message: String(describing: error),
-                    undo: .none
-                )
-            }
-        }
-    }
-
-    private func syncRemovalCandidates(_ match: SyncRuleMatch, counterpart: String) -> [String] {
-        var candidates = [counterpart]
-        if isRealDirectory(counterpart),
-           let target = try? ActionExecutor.syncCounterpartPath(match.action, path: match.folder.path, root: match.folder.path),
-           let depth = RuleEngine.pathDepth(root: target, path: counterpart) {
-            let isRoot = (counterpart as NSString).standardizingPath == (target as NSString).standardizingPath
-            let childDepth = isRoot ? 0 : depth + 1
-            if let limit = match.rule.recursionDepth {
-                if childDepth <= max(0, Int(limit)) {
-                    candidates += RuleEngine.walkEntries(root: counterpart, maxDepth: max(0, Int(limit)) - childDepth).map(\.path)
-                }
-            } else {
-                candidates += RuleEngine.walkEntries(root: counterpart, maxDepth: nil).map(\.path)
-            }
-        }
-        return candidates.sorted {
-            let lhs = ($0 as NSString).pathComponents.count
-            let rhs = ($1 as NSString).pathComponents.count
-            return lhs == rhs ? $0 < $1 : lhs > rhs
-        }
-    }
-
-    private static func syncOnlyRules(_ rules: [Rule]) -> [Rule] {
-        rules.compactMap { rule in
-            var sync = rule
-            sync.actions = rule.actions.filter { $0.kind == .syncFolders }
-            return sync.actions.isEmpty ? nil : sync
-        }
-    }
-
-    private struct SyncRuleMatch {
-        let folder: WatchedFolder
-        let rule: Rule
-        let action: Action
-    }
-
-    private func syncRuleMatches(forPath path: String) -> [SyncRuleMatch] {
-        db.withLock { db in
-            var matches: [SyncRuleMatch] = []
-            let folders = ((try? db.listFolders()) ?? []).filter(\.enabled)
-            for folder in folders where isPathPrefix(folder.path, of: path) {
-                let rules = (try? db.executionRules(folderID: folder.id, isPro: isPro)) ?? []
-                for rule in rules {
-                    for action in rule.actions where action.kind == .syncFolders {
-                        matches.append(SyncRuleMatch(folder: folder, rule: rule, action: action))
-                    }
-                }
-            }
-            return matches
-        }
-    }
-
-    /// The rule's conditions and depth, checked on the counterpart in the target.
-    private func syncRuleApplies(_ match: SyncRuleMatch, to counterpart: String) -> Bool {
-        guard let target = try? ActionExecutor.syncCounterpartPath(match.action, path: match.folder.path, root: match.folder.path),
-              let depth = RuleEngine.pathDepth(root: target, path: counterpart) else { return false }
-        let pro = db.withLock { _ in isPro }
-        return RuleEngine.ruleMatches(match.rule, path: counterpart, depth: depth, allowOCR: pro)
-    }
-
-    private func insertSyncHistory(
-        match: SyncRuleMatch,
-        batchId: String,
-        originalPath: String,
-        resultPath: String,
-        status: HistoryStatus = .applied,
-        message: String? = nil,
-        undo: Undo
-    ) {
-        let identity = FileFingerprint.identity(resultPath)
-        let entry = HistoryEntry(
-            batchId: batchId,
-            ruleId: match.rule.id,
-            ruleName: match.rule.name,
-            actionKind: match.action.kind,
-            originalPath: originalPath,
-            resultPath: resultPath,
-            undo: undo.toJSON(),
-            reversible: undo.isReversible,
-            status: status,
-            message: message,
-            resultVolumeId: identity?.volumeId,
-            resultFileId: identity?.fileId
-        )
-        db.withLock { db in
-            try? db.insertHistoryEntries([entry])
-        }
-        onHistoryRecorded?()
-    }
-
-    private func moveToTrash(_ path: String) throws -> String {
-        let trash = (NSHomeDirectory() as NSString).appendingPathComponent(".Trash")
-        try FileManager.default.createDirectory(atPath: trash, withIntermediateDirectories: true)
-        let fileName = (path as NSString).lastPathComponent
-        let target = uniqueTrashPath(dir: trash, fileName: fileName)
-        try FileManager.default.moveItem(atPath: path, toPath: target)
-        return target
-    }
-
-    private func uniqueTrashPath(dir: String, fileName: String) -> String {
-        let candidate = (dir as NSString).appendingPathComponent(fileName)
-        if !FileManager.default.fileExists(atPath: candidate) { return candidate }
-        let nsName = fileName as NSString
-        let stem = nsName.deletingPathExtension
-        let ext = nsName.pathExtension
-        var i = 1
-        while true {
-            let newName = ext.isEmpty ? "\(stem) (\(i))" : "\(stem) (\(i)).\(ext)"
-            let candidate = (dir as NSString).appendingPathComponent(newName)
-            if !FileManager.default.fileExists(atPath: candidate) { return candidate }
-            i += 1
-        }
-    }
-
-    private func isPathPrefix(_ prefix: String, of path: String) -> Bool {
-        let prefixComponents = ((prefix as NSString).standardizingPath as NSString).pathComponents
-        let pathComponents = ((path as NSString).standardizingPath as NSString).pathComponents
-        guard pathComponents.count >= prefixComponents.count else { return false }
-        return Array(pathComponents.prefix(prefixComponents.count)) == prefixComponents
     }
 
     /// Whether `path` looks different from the last time the watcher fully
