@@ -133,6 +133,8 @@ public enum ActionKind: String, Codable, Equatable, Sendable {
     case addTag = "add_tag"
     case removeTag = "remove_tag"
     case setColorLabel = "set_color_label"
+    case toggleLock = "toggle_lock"
+    case toggleExtension = "toggle_extension"
     case runScript = "run_script"
     case runShortcut = "run_shortcut"
     case openApplication = "open_application"

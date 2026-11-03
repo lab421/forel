@@ -903,6 +903,18 @@ private struct ActionRow: View {
             TagTokensEditor(tags: tagsBinding, placeholder: action.kind == .addTag ? "Add tag" : "Tag")
         case .setColorLabel:
             ColorLabelPicker(selection: paramBinding(ActionParam.color), allowNone: true)
+        case .toggleLock:
+            Picker("State", selection: boolParamBinding(ActionParam.locked)) {
+                Text("Locked").tag(true)
+                Text("Unlocked").tag(false)
+            }
+            .labelsHidden()
+        case .toggleExtension:
+            Picker("Extension", selection: boolParamBinding(ActionParam.extensionHidden)) {
+                Text("Hidden").tag(true)
+                Text("Visible").tag(false)
+            }
+            .labelsHidden()
         case .runScript:
             VStack(alignment: .leading, spacing: 6) {
                 GlassField(placeholder: "Bash script (file path in $FOREL_FILE)", text: paramBinding(ActionParam.script))
@@ -972,6 +984,10 @@ private struct ActionRow: View {
                     params[ActionParam.syncDeletePolicy] = .string(SyncDeletePolicy.keepOtherSide.rawValue)
                 } else if newKind == .openApplication {
                     params[ActionParam.passFileToApplication] = .bool(true)
+                } else if newKind == .toggleLock {
+                    params[ActionParam.locked] = .bool(true)
+                } else if newKind == .toggleExtension {
+                    params[ActionParam.extensionHidden] = .bool(true)
                 }
                 action = Action(id: action.id, ruleId: action.ruleId, kind: newKind, params: .object(params), position: action.position)
             }
@@ -985,6 +1001,18 @@ private struct ActionRow: View {
                 var dict: [String: JSONValue] = [:]
                 if case .object(let existing) = action.params { dict = existing }
                 dict[key] = .string(newValue)
+                action.params = .object(dict)
+            }
+        )
+    }
+
+    private func boolParamBinding(_ key: String) -> Binding<Bool> {
+        Binding(
+            get: { action.params[key]?.boolValue ?? true },
+            set: { newValue in
+                var dict: [String: JSONValue] = [:]
+                if case .object(let existing) = action.params { dict = existing }
+                dict[key] = .bool(newValue)
                 action.params = .object(dict)
             }
         )

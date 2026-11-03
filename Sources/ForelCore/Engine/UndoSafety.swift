@@ -64,6 +64,13 @@ public enum UndoChecker {
             guard FileManager.default.fileExists(atPath: entry.resultPath) else {
                 return .unsafe(reason: "The file no longer exists at its expected location.")
             }
+        case .locked(let path, _), .extensionHidden(let path, _):
+            guard FileManager.default.fileExists(atPath: path) else {
+                return .unsafe(reason: "The file no longer exists at its expected location.")
+            }
+            if let mismatch = identityMismatchReason(entry, currentPath: path) {
+                return .unsafe(reason: mismatch)
+            }
         }
 
         // Copy-undo only deletes the copy — the original is never restored
@@ -94,7 +101,8 @@ public enum UndoChecker {
     private static func restoreTarget(_ entry: HistoryEntry) -> String? {
         switch Undo.fromJSON(entry.undo) {
         case .move(let from, _): return from
-        case .addTags(let path, _), .removeTags(let path, _), .color(let path, _): return path
+        case .addTags(let path, _), .removeTags(let path, _), .color(let path, _),
+             .locked(let path, _), .extensionHidden(let path, _): return path
         case .copy, .none: return nil
         }
     }

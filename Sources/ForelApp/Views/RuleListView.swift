@@ -660,6 +660,10 @@ private struct RuleDetails: View {
         case .setColorLabel:
             let color = action.params[ActionParam.color]?.stringValue ?? ""
             return (color.isEmpty ? "clear color label" : "set to \(color)", nil)
+        case .toggleLock:
+            return (action.params[ActionParam.locked]?.boolValue == true ? "lock" : "unlock", nil)
+        case .toggleExtension:
+            return (action.params[ActionParam.extensionHidden]?.boolValue == true ? "hide extension" : "show extension", nil)
         case .runScript:
             let script = action.params[ActionParam.script]?.stringValue ?? ""
             let firstLine = script.split(separator: "\n").first.map(String.init) ?? ""

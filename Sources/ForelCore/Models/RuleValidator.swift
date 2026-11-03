@@ -44,6 +44,11 @@ public enum RuleValidator {
     public static func validate(_ actions: [Action]) -> [Issue] {
         actions.compactMap { action in
             switch action.kind {
+            case .toggleLock, .toggleExtension:
+                let key = action.kind == .toggleLock ? ActionParam.locked : ActionParam.extensionHidden
+                if action.params[key]?.boolValue == nil {
+                    return Issue(message: "\(action.kind.label) requires a true or false value")
+                }
             case .moveToFolder, .copyToFolder, .syncFolders:
                 if action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
                     return Issue(message: "Destination path cannot be empty")

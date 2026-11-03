@@ -219,6 +219,8 @@ public enum ActionParam {
     public static let deleteSourceAfterCompression = "delete_source_after_compression"
     public static let tags = "tags"
     public static let color = "color"
+    public static let locked = "locked"
+    public static let extensionHidden = "extension_hidden"
     public static let script = "script"
     public static let shortcutName = "shortcut_name"
     public static let shortcutInputMode = "shortcut_input_mode"
@@ -231,6 +233,7 @@ public enum ActionParam {
 
 /// The abstract shape of an action parameter; the UI maps it to a concrete editor.
 public enum ActionParamKind: Sendable, Equatable {
+    case boolean
     case folderPath
     case renamePattern
     case archiveName
@@ -267,6 +270,8 @@ public extension ActionKind {
         case .addTag: return "Add tag"
         case .removeTag: return "Remove tag"
         case .setColorLabel: return "Set color label"
+        case .toggleLock: return "Toggle lock"
+        case .toggleExtension: return "Toggle extension"
         case .runScript: return "Run script"
         case .runShortcut: return "Run shortcut"
         case .openApplication: return "Open application"
@@ -286,6 +291,8 @@ public extension ActionKind {
         case .moveToTrash, .delete: return "trash"
         case .addTag, .removeTag: return "tag"
         case .setColorLabel: return "paintpalette"
+        case .toggleLock: return "lock"
+        case .toggleExtension: return "doc.badge.ellipsis"
         case .runScript: return "terminal"
         case .runShortcut: return "square.stack.3d.up"
         case .openApplication: return "app"
@@ -303,7 +310,7 @@ public extension ActionKind {
         switch self {
         case .moveToFolder, .copyToFolder, .syncFolders, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress, .compress:
             return true
-        case .addTag, .removeTag, .setColorLabel, .runScript, .moveToTrash, .delete:
+        case .addTag, .removeTag, .setColorLabel, .toggleLock, .toggleExtension, .runScript, .moveToTrash, .delete:
             return false
         }
     }
@@ -320,6 +327,10 @@ public extension ActionKind {
             return [ActionParamSpec(key: ActionParam.tags, kind: .tags)]
         case .setColorLabel:
             return [ActionParamSpec(key: ActionParam.color, kind: .colorLabel)]
+        case .toggleLock:
+            return [ActionParamSpec(key: ActionParam.locked, kind: .boolean)]
+        case .toggleExtension:
+            return [ActionParamSpec(key: ActionParam.extensionHidden, kind: .boolean)]
         case .runScript:
             return [ActionParamSpec(key: ActionParam.script, kind: .script)]
         case .runShortcut:
@@ -381,6 +392,7 @@ public enum RuleSchema {
     public static let actionKindGroups: [ActionKindGroup] = [
         ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .syncFolders, .rename, .compress, .uncompress]),
         ActionKindGroup(title: "Tags", kinds: [.addTag, .removeTag, .setColorLabel]),
+        ActionKindGroup(title: "Finder", kinds: [.toggleLock, .toggleExtension]),
         ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut, .openApplication]),
         ActionKindGroup(title: "Disposal", kinds: [.moveToTrash, .delete]),
         ActionKindGroup(title: "Library", kinds: [.importToLibrary]),

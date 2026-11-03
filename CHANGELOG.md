@@ -6,6 +6,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- Add Toggle lock and Toggle extension actions to lock or unlock items and hide or show their filename extensions, with undo support.
 - Filter files and folders by their Finder Locked state with true or false.
 - Filter files and folders by Date last opened, using an absolute date or a relative duration.
 - Filter files and folders by Finder comment, with the same text and regex operators as Name.

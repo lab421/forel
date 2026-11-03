@@ -48,6 +48,8 @@ public enum Undo: Equatable, Sendable {
     case removeTags(path: String, tags: [String])
     /// Colour label changed; undo by restoring `previous` ("" = none).
     case color(path: String, previous: String)
+    case locked(path: String, previous: Bool)
+    case extensionHidden(path: String, previous: Bool)
     /// Not reversible (e.g. a script with arbitrary side effects).
     case none
 
@@ -68,6 +70,10 @@ public enum Undo: Equatable, Sendable {
             return .object(["kind": .string("remove_tags"), "path": .string(path), "tags": .stringArray(tags)])
         case .color(let path, let previous):
             return .object(["kind": .string("color"), "path": .string(path), "previous": .string(previous)])
+        case .locked(let path, let previous):
+            return .object(["kind": .string("locked"), "path": .string(path), "previous": .bool(previous)])
+        case .extensionHidden(let path, let previous):
+            return .object(["kind": .string("extension_hidden"), "path": .string(path), "previous": .bool(previous)])
         case .none:
             return .object(["kind": .string("none")])
         }
@@ -86,6 +92,10 @@ public enum Undo: Equatable, Sendable {
             return .removeTags(path: json["path"]?.stringValue ?? "", tags: (json["tags"]?.arrayValue ?? []).compactMap(\.stringValue))
         case "color":
             return .color(path: json["path"]?.stringValue ?? "", previous: json["previous"]?.stringValue ?? "")
+        case "locked", "extension_hidden":
+            guard let path = json["path"]?.stringValue, !path.isEmpty,
+                  let previous = json["previous"]?.boolValue else { return .none }
+            return kind == "locked" ? .locked(path: path, previous: previous) : .extensionHidden(path: path, previous: previous)
         default:
             return .none
         }
@@ -211,6 +221,14 @@ public enum ActionExecutor {
             return try applyTags(action, path: path, add: false)
         case .setColorLabel:
             return try setColor(action, path: path)
+        case .toggleLock, .toggleExtension:
+            let target = try fileFlagTarget(action)
+            let previous = try fileFlag(action.kind, path: path)
+            if previous != target { try setFileFlag(action.kind, path: path, value: target) }
+            let undo: Undo = action.kind == .toggleLock
+                ? .locked(path: path, previous: previous)
+                : .extensionHidden(path: path, previous: previous)
+            return Applied(newPath: path, undo: undo)
         case .runScript:
             return try runScript(action, path: path)
         case .runShortcut:
@@ -223,6 +241,36 @@ public enum ActionExecutor {
             return try uncompress(action, path: path)
         case .compress:
             return try compress(action, path: path)
+        }
+    }
+
+    private static func fileFlagTarget(_ action: Action) throws -> Bool {
+        let key = action.kind == .toggleLock ? ActionParam.locked : ActionParam.extensionHidden
+        guard let value = action.params[key]?.boolValue else {
+            throw ActionError("\(action.kind.label) requires a true or false value")
+        }
+        return value
+    }
+
+    private static func fileFlag(_ kind: ActionKind, path: String) throws -> Bool {
+        let url = URL(fileURLWithPath: path)
+        let key: URLResourceKey = kind == .toggleLock ? .isUserImmutableKey : .hasHiddenExtensionKey
+        let values = try url.resourceValues(forKeys: [key])
+        guard let value = kind == .toggleLock ? values.isUserImmutable : values.hasHiddenExtension else {
+            throw ActionError("Cannot read \(kind == .toggleLock ? "the locked state" : "extension visibility") for this item.")
+        }
+        return value
+    }
+
+    private static func setFileFlag(_ kind: ActionKind, path: String, value: Bool) throws {
+        var url = URL(fileURLWithPath: path)
+        var values = URLResourceValues()
+        if kind == .toggleLock { values.isUserImmutable = value }
+        else { values.hasHiddenExtension = value }
+        try url.setResourceValues(values)
+        // Some volumes ignore unsupported resource properties without throwing.
+        guard try fileFlag(kind, path: path) == value else {
+            throw ActionError("Cannot change \(kind == .toggleLock ? "the locked state" : "extension visibility") on this volume.")
         }
     }
 
@@ -1009,6 +1057,10 @@ public enum ActionExecutor {
             for tag in tags { try FinderTags.apply(path, tag: tag, add: true) }
         case .color(let path, let previous):
             try FinderTags.setColorLabel(path, color: previous)
+        case .locked(let path, let previous):
+            try setFileFlag(.toggleLock, path: path, value: previous)
+        case .extensionHidden(let path, let previous):
+            try setFileFlag(.toggleExtension, path: path, value: previous)
         case .none:
             throw ActionError("this action cannot be undone")
         }
@@ -1182,6 +1234,25 @@ public enum ActionExecutor {
                 copiedPath: nil,
                 isTerminal: false
             )
+        case .toggleLock, .toggleExtension:
+            let target = try fileFlagTarget(action)
+            // During Dry Run an earlier move or rename may have produced a
+            // virtual path. Unknown state must not suppress the later action;
+            // execution checks the actual item before applying the change.
+            let current = try? fileFlag(action.kind, path: path)
+            let description = action.kind == .toggleLock
+                ? (target ? "Lock file" : "Unlock file")
+                : (target ? "Hide extension" : "Show extension")
+            return ActionPlan(
+                kind: action.kind,
+                description: description,
+                sourcePath: path,
+                targetPath: nil,
+                status: current == target ? .wouldSkip : .wouldRun,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: false
+            )
         case .setColorLabel:
             let color = action.params[ActionParam.color]?.stringValue ?? ""
             return ActionPlan(
@@ -1347,6 +1418,9 @@ public enum ActionExecutor {
 
     public static func wouldChange(_ action: Action, path: String) -> Bool {
         switch action.kind {
+        case .toggleLock, .toggleExtension:
+            guard let target = try? fileFlagTarget(action), let current = try? fileFlag(action.kind, path: path) else { return true }
+            return target != current
         case .setColorLabel:
             let target = (action.params[ActionParam.color]?.stringValue ?? "").lowercased()
             return FinderTags.currentColorName(path) != target
