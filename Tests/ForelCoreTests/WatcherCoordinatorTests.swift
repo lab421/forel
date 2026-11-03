@@ -512,6 +512,60 @@ import Foundation
         #expect(history.map(\.reversible) == [false])
     }
 
+    @Test func syncFolderWatchedFolderRenamedAwayKeepsTheMirror() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(target),
+            ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.delete.rawValue),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let counterpart = (target as NSString).appendingPathComponent("a.txt")
+        try "a".write(toFile: counterpart, atomically: true, encoding: .utf8)
+
+        // Renaming the watched folder, or moving it to the Trash, reports it
+        // where it used to be.
+        try FileManager.default.moveItem(atPath: source, toPath: source + " old")
+        WatcherCoordinator(db: db).handle(event: .pathArrived(source))
+
+        #expect(FileManager.default.fileExists(atPath: counterpart))
+        #expect(try db.listHistory().isEmpty)
+    }
+
+    @Test func syncFolderDeletionRemovesFoldersWithSystemFilesAndPackages() throws {
+        let db = try makeDB()
+        let dir = TempDir()
+        let source = dir.dir("Source")
+        let target = dir.dir("Target")
+        let folder = WatchedFolder(path: source)
+        try db.insertFolder(folder)
+        var rule = makeRule(folderId: folder.id, name: "sync", recursionDepth: nil)
+        rule.actions = [makeAction(.syncFolders, .object([
+            ActionParam.destination: .string(target),
+            ActionParam.syncDeletePolicy: .string(SyncDeletePolicy.delete.rawValue),
+        ]), position: 0, ruleId: rule.id)]
+        try db.insertRule(rule)
+        let sub = (target as NSString).appendingPathComponent("Sub")
+        try FileManager.default.createDirectory(atPath: sub, withIntermediateDirectories: true)
+        try "a".write(toFile: (sub as NSString).appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try "finder".write(toFile: (sub as NSString).appendingPathComponent(".DS_Store"), atomically: true, encoding: .utf8)
+        let package = (target as NSString).appendingPathComponent("Notes.rtfd")
+        try FileManager.default.createDirectory(atPath: package, withIntermediateDirectories: true)
+        try "hello".write(toFile: (package as NSString).appendingPathComponent("TXT.rtf"), atomically: true, encoding: .utf8)
+
+        let coordinator = WatcherCoordinator(db: db)
+        coordinator.handle(event: .pathRemoved((source as NSString).appendingPathComponent("Sub")))
+        coordinator.handle(event: .pathRemoved((source as NSString).appendingPathComponent("Notes.rtfd")))
+
+        #expect(!FileManager.default.fileExists(atPath: sub))
+        #expect(!FileManager.default.fileExists(atPath: package))
+    }
+
     @Test func syncFolderPathRenamedAwayIsTreatedAsDeletion() throws {
         let db = try makeDB()
         let dir = TempDir()

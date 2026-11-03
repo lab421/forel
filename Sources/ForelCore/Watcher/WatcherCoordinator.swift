@@ -345,7 +345,10 @@ public final class WatcherCoordinator: @unchecked Sendable {
     }
 
     private func handleDeleted(path: String) {
-        for match in syncRuleMatches(forPath: path) {
+        // The watched folder itself going away (renamed, moved to the Trash)
+        // is not a deletion inside it: the whole mirror must stay.
+        for match in syncRuleMatches(forPath: path)
+        where (match.folder.path as NSString).standardizingPath != (path as NSString).standardizingPath {
             let policy = ActionExecutor.syncDeletePolicy(match.action)
             guard policy != .keepOtherSide else { continue }
             do {
@@ -367,8 +370,12 @@ public final class WatcherCoordinator: @unchecked Sendable {
                     guard try !ActionExecutor.isSyncDestinationPath(match.action, path: original) else { continue }
                     _ = try ActionExecutor.syncCounterpartPath(match.action, path: original, root: match.folder.path)
                     guard syncRuleApplies(match, to: candidate) else { continue }
-                    if isRealDirectory(candidate) {
+                    // A package is synced as one item, like a file. System
+                    // files such as .DS_Store are never synced, so they don't
+                    // keep a folder from being removed.
+                    if isRealDirectory(candidate), !RuleEngine.isPackage(candidate) {
                         let children = try FileManager.default.contentsOfDirectory(atPath: candidate)
+                            .filter { !SystemFileFilter.isExcluded($0) }
                         guard children.allSatisfy({ eligible.contains((candidate as NSString).appendingPathComponent($0)) }) else { continue }
                     }
                     eligible.insert(candidate)

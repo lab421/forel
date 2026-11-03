@@ -278,6 +278,27 @@ import Foundation
         #expect(FileFingerprint.identity(target) == firstCopy)
     }
 
+    @Test func runSyncFoldersCopiesAPackageWithItsContents() throws {
+        let dir = TempDir()
+        let sourceRoot = dir.dir("Source")
+        let targetRoot = dir.dir("Target")
+        let package = (sourceRoot as NSString).appendingPathComponent("Notes.rtfd")
+        try FileManager.default.createDirectory(atPath: package, withIntermediateDirectories: true)
+        try "hello".write(toFile: (package as NSString).appendingPathComponent("TXT.rtf"), atomically: true, encoding: .utf8)
+        let copied = (targetRoot as NSString).appendingPathComponent("Notes.rtfd/TXT.rtf")
+        let rule = makeRule(name: "sync", actions: [makeAction(.syncFolders, .object([ActionParam.destination: .string(targetRoot)]))])
+
+        _ = RuleEngine.run(path: package, depth: 0, rules: [rule], batchId: "first", root: sourceRoot)
+        #expect(try String(contentsOfFile: copied, encoding: .utf8) == "hello")
+        let second = RuleEngine.run(path: package, depth: 0, rules: [rule], batchId: "second", root: sourceRoot)
+        #expect(second.history.map(\.status) == [.skipped])
+
+        try "hello again".write(toFile: (package as NSString).appendingPathComponent("TXT.rtf"), atomically: true, encoding: .utf8)
+        let third = RuleEngine.run(path: package, depth: 0, rules: [rule], batchId: "third", root: sourceRoot)
+        #expect(third.history.map(\.status) == [.applied])
+        #expect(try String(contentsOfFile: copied, encoding: .utf8) == "hello again")
+    }
+
     @Test func previewFileShowsConditionResults() throws {
         let dir = TempDir()
         let file = dir.file("invoice.pdf", contents: "paid")

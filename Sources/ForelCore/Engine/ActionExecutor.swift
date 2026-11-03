@@ -469,7 +469,9 @@ public enum ActionExecutor {
         let syncTarget = try syncCounterpartPath(action, path: path, root: sourceRoot)
         return try explainingDisconnectedVolume(syncTarget) {
             let source = try FileManager.default.attributesOfItem(atPath: path)
-            if (source[.type] as? FileAttributeType) == .typeDirectory {
+            // A package (.app, .rtfd…) is copied whole, like a file: folder
+            // scans don't look inside it.
+            if (source[.type] as? FileAttributeType) == .typeDirectory, !RuleEngine.isPackage(path) {
                 let target = try? FileManager.default.attributesOfItem(atPath: syncTarget)
                 if let type = target?[.type] as? FileAttributeType, type != .typeDirectory {
                     _ = try syncResolvedTarget(action, naiveTarget: syncTarget)
@@ -1156,7 +1158,7 @@ public enum ActionExecutor {
             let naiveTarget = try syncCounterpartPath(action, path: path, root: sourceRoot)
             let conflicts = FileManager.default.fileExists(atPath: naiveTarget)
             let source = try? FileManager.default.attributesOfItem(atPath: path)
-            let isDirectory = (source?[.type] as? FileAttributeType) == .typeDirectory
+            let isDirectory = (source?[.type] as? FileAttributeType) == .typeDirectory && !RuleEngine.isPackage(path)
 
             if isAlreadySynced(path, naiveTarget) {
                 return ActionPlan(
@@ -1508,13 +1510,22 @@ public enum ActionExecutor {
 
     /// A folder is synced once it exists on the other side, its files being
     /// synced one by one. A file is when its size and modification date match,
-    /// which a copy keeps.
+    /// which a copy keeps. A package, copied whole, is when everything in it is.
     private static func isAlreadySynced(_ path: String, _ counterpart: String) -> Bool {
         guard let source = try? FileManager.default.attributesOfItem(atPath: path),
               let other = try? FileManager.default.attributesOfItem(atPath: counterpart),
               let type = source[.type] as? FileAttributeType, type == other[.type] as? FileAttributeType
         else { return false }
-        if type == .typeDirectory { return true }
+        if type == .typeDirectory {
+            guard RuleEngine.isPackage(path) else { return true }
+            guard let items = FileManager.default.subpaths(atPath: path),
+                  let others = FileManager.default.subpaths(atPath: counterpart),
+                  Set(items) == Set(others) else { return false }
+            return items.allSatisfy { item in
+                isAlreadySynced((path as NSString).appendingPathComponent(item),
+                                (counterpart as NSString).appendingPathComponent(item))
+            }
+        }
         if type == .typeSymbolicLink {
             guard let source = try? FileManager.default.destinationOfSymbolicLink(atPath: path),
                   let target = try? FileManager.default.destinationOfSymbolicLink(atPath: counterpart) else { return false }
