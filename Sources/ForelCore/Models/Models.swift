@@ -64,6 +64,7 @@ public enum ConditionMatch: String, Codable, Equatable, Sendable {
 
 public enum ConditionKind: String, Codable, Equatable, Sendable {
     case name
+    case comment
     case extension_ = "extension"
     case kind
     case sizeBytes = "size_bytes"

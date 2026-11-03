@@ -6,6 +6,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- Filter files and folders by Finder comment, with the same text and regex operators as Name.
 - Added a Sync Folders action that mirrors a watched folder into another folder, keeping its subfolder structure. Deletions can optionally move the mirrored copy to the Trash or delete it permanently.
 
 ## [1.1.1] - 2026-11-02

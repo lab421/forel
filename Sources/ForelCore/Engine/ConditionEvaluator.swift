@@ -27,6 +27,10 @@ public enum ConditionEvaluator {
         case .name:
             return matchName(condition.operator, url: url, condition.value)
 
+        case .comment:
+            guard let comment = FinderComment.read(path) else { return false }
+            return matchString(condition.operator, comment, condition.value)
+
         case .extension_:
             let ext = url.pathExtension.lowercased()
             let value = condition.value.trimmingPrefix(while: { $0 == "." }).lowercased()

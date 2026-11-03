@@ -97,7 +97,7 @@ Forel Free is available indefinitely without a license. Pro is a paid license; t
 | Rules per folder and actions per rule | Unlimited | Unlimited |
 | Background watching and Run Now | Included | Included |
 | Move, copy, rename, tags, labels, trash, delete, uncompress, open app | Included | Included |
-| Filename, type, size, dates, tags, and download metadata conditions | Included | Included |
+| Filename, type, size, dates, tags, Finder comments, and download metadata conditions | Included | Included |
 | Text matching in documents and PDFs with a text layer | Included | Included |
 | On-device OCR for images and scanned PDFs | — | Included |
 | Custom scripts and Apple Shortcuts | Included | Included |

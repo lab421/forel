@@ -81,6 +81,7 @@ public extension ConditionKind {
     var label: String {
         switch self {
         case .name: return "Name"
+        case .comment: return "Comment"
         case .extension_: return "Extension"
         case .kind: return "Kind"
         case .sizeBytes: return "Size"
@@ -107,7 +108,7 @@ public extension ConditionKind {
             return [.is, .isNot, .greaterThan, .lessThan]
         case .kind, .colorLabel:
             return [.is, .isNot]
-        case .name, .extension_, .tags, .contents,
+        case .name, .comment, .extension_, .tags, .contents,
              .downloadedFromWebsite, .rawWhereFromMetadata:
             return [.is, .isNot, .contains, .doesNotContain, .startsWith, .endsWith, .matchesRegex]
         case .downloadedWithApp:
@@ -127,7 +128,7 @@ public extension ConditionKind {
         case .sizeBytes: return .size
         case .colorLabel: return .colorLabel
         case .createdAt, .dateModified, .dateAdded: return .absoluteDate
-        case .name, .extension_, .tags, .contents,
+        case .name, .comment, .extension_, .tags, .contents,
              .downloadedFromWebsite, .rawWhereFromMetadata: return .text
         case .downloadedWithApp: return .appPicker
         }
@@ -137,6 +138,7 @@ public extension ConditionKind {
     var iconSystemName: String {
         switch self {
         case .name: return "doc"
+        case .comment: return "text.bubble"
         case .extension_: return "puzzlepiece.extension"
         case .kind: return "doc.viewfinder"
         case .sizeBytes: return "externaldrive"
@@ -157,6 +159,8 @@ public extension ConditionKind {
     /// `nil` for everything that doesn't need one — most conditions don't.
     var helpText: String? {
         switch self {
+        case .comment:
+            return "Matches the Finder comment shown in Get Info. Files without a comment are treated as having an empty comment."
         case .downloadedFromWebsite, .downloadedWithApp, .rawWhereFromMetadata:
             return "Uses macOS download metadata. Availability depends on the app that created the file."
         case .contents:
@@ -353,7 +357,7 @@ public enum RuleSchema {
             .createdAt, .dateModified, .dateAdded,
         ]),
         ConditionKindGroup(title: "Metadata", kinds: [
-            .downloadedFromWebsite, .downloadedWithApp,
+            .comment, .downloadedFromWebsite, .downloadedWithApp,
         ]),
     ]
 
