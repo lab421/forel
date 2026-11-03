@@ -65,6 +65,7 @@ public enum ConditionMatch: String, Codable, Equatable, Sendable {
 public enum ConditionKind: String, Codable, Equatable, Sendable {
     case name
     case comment
+    case locked
     case extension_ = "extension"
     case kind
     case sizeBytes = "size_bytes"
@@ -85,6 +86,8 @@ public enum ConditionKind: String, Codable, Equatable, Sendable {
 }
 
 public enum Operator: String, Codable, Equatable, Sendable {
+    case isTrue = "is_true"
+    case isFalse = "is_false"
     case `is`
     case isNot = "is_not"
     case contains

@@ -33,6 +33,8 @@ public extension Operator {
     /// Human-readable label shown in the rule editor.
     var label: String {
         switch self {
+        case .isTrue: return "true"
+        case .isFalse: return "false"
         case .is: return "is"
         case .isNot: return "is not"
         case .contains: return "contains"
@@ -63,6 +65,8 @@ public extension Operator {
 /// operator (see `RuleSchema.valueKind(for:operator:)`), everything else from
 /// the condition kind.
 public enum ConditionValueKind: Sendable, Equatable {
+    /// The operator itself specifies the condition; no value editor is needed.
+    case none
     case text
     case regex
     case size
@@ -82,6 +86,7 @@ public extension ConditionKind {
         switch self {
         case .name: return "Name"
         case .comment: return "Comment"
+        case .locked: return "Locked"
         case .extension_: return "Extension"
         case .kind: return "Kind"
         case .sizeBytes: return "Size"
@@ -103,6 +108,8 @@ public extension ConditionKind {
     /// `RuleSchemaTests`.
     var validOperators: [Operator] {
         switch self {
+        case .locked:
+            return [.isTrue, .isFalse]
         case .createdAt, .dateModified, .dateAdded, .dateLastOpened:
             return [.before, .after, .olderThan, .withinLast]
         case .sizeBytes:
@@ -125,6 +132,7 @@ public extension ConditionKind {
     /// operator-specific overrides for regex and relative dates.
     var baseValueKind: ConditionValueKind {
         switch self {
+        case .locked: return .none
         case .kind: return .fileKind
         case .sizeBytes: return .size
         case .colorLabel: return .colorLabel
@@ -140,6 +148,7 @@ public extension ConditionKind {
         switch self {
         case .name: return "doc"
         case .comment: return "text.bubble"
+        case .locked: return "lock"
         case .extension_: return "puzzlepiece.extension"
         case .kind: return "doc.viewfinder"
         case .sizeBytes: return "externaldrive"
@@ -161,6 +170,8 @@ public extension ConditionKind {
     /// `nil` for everything that doesn't need one — most conditions don't.
     var helpText: String? {
         switch self {
+        case .locked:
+            return "Matches the Locked checkbox in Finder's Get Info window, independently of read and write permissions."
         case .comment:
             return "Matches the Finder comment shown in Get Info. Files without a comment are treated as having an empty comment."
         case .dateLastOpened:
@@ -357,7 +368,7 @@ public struct ActionKindGroup: Sendable {
 public enum RuleSchema {
     public static let conditionKindGroups: [ConditionKindGroup] = [
         ConditionKindGroup(title: nil, kinds: [
-            .name, .extension_, .kind, .sizeBytes, .tags, .colorLabel, .contents,
+            .name, .extension_, .kind, .sizeBytes, .tags, .colorLabel, .locked, .contents,
             .createdAt, .dateModified, .dateAdded, .dateLastOpened,
         ]),
         ConditionKindGroup(title: "Metadata", kinds: [

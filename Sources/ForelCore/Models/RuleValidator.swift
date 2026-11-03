@@ -26,6 +26,10 @@ public enum RuleValidator {
 
     public static func validate(_ conditions: [Condition]) -> [Issue] {
         conditions.compactMap { condition in
+            if condition.kind == .locked {
+                return condition.kind.validOperators.contains(condition.operator)
+                    ? nil : Issue(message: "Locked requires true or false")
+            }
             if condition.value.trimmingCharacters(in: .whitespaces).isEmpty {
                 return Issue(message: "Condition value cannot be empty")
             }

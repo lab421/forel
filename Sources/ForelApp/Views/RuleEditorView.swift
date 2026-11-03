@@ -374,6 +374,8 @@ private struct ConditionRow: View {
 
     @ViewBuilder private var conditionValue: some View {
         switch RuleSchema.valueKind(for: condition.kind, operator: condition.operator) {
+        case .none:
+            Spacer(minLength: 0)
         case .colorLabel:
             ColorLabelPicker(selection: $condition.value, allowNone: false)
         case .fileKind:

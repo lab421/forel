@@ -31,6 +31,18 @@ public enum ConditionEvaluator {
             guard let comment = FinderComment.read(path) else { return false }
             return matchString(condition.operator, comment, condition.value)
 
+        case .locked:
+            // Finder's Locked checkbox sets the user immutable flag, rather
+            // than removing write permissions. Unavailable metadata is unknown.
+            guard let locked = try? url.resourceValues(forKeys: [.isUserImmutableKey]).isUserImmutable else {
+                return false
+            }
+            switch condition.operator {
+            case .isTrue: return locked
+            case .isFalse: return !locked
+            default: return false
+            }
+
         case .extension_:
             let ext = url.pathExtension.lowercased()
             let value = condition.value.trimmingPrefix(while: { $0 == "." }).lowercased()
