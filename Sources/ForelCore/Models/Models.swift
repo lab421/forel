@@ -74,6 +74,7 @@ public enum ConditionKind: String, Codable, Equatable, Sendable {
     case createdAt = "created_at"
     case dateModified = "date_modified"
     case dateAdded = "date_added"
+    case dateLastOpened = "date_last_opened"
     case downloadedFromWebsite = "downloaded_from_website"
     case downloadedWithApp = "downloaded_with_app"
     case rawWhereFromMetadata = "raw_where_from_metadata"

@@ -91,6 +91,7 @@ public extension ConditionKind {
         case .createdAt: return "Date created"
         case .dateModified: return "Date modified"
         case .dateAdded: return "Date added"
+        case .dateLastOpened: return "Date last opened"
         case .downloadedFromWebsite: return "Downloaded from website"
         case .downloadedWithApp: return "Downloaded with app"
         case .rawWhereFromMetadata: return "Raw where-from metadata"
@@ -102,7 +103,7 @@ public extension ConditionKind {
     /// `RuleSchemaTests`.
     var validOperators: [Operator] {
         switch self {
-        case .createdAt, .dateModified, .dateAdded:
+        case .createdAt, .dateModified, .dateAdded, .dateLastOpened:
             return [.before, .after, .olderThan, .withinLast]
         case .sizeBytes:
             return [.is, .isNot, .greaterThan, .lessThan]
@@ -127,7 +128,7 @@ public extension ConditionKind {
         case .kind: return .fileKind
         case .sizeBytes: return .size
         case .colorLabel: return .colorLabel
-        case .createdAt, .dateModified, .dateAdded: return .absoluteDate
+        case .createdAt, .dateModified, .dateAdded, .dateLastOpened: return .absoluteDate
         case .name, .comment, .extension_, .tags, .contents,
              .downloadedFromWebsite, .rawWhereFromMetadata: return .text
         case .downloadedWithApp: return .appPicker
@@ -148,6 +149,7 @@ public extension ConditionKind {
         case .createdAt: return "calendar.badge.plus"
         case .dateModified: return "calendar.badge.clock"
         case .dateAdded: return "calendar.day.timeline.left"
+        case .dateLastOpened: return "clock.arrow.circlepath"
         case .downloadedFromWebsite: return "globe"
         case .downloadedWithApp: return "macwindow"
         case .rawWhereFromMetadata: return "curlybraces"
@@ -161,6 +163,8 @@ public extension ConditionKind {
         switch self {
         case .comment:
             return "Matches the Finder comment shown in Get Info. Files without a comment are treated as having an empty comment."
+        case .dateLastOpened:
+            return "Uses the last-opened date recorded by macOS, not the last filesystem access. Items without this date do not match."
         case .downloadedFromWebsite, .downloadedWithApp, .rawWhereFromMetadata:
             return "Uses macOS download metadata. Availability depends on the app that created the file."
         case .contents:
@@ -354,7 +358,7 @@ public enum RuleSchema {
     public static let conditionKindGroups: [ConditionKindGroup] = [
         ConditionKindGroup(title: nil, kinds: [
             .name, .extension_, .kind, .sizeBytes, .tags, .colorLabel, .contents,
-            .createdAt, .dateModified, .dateAdded,
+            .createdAt, .dateModified, .dateAdded, .dateLastOpened,
         ]),
         ConditionKindGroup(title: "Metadata", kinds: [
             .comment, .downloadedFromWebsite, .downloadedWithApp,

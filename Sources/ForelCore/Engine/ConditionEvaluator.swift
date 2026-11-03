@@ -99,6 +99,10 @@ public enum ConditionEvaluator {
             guard let added = dateAdded(path: path) else { return false }
             return matchDate(condition.operator, added, condition.value)
 
+        case .dateLastOpened:
+            guard let opened = LastOpenedDate.read(path) else { return false }
+            return matchDate(condition.operator, opened, condition.value)
+
         case .downloadedFromWebsite:
             return matchAnyOf(condition.operator, DownloadMetadata.websiteURLs(path), condition.value)
 
