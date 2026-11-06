@@ -666,8 +666,9 @@ private struct RuleDetails: View {
             return (action.params[ActionParam.extensionHidden]?.boolValue == true ? "hide extension" : "show extension", nil)
         case .runScript:
             let script = action.params[ActionParam.script]?.stringValue ?? ""
-            let firstLine = script.split(separator: "\n").first.map(String.init) ?? ""
-            return (firstLine.isEmpty ? "run script" : firstLine, nil)
+            let lines = script.split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            let firstLine = lines.first.map(String.init) ?? ""
+            return (firstLine.isEmpty ? "run script" : firstLine, lines.count > 1 ? "\(lines.count) lines" : nil)
         case .runShortcut:
             let name = action.params[ActionParam.shortcutName]?.stringValue ?? ""
             return (name.isEmpty ? "run shortcut" : name, ActionExecutor.shortcutInputMode(action).label)

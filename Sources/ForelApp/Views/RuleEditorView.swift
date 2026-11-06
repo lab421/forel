@@ -917,7 +917,7 @@ private struct ActionRow: View {
             .labelsHidden()
         case .runScript:
             VStack(alignment: .leading, spacing: 6) {
-                GlassField(placeholder: "Bash script (file path in $FOREL_FILE)", text: paramBinding(ActionParam.script))
+                ScriptEditor(script: paramBinding(ActionParam.script))
                 Text("Runs once per matching file. Use \"$FOREL_FILE\" for its full path. Dry Run does not execute scripts; script changes cannot be undone.")
                     .font(.caption)
                     .foregroundStyle(ForelTheme.secondaryText)

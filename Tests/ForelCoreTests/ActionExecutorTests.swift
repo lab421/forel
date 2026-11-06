@@ -652,6 +652,20 @@ import Foundation
         }
     }
 
+    @Test func runScriptRunsEveryLineOfAMultilineScript() throws {
+        let dir = TempDir()
+        let file = dir.file("x.txt", contents: "x")
+        let script = makeAction(.runScript, .object(["script": .string("""
+        out="$FOREL_FILE.out"
+        echo first > "$out"
+        if [ -f "$FOREL_FILE" ]; then
+            echo second >> "$out"
+        fi
+        """)]))
+        _ = try ActionExecutor.execute(script, path: file)
+        #expect(try String(contentsOfFile: file + ".out", encoding: .utf8) == "first\nsecond\n")
+    }
+
     @Test func runShortcutPreviewUsesShortcutNameAndSkipsWhenMissing() throws {
         let dir = TempDir()
         let file = dir.file("shortcut-input.txt", contents: "x")
