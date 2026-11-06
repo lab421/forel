@@ -297,7 +297,8 @@ public enum ActionExecutor {
     }
 
     /// Resolves the date tokens a destination template may contain —
-    /// `{year}`, `{month}`, `{day}`, with month/day zero-padded — from the
+    /// `{year}`, `{month}`, `{day}`, `{quarter}`, with month/day zero-padded
+    /// and quarter numbered 1–4 — from the
     /// file's creation date (the date a "sort my downloads by month" workflow
     /// means; it survives moves). Unknown `{...}` sequences are left as-is.
     /// A typed `~` is expanded to the home folder.
@@ -309,7 +310,10 @@ public enum ActionExecutor {
         let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
         var result = template
         if let year = parts.year { result = result.replacingOccurrences(of: "{year}", with: String(year)) }
-        if let month = parts.month { result = result.replacingOccurrences(of: "{month}", with: String(format: "%02d", month)) }
+        if let month = parts.month {
+            result = result.replacingOccurrences(of: "{month}", with: String(format: "%02d", month))
+            result = result.replacingOccurrences(of: "{quarter}", with: String((month - 1) / 3 + 1))
+        }
         if let day = parts.day { result = result.replacingOccurrences(of: "{day}", with: String(format: "%02d", day)) }
         return result
     }

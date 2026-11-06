@@ -893,7 +893,7 @@ private struct ActionRow: View {
             FolderField(
                 placeholder: "Destination folder",
                 path: paramBinding(ActionParam.destination),
-                hint: "Add {year}, {month}, or {day} for dated folders, e.g. …/Archive/{year}/{month}"
+                hint: "Add {year}, {month}, {day}, or {quarter} for dated folders, e.g. …/Archive/{year} - Q{quarter}"
             )
         case .syncFolders:
             FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
@@ -1094,7 +1094,7 @@ private struct ActionOptionsView: View {
             FolderField(
                 placeholder: "Next to the source (default)",
                 path: paramBinding(ActionParam.destination),
-                hint: "Supports {year}, {month}, and {day}."
+                hint: "Supports {year}, {month}, {day}, and {quarter}."
             )
             if action.params[ActionParam.destination]?.stringValue?.isEmpty == false {
                 Button("Use source folder") { paramBinding(ActionParam.destination).wrappedValue = "" }
