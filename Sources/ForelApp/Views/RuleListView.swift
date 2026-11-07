@@ -20,7 +20,6 @@ import ForelCore
 
 struct RuleListView: View {
     @EnvironmentObject var model: AppModel
-    @State private var editingRule: Rule?
     @State private var selectedRuleIDs: Set<String> = []
     @State private var copyRequest: RuleCopyRequest?
 
@@ -29,33 +28,24 @@ struct RuleListView: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            content
-                .sheet(item: $editingRule) { rule in
-                    RuleEditorView(rule: rule, preferredHeight: editorHeight(for: proxy.size.height)) { saved in
-                        if model.saveRule(saved) { editingRule = nil }
-                    } onCancel: {
-                        editingRule = nil
-                    }
-                }
-                .sheet(item: $model.previewResult) { result in
-                    PreviewSheet(result: result) { model.previewResult = nil }
-                }
-                .sheet(item: $copyRequest) { request in
-                    CopyRulesSheet(
-                        ruleCount: request.ruleIDs.count,
-                        sourceFolderID: request.sourceFolderID,
-                        folders: model.folders, isPro: model.isPro,
-                        onCopy: { destination in
-                            try model.copyRules(request.ruleIDs, fromFolderID: request.sourceFolderID, toFolderID: destination)
-                            copyRequest = nil
-                        },
-                        onCancel: { copyRequest = nil }
-                    )
-                }
-        }
-        .onChange(of: model.selectedFolderId) { _, _ in selectedRuleIDs.removeAll() }
-        .onChange(of: model.rules.map(\.id)) { _, ids in selectedRuleIDs.formIntersection(ids) }
+        content
+            .sheet(item: $model.previewResult) { result in
+                PreviewSheet(result: result) { model.previewResult = nil }
+            }
+            .sheet(item: $copyRequest) { request in
+                CopyRulesSheet(
+                    ruleCount: request.ruleIDs.count,
+                    sourceFolderID: request.sourceFolderID,
+                    folders: model.folders, isPro: model.isPro,
+                    onCopy: { destination in
+                        try model.copyRules(request.ruleIDs, fromFolderID: request.sourceFolderID, toFolderID: destination)
+                        copyRequest = nil
+                    },
+                    onCancel: { copyRequest = nil }
+                )
+            }
+            .onChange(of: model.selectedFolderId) { _, _ in selectedRuleIDs.removeAll() }
+            .onChange(of: model.rules.map(\.id)) { _, ids in selectedRuleIDs.formIntersection(ids) }
     }
 
     private var content: some View {
@@ -131,7 +121,7 @@ struct RuleListView: View {
                             isExpanded: model.isRuleExpanded(rule),
                             isSelected: selectedRuleIDs.contains(rule.id),
                             onToggleExpanded: { model.toggleRuleExpanded(rule) },
-                            onEdit: { editingRule = rule },
+                            onEdit: { model.editingRule = rule },
                             onCopy: { requestCopy([rule.id]) }
                             )
                         }
@@ -156,10 +146,6 @@ struct RuleListView: View {
         .padding(16)
         .frame(minWidth: 460)
         .background(ForelTheme.background)
-    }
-
-    private func editorHeight(for availableHeight: CGFloat) -> CGFloat {
-        max(680, availableHeight - 64)
     }
 
     private func requestCopy(_ ruleIDs: Set<String>) {
@@ -231,7 +217,7 @@ struct RuleListView: View {
                     model.proUpgrade = .folders
                     return
                 }
-                editingRule = Rule(folderId: folderId, name: "New Rule")
+                model.editingRule = Rule(folderId: folderId, name: "New Rule")
             } label: {
                 Label("New Rule", systemImage: "plus")
             }
@@ -339,7 +325,7 @@ struct RuleListView: View {
                         model.proUpgrade = .folders
                         return
                     }
-                    editingRule = Rule(folderId: folderId, name: "New Rule")
+                    model.editingRule = Rule(folderId: folderId, name: "New Rule")
                 } label: {
                     Label("New Rule", systemImage: "plus")
                 }
@@ -363,6 +349,7 @@ private struct RuleCard: View {
     let onToggleExpanded: () -> Void
     let onEdit: () -> Void
     let onCopy: () -> Void
+    @State private var confirmsDelete = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -439,11 +426,13 @@ private struct RuleCard: View {
                 .disabled(!rule.isSupported)
 
                 Button(role: .destructive) {
-                    model.deleteRule(rule)
+                    confirmsDelete = true
                 } label: {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(IconButtonStyle(role: .destructive))
+                .help("Delete this rule…")
+                .accessibilityLabel("Delete rule")
             }
             .padding(.vertical, 10)
             .padding(.horizontal, 12)
@@ -476,6 +465,25 @@ private struct RuleCard: View {
                 )
         )
         .opacity(rule.enabled && rule.isSupported && model.selectedFolderIsAllowed ? 1 : 0.6)
+        .confirmationDialog(deleteTitle, isPresented: $confirmsDelete) {
+            Button("Delete Rule", role: .destructive) { model.deleteRule(rule) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(deleteMessage)
+        }
+    }
+
+    private var deleteTitle: String {
+        let name = rule.name.trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? "Delete this rule?" : "Delete the rule “\(name)”?"
+    }
+
+    /// Says what goes and what stays, so the choice is informed.
+    private var deleteMessage: String {
+        let conditions = "\(rule.conditions.count) condition\(rule.conditions.count == 1 ? "" : "s")"
+        let actions = "\(rule.actions.count) action\(rule.actions.count == 1 ? "" : "s")"
+        return "Its \(conditions) and \(actions) are deleted, and this can't be undone. "
+            + "Files it already processed stay where they are, and its past activity is kept."
     }
 
     private func metaPill(icon: String, text: String) -> some View {

@@ -27,13 +27,18 @@ struct RuleEditorView: View {
     @State private var errorDismissTask: Task<Void, Never>?
     @State private var upgradeContext: ProUpgradeContext?
     @EnvironmentObject private var model: AppModel
-    private let preferredHeight: CGFloat
+    @State private var isWide = false
+    /// Shared with the card's own toggle: closed until the user opens it,
+    /// then remembered.
+    @AppStorage(RuleMatchPreviewCard.expandedKey) private var previewExpanded = false
+
+    /// From this width, the matching files get their own column.
+    private static let wideLayoutWidth: CGFloat = 1000
     let onSave: (Rule) -> Void
     let onCancel: () -> Void
 
-    init(rule: Rule, preferredHeight: CGFloat = 680, onSave: @escaping (Rule) -> Void, onCancel: @escaping () -> Void) {
+    init(rule: Rule, onSave: @escaping (Rule) -> Void, onCancel: @escaping () -> Void) {
         _rule = State(initialValue: rule)
-        self.preferredHeight = max(680, preferredHeight)
         self.onSave = onSave
         self.onCancel = onCancel
     }
@@ -49,79 +54,18 @@ struct RuleEditorView: View {
                 RuleValidationBanner(messages: validationMessages)
             }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    SectionLabel(title: "Basics")
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 14) {
-                            GlassField(placeholder: "Rule name", text: $rule.name)
-                            ScopeEditor(depth: $rule.recursionDepth)
-
-                            Picker("", selection: $rule.conditionMatch) {
-                                Text("Match all conditions").tag(ConditionMatch.all)
-                                Text("Match any condition").tag(ConditionMatch.any)
-                            }
-                            .labelsHidden()
-                            .pickerStyle(.segmented)
-                        }
-                        .padding(18)
-                    }
-
-                    HStack {
-                        SectionLabel(title: "Conditions")
-                        Spacer()
-                        Button {
-                            rule.conditions.append(Condition(ruleId: rule.id, kind: .name, operator: .contains, value: ""))
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                        .buttonStyle(IconButtonStyle())
-                    }
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            if rule.conditions.isEmpty {
-                                placeholder("No conditions — this rule matches every file in scope.")
-                            }
-                            ForEach($rule.conditions, id: \.id) { $condition in
-                                ConditionRow(condition: $condition, onRequestUpgrade: { upgradeContext = .feature($0) }) {
-                                    rule.conditions.removeAll { $0.id == condition.id }
-                                }
-                            }
-                        }
-                        .padding(18)
-                    }
-
-                    HStack {
-                        SectionLabel(title: "Actions")
-                        Text("\(rule.actions.count)")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(ForelTheme.secondaryText)
-                        Spacer()
-                        Button {
-                            rule.actions.append(Action(ruleId: rule.id, kind: .moveToFolder, params: .object(["destination": .string("")]), position: Int64(rule.actions.count)))
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                        .buttonStyle(IconButtonStyle())
-                    }
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            if rule.actions.isEmpty {
-                                placeholder("No actions yet — add at least one to make this rule do something.")
-                            }
-                            ForEach($rule.actions, id: \.id) { $action in
-                                ActionRow(action: $action, onRequestUpgrade: { upgradeContext = .feature($0) }) {
-                                    rule.actions.removeAll { $0.id == action.id }
-                                }
-                            }
-                        }
-                        .padding(18)
-                    }
-
-                    RuleMatchPreviewCard(rule: rule)
+            HStack(alignment: .top, spacing: 18) {
+                ScrollView { sections }
+                    .scrollIndicators(.never)
+                if isWide, previewExpanded {
+                    ScrollView { RuleMatchPreviewCard(rule: rule) }
+                        .scrollIndicators(.never)
+                        .frame(width: 360)
                 }
             }
-            .scrollIndicators(.never)
+            if !(isWide && previewExpanded) {
+                RuleMatchPreviewCard(rule: rule, listMaxHeight: 190)
+            }
 
             Divider().overlay(ForelTheme.divider)
 
@@ -158,10 +102,84 @@ struct RuleEditorView: View {
             }
         }
         .padding(22)
-        .frame(width: 880, height: preferredHeight)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(ForelTheme.background)
-        .background(WindowActivationBridge(showsDockIcon: model.showDockIcon))
+        .onGeometryChange(for: Bool.self) { $0.size.width >= Self.wideLayoutWidth } action: { isWide = $0 }
         .sheet(item: $upgradeContext) { context in ProUpgradeView(context: context) }
+    }
+
+    /// Conditions, scope and actions; the matching files sit beside them in a
+    /// wide window, below them otherwise.
+    private var sections: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SectionLabel(title: "Basics")
+            GlassCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    GlassField(placeholder: "Rule name", text: $rule.name)
+                    ScopeEditor(depth: $rule.recursionDepth)
+
+                    Picker("", selection: $rule.conditionMatch) {
+                        Text("Match all conditions").tag(ConditionMatch.all)
+                        Text("Match any condition").tag(ConditionMatch.any)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                }
+                .padding(18)
+            }
+
+            HStack {
+                SectionLabel(title: "Conditions")
+                Spacer()
+                Button {
+                    rule.conditions.append(Condition(ruleId: rule.id, kind: .name, operator: .contains, value: ""))
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(IconButtonStyle())
+            }
+            GlassCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    if rule.conditions.isEmpty {
+                        placeholder("No conditions — this rule matches every file in scope.")
+                    }
+                    ForEach($rule.conditions, id: \.id) { $condition in
+                        ConditionRow(condition: $condition, onRequestUpgrade: { upgradeContext = .feature($0) }) {
+                            rule.conditions.removeAll { $0.id == condition.id }
+                        }
+                    }
+                }
+                .padding(18)
+            }
+
+            HStack {
+                SectionLabel(title: "Actions")
+                Text("\(rule.actions.count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(ForelTheme.secondaryText)
+                Spacer()
+                Button {
+                    rule.actions.append(Action(ruleId: rule.id, kind: .moveToFolder, params: .object(["destination": .string("")]), position: Int64(rule.actions.count)))
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(IconButtonStyle())
+            }
+            GlassCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    if rule.actions.isEmpty {
+                        placeholder("No actions yet — add at least one to make this rule do something.")
+                    }
+                    ForEach($rule.actions, id: \.id) { $action in
+                        ActionRow(action: $action, onRequestUpgrade: { upgradeContext = .feature($0) }) {
+                            rule.actions.removeAll { $0.id == action.id }
+                        }
+                    }
+                }
+                .padding(18)
+            }
+
+        }
     }
 
     private var conditionIssues: [RuleValidator.Issue] {
@@ -221,9 +239,16 @@ private struct RuleValidationBanner: View {
 /// The items of the folder this rule would act on right now, recomputed a
 /// moment after each edit so the effect of a condition shows before saving.
 /// Uses the same matching and planning as Dry Run and never changes a file.
+/// Collapsed by default to just its header; once opened it stays open.
 private struct RuleMatchPreviewCard: View {
+    static let expandedKey = "ruleMatchPreviewExpanded"
+
     @EnvironmentObject private var model: AppModel
     let rule: Rule
+    /// Caps the list's height (it scrolls past it) where the card sits under
+    /// the editor; `nil` lets it grow, e.g. in its own column.
+    var listMaxHeight: CGFloat? = nil
+    @AppStorage(expandedKey) private var isExpanded = false
     @State private var summary: RuleMatchSummary?
     @State private var isScanning = false
 
@@ -232,25 +257,56 @@ private struct RuleMatchPreviewCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                SectionLabel(title: "Matching Files")
-                if isScanning { ProgressView().controlSize(.small) }
-                Spacer()
-                if let summary, !needsPro {
-                    Text(checkedLabel(summary))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(ForelTheme.secondaryText)
+            header
+            if isExpanded {
+                if let listMaxHeight {
+                    ScrollView { card }
+                        .scrollIndicators(.automatic)
+                        .frame(maxHeight: listMaxHeight)
+                } else {
+                    card
                 }
-            }
-            GlassCard {
-                VStack(alignment: .leading, spacing: 8) {
-                    content
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(18)
             }
         }
         .task(id: rule) { await refresh() }
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(ForelTheme.secondaryText)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    SectionLabel(title: "Matching Files")
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isExpanded ? "Hide the matching files" : "Show the files this rule matches right now")
+            .accessibilityLabel("Matching Files")
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            if isScanning { ProgressView().controlSize(.small) }
+            Spacer()
+            if let summary, !needsPro {
+                Text(checkedLabel(summary))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(ForelTheme.secondaryText)
+            }
+        }
+    }
+
+    private var card: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 8) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+        }
     }
 
     @ViewBuilder private var content: some View {

@@ -23,6 +23,10 @@ struct SidebarView: View {
     @State private var draggedFolderId: String?
     @State private var insertionIndex: Int?
 
+    /// The rule editor fills the main window until it is saved or cancelled,
+    /// so switching folders can't silently drop an edit.
+    private var isEditingRule: Bool { model.editingRule != nil }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ViewHeader(title: "Forel", subtitle: "File automation") {
@@ -45,6 +49,7 @@ struct SidebarView: View {
                 }
                 .buttonStyle(IconButtonStyle())
                 .help("Add a folder to watch")
+                .disabled(isEditingRule)
             }
 
             if model.folders.isEmpty {
@@ -87,6 +92,8 @@ struct SidebarView: View {
                     )
                 }
                 .scrollIndicators(.never)
+                .disabled(isEditingRule)
+                .help(isEditingRule ? "Save or cancel the rule you're editing first." : "")
             }
 
             Spacer(minLength: 0)
@@ -107,6 +114,7 @@ struct SidebarView: View {
                     model.showActivity()
                 }
                 .help("Activity history")
+                .disabled(isEditingRule)
             }
         }
         .padding(16)

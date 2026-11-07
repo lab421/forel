@@ -6,7 +6,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
-- The rule editor now lists the files the rule matches in its folder right now, with what its first action would do, updated as you edit conditions and actions.
+- The rule editor now has a Matching Files panel listing the files the rule matches in its folder right now, with what its first action would do, updated as you edit conditions and actions. It starts collapsed, showing only how many items were checked, and stays open once you open it.
 - Destination folders now support {extension}
 - Run Script actions now have a multi-line code editor with line numbers, shell syntax colouring and a live syntax check.
 - Destination folders now support {quarter} (1–4), e.g. {year} - Q{quarter} for quarterly filing.
@@ -15,6 +15,10 @@ All notable changes to Forel are documented here. Format loosely follows
 - Filter files and folders by Date last opened, using an absolute date or a relative duration.
 - Filter files and folders by Finder comment, with the same text and regex operators as Name.
 - Added a Sync Folders action that mirrors a watched folder into another folder, keeping its subfolder structure. Deletions can optionally move the mirrored copy to the Trash or delete it permanently.
+
+### Changed
+- Deleting a rule now asks for confirmation first, so a misclick on the trash button no longer removes it.
+- Rules are now edited directly in the main window instead of a separate sheet. In a wide window, the open Matching Files panel stays visible in a column beside the rule.
 
 ## [1.1.1] - 2026-11-02
 

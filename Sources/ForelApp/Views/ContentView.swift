@@ -27,15 +27,24 @@ struct ContentView: View {
                 .modifier(SidebarToggleRemovalModifier())
         } detail: {
             Group {
-                switch model.detailRoute {
-                case .rules:
-                    RuleListView()
-                case .history:
-                    HistoryView()
+                if let rule = model.editingRule {
+                    RuleEditorView(rule: rule) { saved in
+                        if model.saveRule(saved) { model.editingRule = nil }
+                    } onCancel: {
+                        model.editingRule = nil
+                    }
+                    .id(rule.id)
+                } else {
+                    switch model.detailRoute {
+                    case .rules:
+                        RuleListView()
+                    case .history:
+                        HistoryView()
+                    }
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                if !model.isPro {
+                if !model.isPro, model.editingRule == nil {
                     Button("Discover Pro") { model.proUpgrade = .folders }
                         .buttonStyle(.link)
                         .padding(16)

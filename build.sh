@@ -98,6 +98,54 @@ assemble_app_bundle() {
   fi
 }
 
+# macOS 26 and later only give an app the current system design (control
+# sizes and shapes, segmented controls, etc.) when its binary records an SDK
+# of 26 or later. SwiftPM's default build system in Xcode 27 records the
+# deployment target (14.0) there instead of the SDK it compiled against, so a
+# local dev build would look like an old app. Used by `dev` only; release
+# packaging is left untouched.
+minimum_design_sdk_major=26
+
+recorded_sdk_versions() {
+  vtool -show-build "$1" | awk '$1 == "sdk" { print $2 }'
+}
+
+# Rewrites the SDK version recorded in every architecture of binary $1 to the
+# SDK it was built with, keeping its minimum macOS version. No-op when they
+# already match, e.g. once SwiftPM records it correctly.
+record_real_sdk_version() {
+  local binary="$1" sdk_version minimum_os recorded needs_fix=false
+  sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+  minimum_os="$(vtool -show-build "$binary" | awk '$1 == "minos" { print $2; exit }')"
+  while read -r recorded; do
+    if [[ "$recorded" != "$sdk_version" ]]; then
+      needs_fix=true
+    fi
+  done < <(recorded_sdk_versions "$binary")
+
+  if [[ "$needs_fix" == true ]]; then
+    vtool -set-build-version macos "$minimum_os" "$sdk_version" -replace \
+      -output "$binary.sdk-fixed" "$binary" >/dev/null
+    mv "$binary.sdk-fixed" "$binary"
+    chmod +x "$binary"
+  fi
+}
+
+# Fails (or only warns, with "warn" as $2) when binary $1 records an SDK too
+# old for the current system design, so a release can't ship the old look.
+verify_design_sdk() {
+  local binary="$1" mode="${2:-fail}" recorded
+  while read -r recorded; do
+    if (( ${recorded%%.*} < minimum_design_sdk_major )); then
+      echo "ForelApp records macOS SDK $recorded. macOS only applies its current design to apps built with SDK $minimum_design_sdk_major or later; build with Xcode $minimum_design_sdk_major or later." >&2
+      if [[ "$mode" != "warn" ]]; then
+        exit 1
+      fi
+      return
+    fi
+  done < <(recorded_sdk_versions "$binary")
+}
+
 # Writes Info.plist into $1, with $2 as both CFBundleShortVersionString and
 # CFBundleVersion, plus any extra keys (already-indented <key>/<value> XML)
 # passed as $3. Shared by `dev` and `package`, which pass only their
@@ -317,6 +365,10 @@ case "$command" in
     assemble_app_bundle "$build_products_dir" "$dev_bundle"
     contents_dir="$dev_bundle/Contents"
     macos_dir="$contents_dir/MacOS"
+    # Dev builds only: give the local app the same system design as the
+    # release, whatever the local SwiftPM records.
+    record_real_sdk_version "$macos_dir/ForelApp"
+    verify_design_sdk "$macos_dir/ForelApp" warn
 
     write_info_plist "$contents_dir" "0.0.0-dev" '  <key>ForelBuildFlavor</key>
   <string>development</string>'

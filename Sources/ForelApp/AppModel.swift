@@ -54,6 +54,9 @@ final class AppModel: ObservableObject {
     @Published var alertTitle: String = "Error"
     @Published var errorMessage: String?
     @Published var detailRoute: DetailRoute = .rules
+    /// The rule being edited in the main window, until it is saved or the
+    /// edit is cancelled. Kept here so navigating can't drop the edit.
+    @Published var editingRule: Rule?
     @Published var accentPreset: AccentPreset = .default
     @Published var showDockIcon: Bool = true
     @Published var watcherNotificationsEnabled: Bool = true
