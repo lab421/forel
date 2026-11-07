@@ -7,6 +7,7 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Added
 - Run Script actions now have a multi-line code editor with line numbers, shell syntax colouring and a live syntax check.
+- Destination folders now support {quarter} (1–4), e.g. {year} - Q{quarter} for quarterly filing.
 - Add Toggle lock and Toggle extension actions to lock or unlock items and hide or show their filename extensions, with undo support.
 - Filter files and folders by their Finder Locked state with true or false.
 - Filter files and folders by Date last opened, using an absolute date or a relative duration.
