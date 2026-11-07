@@ -97,6 +97,9 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: renamed))
     }
 
+}
+
+extension ActionExecutorTests {
     @Test func addAndRemoveTagUpdatesFinderTagXattrWithoutDuplicates() throws {
         let dir = TempDir()
         let file = dir.file("document.txt", contents: "hello")

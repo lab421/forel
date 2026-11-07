@@ -441,6 +441,9 @@ import Foundation
         #expect(!FileManager.default.fileExists(atPath: numberedDuplicate))
     }
 
+}
+
+extension WatcherCoordinatorTests {
     @Test func syncFolderDeletionMovesCounterpartToTrash() throws {
         let db = try makeDB()
         let dir = TempDir()

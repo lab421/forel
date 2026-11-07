@@ -101,9 +101,9 @@ public enum UndoChecker {
     private static func restoreTarget(_ entry: HistoryEntry) -> String? {
         switch Undo.fromJSON(entry.undo) {
         case .move(let from, _): return from
-        case .addTags(let path, _), .removeTags(let path, _), .color(let path, _),
-             .locked(let path, _), .extensionHidden(let path, _): return path
-        case .copy, .none: return nil
+        // Metadata changes affect the same item in place; they don't restore
+        // another file into this path and can be reversed together in order.
+        case .addTags, .removeTags, .color, .locked, .extensionHidden, .copy, .none: return nil
         }
     }
 

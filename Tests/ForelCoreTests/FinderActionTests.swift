@@ -150,6 +150,33 @@ import Testing
         #expect(try state(.toggleLock, path: source))
     }
 
+    @Test func combinedFinderActionsCanBeUndoneAsABatch() throws {
+        let dir = TempDir()
+        let path = dir.file("report.txt", contents: "report")
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: path) }
+        let rule = makeRule(name: "Hide and lock", actions: [
+            makeAction(.toggleExtension, .object([ActionParam.extensionHidden: .bool(true)])),
+            makeAction(.toggleLock, .object([ActionParam.locked: .bool(true)]), position: 1),
+        ])
+        let result = RuleEngine.run(path: path, depth: 0, rules: [rule], batchId: "finder-batch")
+        #expect(result.history.map(\.status) == [.applied, .applied])
+        #expect(result.history.allSatisfy { $0.reversible })
+        let db = try Database(path: dir.path + "/history.db")
+        try db.insertHistoryEntries(result.history)
+        let entries = try db.listHistoryBatch("finder-batch")
+        let collisions = UndoChecker.collidingRestoreTargets(entries)
+        #expect(collisions.isEmpty)
+        for entry in entries.reversed() {
+            try #require(!collisions.contains(entry.id))
+            #expect(UndoChecker.evaluate(entry) == .safe)
+            try ActionExecutor.revert(Undo.fromJSON(entry.undo))
+            try db.markHistoryUndone(entry.id)
+        }
+        #expect(try !state(.toggleLock, path: path))
+        #expect(try !state(.toggleExtension, path: path))
+        #expect(try db.listHistoryBatch("finder-batch").allSatisfy { $0.status == .undone })
+    }
+
     @Test(arguments: [ActionKind.toggleLock, .toggleExtension])
     func metadataActionFollowsRenameInPreviewAndExecution(kind: ActionKind) throws {
         let dir = TempDir()

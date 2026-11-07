@@ -288,6 +288,18 @@ extension ActionExecutor {
 /// relying on FSEvents, which may be coalesced, dropped, or missed while
 /// Forel isn't running. Dry Run, Run Now and the watcher all use them.
 extension RuleEngine {
+    /// Finder metadata that may leave with an orphan synced folder: the
+    /// directory cache, the custom-icon file, and the AppleDouble companion
+    /// ("._name") of another item in the folder, which exFAT and some network
+    /// volumes keep as a separate file. Other ignored items, including active
+    /// downloads and iCloud placeholders, must protect their folder.
+    static func isDisposableSyncMetadata(_ name: String, siblings: Set<String>) -> Bool {
+        switch name.lowercased() {
+        case ".ds_store", "icon\r": return true
+        default: return name.hasPrefix("._") && siblings.contains(String(name.dropFirst(2)))
+        }
+    }
+
     public static func previewSyncRemovals(rules: [Rule], root: String, path: String, isPro: Bool) -> [FilePreview] {
         var previews: [FilePreview] = []
         for (rule, action) in syncActions(rules) {
@@ -378,26 +390,45 @@ extension RuleEngine {
         let counterpart = try ActionExecutor.syncCounterpartPath(action, path: path, root: root)
         var removals: [String] = []
 
-        func exists(_ path: String) -> Bool {
+        func exists(_ path: String) throws -> Bool {
             // Also true for dangling links, which fileExists ignores.
-            (try? FileManager.default.attributesOfItem(atPath: path)) != nil
+            do {
+                _ = try FileManager.default.attributesOfItem(atPath: path)
+                return true
+            } catch {
+                let error = error as NSError
+                if error.domain == NSCocoaErrorDomain,
+                   [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(error.code) { return false }
+                if error.domain == NSPOSIXErrorDomain,
+                   [Int(ENOENT), Int(ENOTDIR)].contains(error.code) { return false }
+                throw ActionError("Cannot check whether \(path) still exists: \(error.localizedDescription) Sync cleanup was stopped.")
+            }
         }
 
-        func children(_ folder: String) -> [String] {
-            ((try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? [])
-                .filter { !SystemFileFilter.isExcluded($0) }
-                .sorted()
+        func children(_ folder: String) throws -> [String] {
+            // Read every child: ignored items still prevent deleting their
+            // containing folder. An unreadable folder is never an empty one.
+            try FileManager.default.contentsOfDirectory(atPath: folder).sorted()
+        }
+
+        func isDisposableMetadata(_ name: String, at path: String, siblings: Set<String>) throws -> Bool {
+            guard isDisposableSyncMetadata(name, siblings: siblings) else { return false }
+            return try FileManager.default.attributesOfItem(atPath: path)[.type] as? FileAttributeType == .typeRegular
         }
 
         /// Whether the whole of `item`, whose original `source` is gone, can go.
         /// When only part of it can, that part is added to `removals`.
-        func collectOrphan(_ item: String, of source: String) -> Bool {
+        func collectOrphan(_ item: String, of source: String) throws -> Bool {
+            guard !SystemFileFilter.isExcluded((item as NSString).lastPathComponent) else { return false }
             var removable: [String] = []
             var whole = true
             if ActionExecutor.isSyncedAsFolder(item) {
-                for name in children(item) {
+                let names = try children(item)
+                let siblings = Set(names)
+                for name in names {
                     let child = (item as NSString).appendingPathComponent(name)
-                    if collectOrphan(child, of: (source as NSString).appendingPathComponent(name)) {
+                    if try isDisposableMetadata(name, at: child, siblings: siblings) { continue }
+                    if try collectOrphan(child, of: (source as NSString).appendingPathComponent(name)) {
                         removable.append(child)
                     } else {
                         whole = false
@@ -415,11 +446,12 @@ extension RuleEngine {
 
         func compare(source: String, copy: String) throws {
             guard ActionExecutor.isSyncedAsFolder(copy) else { return }
-            for name in children(copy) {
+            for name in try children(copy) {
+                if SystemFileFilter.isExcluded(name) { continue }
                 let sourceChild = (source as NSString).appendingPathComponent(name)
                 let copyChild = (copy as NSString).appendingPathComponent(name)
-                if !exists(sourceChild) {
-                    if collectOrphan(copyChild, of: sourceChild) { removals.append(copyChild) }
+                if try !exists(sourceChild) {
+                    if try collectOrphan(copyChild, of: sourceChild) { removals.append(copyChild) }
                 } else if ActionExecutor.isSyncedAsFolder(sourceChild),
                           try !ActionExecutor.isSyncDestinationPath(action, path: sourceChild) {
                     try compare(source: sourceChild, copy: copyChild)
@@ -427,8 +459,8 @@ extension RuleEngine {
             }
         }
 
-        if !exists(path) {
-            if exists(counterpart), collectOrphan(counterpart, of: path) { removals.append(counterpart) }
+        if try !exists(path) {
+            if try exists(counterpart), try collectOrphan(counterpart, of: path) { removals.append(counterpart) }
         } else if ActionExecutor.isSyncedAsFolder(path) {
             try compare(source: path, copy: counterpart)
         }

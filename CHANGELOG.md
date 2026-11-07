@@ -20,6 +20,9 @@ All notable changes to Forel are documented here. Format loosely follows
 - Deleting a rule now asks for confirmation first, so a misclick on the trash button no longer removes it.
 - Rules are now edited directly in the main window instead of a separate sheet. In a wide window, the open Matching Files panel stays visible in a column beside the rule.
 
+### Fixed
+- Batch undo now supports combined Finder metadata changes on the same file without reporting a false collision.
+
 ## [1.1.1] - 2026-11-02
 
 ### Added
