@@ -353,11 +353,21 @@ public enum RuleEngine {
     }
 
     public static func forEachEntry(root: String, maxDepth: Int?, _ visit: (ScopedPath) -> Void) {
+        forEachEntry(root: root, maxDepth: maxDepth) { entry in
+            visit(entry)
+            return true
+        }
+    }
+
+    /// Same walk, stopped as soon as `visit` returns `false` — for callers
+    /// that only need part of a large folder (e.g. the rule editor's live
+    /// preview).
+    public static func forEachEntry(root: String, maxDepth: Int?, while visit: (ScopedPath) -> Bool) {
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue, !isPackage(root) else {
             return
         }
-        walkEntriesInner(root: root, maxDepth: maxDepth, depth: 0, visit: visit)
+        _ = walkEntriesInner(root: root, maxDepth: maxDepth, depth: 0, visit: visit)
     }
 
     /// Apps, Photos libraries, .rtfd documents… look like single files in
@@ -367,12 +377,13 @@ public enum RuleEngine {
         (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isPackageKey]))?.isPackage == true
     }
 
-    private static func walkEntriesInner(root: String, maxDepth: Int?, depth: Int, visit: (ScopedPath) -> Void) {
-        guard let children = try? FileManager.default.contentsOfDirectory(atPath: root) else { return }
+    /// Returns `false` once `visit` asked to stop, so every level unwinds.
+    private static func walkEntriesInner(root: String, maxDepth: Int?, depth: Int, visit: (ScopedPath) -> Bool) -> Bool {
+        guard let children = try? FileManager.default.contentsOfDirectory(atPath: root) else { return true }
         for child in children.sorted() {
             if SystemFileFilter.isExcluded(child) { continue }
             let childPath = (root as NSString).appendingPathComponent(child)
-            visit(ScopedPath(path: childPath, depth: depth))
+            guard visit(ScopedPath(path: childPath, depth: depth)) else { return false }
 
             var isDir: ObjCBool = false
             var isSymlink = false
@@ -384,8 +395,9 @@ public enum RuleEngine {
                 continue
             }
             if let limit = maxDepth, depth >= limit { continue }
-            walkEntriesInner(root: childPath, maxDepth: maxDepth, depth: depth + 1, visit: visit)
+            guard walkEntriesInner(root: childPath, maxDepth: maxDepth, depth: depth + 1, visit: visit) else { return false }
         }
+        return true
     }
 
     public static func maxRuleDepth(_ rules: [Rule]) -> Int? {

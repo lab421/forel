@@ -117,6 +117,8 @@ struct RuleEditorView: View {
                         }
                         .padding(18)
                     }
+
+                    RuleMatchPreviewCard(rule: rule)
                 }
             }
             .scrollIndicators(.never)
@@ -213,6 +215,167 @@ private struct RuleValidationBanner: View {
         .padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.danger.opacity(0.10)))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.danger.opacity(0.24)))
+    }
+}
+
+/// The items of the folder this rule would act on right now, recomputed a
+/// moment after each edit so the effect of a condition shows before saving.
+/// Uses the same matching and planning as Dry Run and never changes a file.
+private struct RuleMatchPreviewCard: View {
+    @EnvironmentObject private var model: AppModel
+    let rule: Rule
+    @State private var summary: RuleMatchSummary?
+    @State private var isScanning = false
+
+    private static let shownLimit = 8
+    private static let scanLimit = 5_000
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                SectionLabel(title: "Matching Files")
+                if isScanning { ProgressView().controlSize(.small) }
+                Spacer()
+                if let summary, !needsPro {
+                    Text(checkedLabel(summary))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(ForelTheme.secondaryText)
+                }
+            }
+            GlassCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    content
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(18)
+            }
+        }
+        .task(id: rule) { await refresh() }
+    }
+
+    @ViewBuilder private var content: some View {
+        if needsPro {
+            note("This rule uses a Forel Pro feature, so it can't be previewed on the Free plan.")
+        } else if let summary {
+            if summary.total == 0 {
+                note(summary.isComplete
+                     ? "Nothing in this folder matches right now. Matching files are processed when they arrive."
+                     : "Nothing matches in the first \(summary.checked.formatted()) items of this folder.")
+            } else {
+                Text(matchLabel(summary))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(ForelTheme.primaryText)
+                if let sharedNote = sharedNote(summary) {
+                    Label(sharedNote, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .textSelection(.enabled)
+                }
+                let shown = Array(summary.matches.prefix(Self.shownLimit))
+                ForEach(shown) { match in
+                    row(match, showsAction: sharedNote(summary) == nil)
+                }
+                if summary.total > shown.count {
+                    Text(summary.isComplete ? "and \((summary.total - shown.count).formatted()) more…" : "and more…")
+                        .font(.caption)
+                        .foregroundStyle(ForelTheme.secondaryText)
+                }
+            }
+            note("Only this rule is checked. Use Dry Run to preview all of the folder's rules together.")
+                .font(.caption)
+        } else {
+            note("Checking the items in this folder…")
+        }
+    }
+
+    private func row(_ match: RuleMatchSummary.Match, showsAction: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: match.path))
+                .resizable()
+                .frame(width: 16, height: 16)
+                .accessibilityHidden(true)
+            Text(match.name)
+                .foregroundStyle(ForelTheme.primaryText)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 12)
+            if showsAction, let text = match.warning ?? match.action {
+                Text(text)
+                    .font(.caption)
+                    .foregroundStyle(match.warning == nil && match.wouldRun ? ForelTheme.secondaryText : Color.orange)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(text)
+            }
+        }
+        .font(.system(size: 13))
+        .help(match.path)
+        .contextMenu {
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: match.path)])
+            }
+            Button("Copy Path") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(match.path, forType: .string)
+            }
+        }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(ForelTheme.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// One message instead of the same one on every row: the actions are
+    /// incomplete, or every listed file hits the same problem.
+    private func sharedNote(_ summary: RuleMatchSummary) -> String? {
+        if rule.actions.isEmpty { return "Add an action to see what would happen to these files." }
+        if !RuleValidator.validate(rule.actions).isEmpty { return "Complete the actions above to see what would happen to these files." }
+        let warnings = Set(summary.matches.prefix(Self.shownLimit).map(\.warning))
+        if warnings.count == 1, let warning = warnings.first ?? nil { return warning }
+        return nil
+    }
+
+    private func matchLabel(_ summary: RuleMatchSummary) -> String {
+        let count = summary.total.formatted()
+        let items = summary.total == 1 ? "item matches" : "items match"
+        return summary.isComplete ? "\(count) \(items)" : "At least \(count) \(items)"
+    }
+
+    private func checkedLabel(_ summary: RuleMatchSummary) -> String {
+        let count = summary.checked.formatted()
+        if !summary.isComplete { return "First \(count) items checked" }
+        return "\(count) item\(summary.checked == 1 ? "" : "s") checked"
+    }
+
+    private var needsPro: Bool {
+        !model.isPro && FreePlan.requiredFeature(for: rule) != nil
+    }
+
+    private func refresh() async {
+        // Wait for typing to pause before reading the folder again.
+        try? await Task.sleep(for: .milliseconds(450))
+        guard !Task.isCancelled, !needsPro,
+              let folder = model.folders.first(where: { $0.id == rule.folderId }) else { return }
+        let draft = rule
+        let isPro = model.isPro
+        let scanLimit = Self.scanLimit
+        isScanning = true
+        defer { isScanning = false }
+        let work = Task.detached(priority: .userInitiated) {
+            RuleEngine.previewMatches(of: draft, root: folder.path, isPro: isPro, scanLimit: scanLimit) {
+                Task.isCancelled
+            }
+        }
+        let computed = await withTaskCancellationHandler {
+            await work.value
+        } onCancel: {
+            work.cancel()
+        }
+        guard !Task.isCancelled else { return }
+        summary = computed
     }
 }
 

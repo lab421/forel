@@ -6,6 +6,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- The rule editor now lists the files the rule matches in its folder right now, with what its first action would do, updated as you edit conditions and actions.
 - Destination folders now support {extension}
 - Run Script actions now have a multi-line code editor with line numbers, shell syntax colouring and a live syntax check.
 - Destination folders now support {quarter} (1–4), e.g. {year} - Q{quarter} for quarterly filing.
