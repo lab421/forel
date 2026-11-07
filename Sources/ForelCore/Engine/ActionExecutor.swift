@@ -296,18 +296,26 @@ public enum ActionExecutor {
         }
     }
 
-    /// Resolves the date tokens a destination template may contain —
-    /// `{year}`, `{month}`, `{day}`, `{quarter}`, with month/day zero-padded
-    /// and quarter numbered 1–4 — from the
-    /// file's creation date (the date a "sort my downloads by month" workflow
-    /// means; it survives moves). Unknown `{...}` sequences are left as-is.
-    /// A typed `~` is expanded to the home folder.
+    /// Folder name `{extension}` resolves to for a file without one.
+    static let noExtensionFolderName = "No Extension"
+
+    /// Resolves the tokens a destination template may contain:
+    /// - `{year}`, `{month}`, `{day}`, `{hour}`, `{minute}`, `{quarter}` from
+    ///   the file's creation date (the date a "sort my downloads by month"
+    ///   workflow means; it survives moves), zero-padded except the year and
+    ///   the quarter (1–4); the hour is 00–23;
+    /// - `{extension}`, lowercased so `.JPG` and `.jpg` share a folder, or
+    ///   "No Extension";
+    /// - `{kind}`, the file's kind as the Kind condition names it ("Image",
+    ///   "PDF", "Document"…).
+    /// Unknown `{...}` sequences are left as-is. A typed `~` is expanded to
+    /// the home folder.
     private static func expandedDestination(_ rawTemplate: String, fileAtPath: String) -> String {
         let template = (rawTemplate as NSString).expandingTildeInPath
         guard template.contains("{") else { return template }
         let attrs = try? FileManager.default.attributesOfItem(atPath: fileAtPath)
         let date = (attrs?[.creationDate] as? Date) ?? (attrs?[.modificationDate] as? Date) ?? Date()
-        let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: date)
         var result = template
         if let year = parts.year { result = result.replacingOccurrences(of: "{year}", with: String(year)) }
         if let month = parts.month {
@@ -315,6 +323,17 @@ public enum ActionExecutor {
             result = result.replacingOccurrences(of: "{quarter}", with: String((month - 1) / 3 + 1))
         }
         if let day = parts.day { result = result.replacingOccurrences(of: "{day}", with: String(format: "%02d", day)) }
+        if let hour = parts.hour { result = result.replacingOccurrences(of: "{hour}", with: String(format: "%02d", hour)) }
+        if let minute = parts.minute { result = result.replacingOccurrences(of: "{minute}", with: String(format: "%02d", minute)) }
+        if result.contains("{extension}") {
+            let ext = (fileAtPath as NSString).pathExtension.lowercased()
+            result = result.replacingOccurrences(of: "{extension}", with: ext.isEmpty ? noExtensionFolderName : ext)
+        }
+        if result.contains("{kind}") {
+            let kind = ConditionEvaluator.detectKind(path: fileAtPath, attrs: attrs ?? [:])
+            let label = FileKindCatalog.all.first { $0.value == kind }?.label ?? kind
+            result = result.replacingOccurrences(of: "{kind}", with: label)
+        }
         return result
     }
 

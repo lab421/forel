@@ -501,7 +501,7 @@ struct GlassField: View {
 
 /// A folder path field with a "Choose…" button opening the native macOS
 /// Finder directory picker, and an editable text field underneath so paths
-/// with date tokens (e.g. `/Volumes/Archive/{year}/{month}`) can be typed.
+/// with tokens (e.g. `/Volumes/Archive/{year}/{month}`) can be typed.
 /// Used everywhere a folder is selected.
 struct FolderField: View {
     let placeholder: String

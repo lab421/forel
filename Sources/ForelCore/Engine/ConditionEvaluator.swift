@@ -269,7 +269,8 @@ public enum ConditionEvaluator {
     }
 
     /// Classifies a file into a Hazel-style kind string based on its extension.
-    private static func detectKind(path: String, attrs: [FileAttributeKey: Any]) -> String {
+    /// Also names `{kind}` destination folders.
+    static func detectKind(path: String, attrs: [FileAttributeKey: Any]) -> String {
         let url = URL(fileURLWithPath: path)
         let isDir = (attrs[.type] as? FileAttributeType) == .typeDirectory
         if isDir {

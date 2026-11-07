@@ -6,6 +6,7 @@ All notable changes to Forel are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- Destination folders now support {extension}
 - Destination folders now support {quarter} (1–4), e.g. {year} - Q{quarter} for quarterly filing.
 - Add Toggle lock and Toggle extension actions to lock or unlock items and hide or show their filename extensions, with undo support.
 - Filter files and folders by their Finder Locked state with true or false.
