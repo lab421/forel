@@ -106,6 +106,9 @@ struct RuleEditorView: View {
         .background(ForelTheme.background)
         .onGeometryChange(for: Bool.self) { $0.size.width >= Self.wideLayoutWidth } action: { isWide = $0 }
         .sheet(item: $upgradeContext) { context in ProUpgradeView(context: context) }
+        // Lets the main window tell whether leaving would lose changes.
+        .onAppear { model.editingDraft = rule }
+        .onChange(of: rule) { _, draft in model.editingDraft = draft }
     }
 
     /// Conditions, scope and actions; the matching files sit beside them in a
@@ -205,6 +208,18 @@ struct RuleEditorView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+}
+
+/// Why a rule being edited can't be saved yet, as the editor reports it.
+enum RuleEditorDraftCheck {
+    static func problems(_ rule: Rule) -> [String] {
+        var problems: [String] = []
+        if rule.name.trimmingCharacters(in: .whitespaces).isEmpty {
+            problems.append("The rule needs a name.")
+        }
+        problems += (RuleValidator.validate(rule.conditions) + RuleValidator.validate(rule.actions)).map(\.message)
+        return problems
+    }
 }
 
 private struct RuleValidationBanner: View {

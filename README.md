@@ -247,16 +247,16 @@ History / Undo (SQLite)
 - [x] Open App actions
 - [x] Validate actions / conditions before save
 - [x] Native notifications on rule actions
-- [ ] Export / Import rules
-- [ ] Toggle extension hidden / visible
-- [ ] Move folder based on criteria
-- [ ] Scheduler — **Pro · Coming soon**
 - [x] Copy rules across watched folders
 - [x] Compress actions
-- [ ] Sync actions — **Pro · Coming soon**
+- [x] Sync actions
 - [x] Dynamic destination folders with date tokens (e.g. `~/Screenshots/{year}/{month}`)
+- [x] Toggle extension hidden / visible
+- [ ] Export / Import rules
+- [ ] Move folder based on criteria
+- [ ] Scheduler
 - [ ] Upload actions
-- [ ] AI features — **Pro · Coming soon**
+- [ ] AI features
 
 ## Content matching
 

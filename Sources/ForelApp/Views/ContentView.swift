@@ -29,9 +29,9 @@ struct ContentView: View {
             Group {
                 if let rule = model.editingRule {
                     RuleEditorView(rule: rule) { saved in
-                        if model.saveRule(saved) { model.editingRule = nil }
+                        if model.saveRule(saved) { model.closeRuleEditor() }
                     } onCancel: {
-                        model.editingRule = nil
+                        model.closeRuleEditor()
                     }
                     .id(rule.id)
                 } else {
@@ -58,12 +58,44 @@ struct ContentView: View {
             Text(model.errorMessage ?? "")
         }
         .tint(ForelTheme.accent)
+        .confirmationDialog(unsavedRuleTitle, isPresented: pendingNavigationBinding, presenting: model.pendingNavigation) { _ in
+            if unsavedRuleProblems.isEmpty {
+                Button("Save") { model.savePendingDraftAndNavigate() }
+            }
+            Button("Discard Changes", role: .destructive) { model.discardPendingDraftAndNavigate() }
+            Button("Keep Editing", role: .cancel) { model.pendingNavigation = nil }
+        } message: { _ in
+            Text(unsavedRuleMessage)
+        }
         .sheet(item: $model.proUpgrade) { context in
             ProUpgradeView(context: context)
         }
         // ForelTheme.accent is a plain static var, not observable; bumping the
         // identity here forces every descendant to rebuild and re-read it.
         .id(model.accentVersion)
+    }
+
+    private var pendingNavigationBinding: Binding<Bool> {
+        Binding(
+            get: { model.pendingNavigation != nil },
+            set: { if !$0 { model.pendingNavigation = nil } }
+        )
+    }
+
+    private var unsavedRuleProblems: [String] {
+        model.editingDraft.map(RuleEditorDraftCheck.problems) ?? []
+    }
+
+    private var unsavedRuleTitle: String {
+        let name = model.editingDraft?.name.trimmingCharacters(in: .whitespaces) ?? ""
+        return name.isEmpty ? "Save changes to this rule?" : "Save changes to the rule “\(name)”?"
+    }
+
+    private var unsavedRuleMessage: String {
+        if let problem = unsavedRuleProblems.first {
+            return "It can't be saved yet: \(problem) Keep editing to fix it, or discard your changes."
+        }
+        return "Your changes to this rule are lost if you don't save them."
     }
 
     private var errorBinding: Binding<Bool> {

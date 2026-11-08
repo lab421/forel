@@ -23,10 +23,6 @@ struct SidebarView: View {
     @State private var draggedFolderId: String?
     @State private var insertionIndex: Int?
 
-    /// The rule editor fills the main window until it is saved or cancelled,
-    /// so switching folders can't silently drop an edit.
-    private var isEditingRule: Bool { model.editingRule != nil }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ViewHeader(title: "Forel", subtitle: "File automation") {
@@ -49,7 +45,6 @@ struct SidebarView: View {
                 }
                 .buttonStyle(IconButtonStyle())
                 .help("Add a folder to watch")
-                .disabled(isEditingRule)
             }
 
             if model.folders.isEmpty {
@@ -92,8 +87,6 @@ struct SidebarView: View {
                     )
                 }
                 .scrollIndicators(.never)
-                .disabled(isEditingRule)
-                .help(isEditingRule ? "Save or cancel the rule you're editing first." : "")
             }
 
             Spacer(minLength: 0)
@@ -111,10 +104,9 @@ struct SidebarView: View {
                 }
                 Spacer()
                 FooterLink(title: "Activity", systemImage: "clock.arrow.circlepath") {
-                    model.showActivity()
+                    model.leaveRuleEditor { model.showActivity() }
                 }
                 .help("Activity history")
-                .disabled(isEditingRule)
             }
         }
         .padding(16)
@@ -202,9 +194,11 @@ struct SidebarView: View {
         .help(isAllowed ? folder.path : "Reorder folders or activate Pro to use this folder.")
         .contentShape(Rectangle())
         .onTapGesture {
-            model.selectedFolderId = folder.id
-            model.detailRoute = .rules
-            model.reloadRules()
+            model.leaveRuleEditor {
+                model.selectedFolderId = folder.id
+                model.detailRoute = .rules
+                model.reloadRules()
+            }
         }
         .contextMenu {
             Button("Show in Finder") {
@@ -212,7 +206,14 @@ struct SidebarView: View {
             }
             Divider()
             Button("Change path of folder…") { changeFolder(folder) }
-            Button("Remove", role: .destructive) { model.removeFolder(folder) }
+            Button("Remove", role: .destructive) {
+                // Its rules go with it, including one being edited.
+                if model.editingRule?.folderId == folder.id {
+                    model.leaveRuleEditor { model.removeFolder(folder) }
+                } else {
+                    model.removeFolder(folder)
+                }
+            }
         }
     }
 
@@ -254,7 +255,8 @@ struct SidebarView: View {
             return
         }
         if let path = FolderPicker.choose() {
-            model.addFolder(path: path)
+            // Adding a folder selects it, which leaves the rule editor.
+            model.leaveRuleEditor { model.addFolder(path: path) }
         }
     }
 

@@ -57,6 +57,17 @@ final class AppModel: ObservableObject {
     /// The rule being edited in the main window, until it is saved or the
     /// edit is cancelled. Kept here so navigating can't drop the edit.
     @Published var editingRule: Rule?
+    /// The editor's current version of `editingRule`, unsaved. Not
+    /// published: it changes on every keystroke and nothing displays it.
+    var editingDraft: Rule?
+    /// Where the user asked to go while the rule being edited has unsaved
+    /// changes; the main window asks whether to save them first.
+    @Published var pendingNavigation: PendingNavigation?
+
+    struct PendingNavigation: Identifiable {
+        let id = UUID()
+        let perform: () -> Void
+    }
     @Published var accentPreset: AccentPreset = .default
     @Published var showDockIcon: Bool = true
     @Published var watcherNotificationsEnabled: Bool = true
@@ -563,6 +574,50 @@ final class AppModel: ObservableObject {
     func reorderFolders(_ folderIds: [String]) {
         db.withLock { db in try? db.reorderFolders(folderIds) }
         reloadFolders()
+    }
+
+    var editorHasUnsavedChanges: Bool {
+        guard let editingRule, let editingDraft else { return false }
+        return editingDraft != editingRule
+    }
+
+    func closeRuleEditor() {
+        editingRule = nil
+        editingDraft = nil
+        pendingNavigation = nil
+    }
+
+    /// Runs `navigation` (selecting a folder, showing Activity…), leaving the
+    /// rule editor first. Unsaved changes are never dropped silently: the
+    /// main window asks whether to save them, and `navigation` only runs
+    /// once they are saved or discarded.
+    func leaveRuleEditor(then navigation: @escaping () -> Void) {
+        guard editingRule != nil else { return navigation() }
+        guard editorHasUnsavedChanges else {
+            closeRuleEditor()
+            return navigation()
+        }
+        pendingNavigation = PendingNavigation(perform: navigation)
+    }
+
+    /// The "Save" choice of that question. Returns `false`, keeping the
+    /// editor open, when the draft can't be saved as it is.
+    @discardableResult
+    func savePendingDraftAndNavigate() -> Bool {
+        guard let draft = editingDraft, let navigation = pendingNavigation?.perform else { return false }
+        guard RuleEditorDraftCheck.problems(draft).isEmpty, saveRule(draft) else {
+            pendingNavigation = nil
+            return false
+        }
+        closeRuleEditor()
+        navigation()
+        return true
+    }
+
+    func discardPendingDraftAndNavigate() {
+        guard let navigation = pendingNavigation?.perform else { return }
+        closeRuleEditor()
+        navigation()
     }
 
     @discardableResult
