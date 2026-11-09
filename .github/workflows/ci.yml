@@ -12,6 +12,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Pinned rather than "newest on the runner": SwiftPM in Xcode 27 records the
+# deployment target as the SDK, and macOS then shows the app in its old,
+# pre-macOS 26 design. Keep in sync with the Xcode used locally.
+env:
+  FOREL_XCODE: "26.5"
+
 jobs:
   test:
     runs-on: macos-26
@@ -23,7 +29,12 @@ jobs:
       - name: Select Xcode
         run: |
           set -euo pipefail
-          xcode_app="$(ls -1d /Applications/Xcode*.app | sort -V | tail -n 1)"
+          xcode_app="$(ls -1d /Applications/Xcode_"$FOREL_XCODE"*.app 2>/dev/null | grep -vi beta | sort -V | tail -n 1 || true)"
+          if [[ -z "$xcode_app" ]]; then
+            echo "Xcode $FOREL_XCODE is not installed on this runner. Installed:" >&2
+            ls -1d /Applications/Xcode*.app >&2 || true
+            exit 1
+          fi
           sudo xcode-select -switch "$xcode_app/Contents/Developer"
           xcodebuild -version
           swift --version

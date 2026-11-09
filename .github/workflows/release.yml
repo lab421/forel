@@ -18,6 +18,12 @@ on:
 permissions:
   contents: write
 
+# Pinned rather than "newest on the runner": SwiftPM in Xcode 27 records the
+# deployment target as the SDK, and macOS then shows the app in its old,
+# pre-macOS 26 design. Keep in sync with the Xcode used locally.
+env:
+  FOREL_XCODE: "26.5"
+
 jobs:
   test:
     runs-on: macos-26
@@ -29,7 +35,12 @@ jobs:
       - name: Select Xcode
         run: |
           set -euo pipefail
-          xcode_app="$(ls -1d /Applications/Xcode*.app | sort -V | tail -n 1)"
+          xcode_app="$(ls -1d /Applications/Xcode_"$FOREL_XCODE"*.app 2>/dev/null | grep -vi beta | sort -V | tail -n 1 || true)"
+          if [[ -z "$xcode_app" ]]; then
+            echo "Xcode $FOREL_XCODE is not installed on this runner. Installed:" >&2
+            ls -1d /Applications/Xcode*.app >&2 || true
+            exit 1
+          fi
           sudo xcode-select -switch "$xcode_app/Contents/Developer"
           xcodebuild -version
           swift --version
@@ -48,7 +59,12 @@ jobs:
       - name: Select Xcode
         run: |
           set -euo pipefail
-          xcode_app="$(ls -1d /Applications/Xcode*.app | sort -V | tail -n 1)"
+          xcode_app="$(ls -1d /Applications/Xcode_"$FOREL_XCODE"*.app 2>/dev/null | grep -vi beta | sort -V | tail -n 1 || true)"
+          if [[ -z "$xcode_app" ]]; then
+            echo "Xcode $FOREL_XCODE is not installed on this runner. Installed:" >&2
+            ls -1d /Applications/Xcode*.app >&2 || true
+            exit 1
+          fi
           sudo xcode-select -switch "$xcode_app/Contents/Developer"
           xcodebuild -version
           swift --version
@@ -126,6 +142,16 @@ jobs:
 
           hdiutil attach -nobrowse -readonly -mountpoint "$mount_point" "$DMG_PATH"
           codesign --verify --deep --strict --verbose=2 "$mount_point/Forel.app"
+          # macOS only applies its current design to apps built with SDK 26+.
+          binary="$mount_point/Forel.app/Contents/MacOS/ForelApp"
+          for arch in arm64 x86_64; do
+            sdk="$(vtool -arch "$arch" -show-build "$binary" | awk '$1 == "sdk" { print $2; exit }')"
+            echo "$arch records macOS SDK $sdk"
+            if [[ -z "$sdk" ]] || (( ${sdk%%.*} < 26 )); then
+              echo "ForelApp ($arch) records macOS SDK ${sdk:-none}; users would get the old pre-macOS 26 design." >&2
+              exit 1
+            fi
+          done
           xcrun stapler validate "$mount_point/Forel.app"
           if ! assessment="$(spctl --assess --type execute --verbose=4 "$mount_point/Forel.app" 2>&1)"; then
             printf '%s\n' "$assessment" >&2
@@ -158,7 +184,7 @@ jobs:
 
   publish:
     needs: build
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -211,7 +237,7 @@ jobs:
 
   homebrew:
     needs: publish
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     steps:
       - name: Download release files
         uses: actions/download-artifact@v4
@@ -230,7 +256,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          sha="$(shasum -a 256 "dist/release/Forel-${GITHUB_REF_NAME}.dmg" | cut -d ' ' -f1)"
+          sha="$(sha256sum "dist/release/Forel-${GITHUB_REF_NAME}.dmg" | cut -d ' ' -f1)"
 
           cat > homebrew-tap/Casks/forel.rb <<EOF
           cask "forel" do
@@ -248,7 +274,7 @@ jobs:
               regex(/^v?(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)\$/i)
             end
 
-            depends_on macos: :ventura
+            depends_on macos: :sonoma
 
             app "Forel.app"
 
