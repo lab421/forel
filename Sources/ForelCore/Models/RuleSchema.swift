@@ -176,8 +176,14 @@ public extension ConditionKind {
             return "Matches the Finder comment shown in Get Info. Files without a comment are treated as having an empty comment."
         case .dateLastOpened:
             return "Uses the last-opened date recorded by macOS, not the last filesystem access. Items without this date do not match."
-        case .downloadedFromWebsite, .downloadedWithApp, .rawWhereFromMetadata:
-            return "Uses macOS download metadata. Availability depends on the app that created the file."
+        case .tags:
+            return "Matches the Finder tags shown in Get Info, not other file metadata."
+        case .downloadedFromWebsite:
+            return "Matches only http and https addresses from the file's download metadata. For other sources, such as blob: addresses, use Raw where-from metadata."
+        case .downloadedWithApp:
+            return "Matches the app that macOS recorded as having downloaded the file, such as Safari or Firefox. Availability depends on that app."
+        case .rawWhereFromMetadata:
+            return "Matches every value of the file's download metadata, as Finder shows it in Get Info under Where from. Availability depends on the app that created the file."
         case .contents:
             return "Matches text from plain files, PDFs, Word documents, and images via OCR when available."
         default:

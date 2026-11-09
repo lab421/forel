@@ -249,6 +249,17 @@ import Darwin
         #expect(ConditionEvaluator.evaluate(makeCondition(.rawWhereFromMetadata, .contains, "example"), path: file))
     }
 
+    /// Downloads made by a Firefox extension record a blob: address, which
+    /// only the raw condition sees, as its help text tells the user.
+    @Test func blobAddressesMatchOnlyRawWhereFromMetadata() throws {
+        let dir = TempDir()
+        let file = dir.file("video.mp4")
+        try setWhereFroms(file, ["blob:moz-extension://0d1c7a52-1f3e-4b8e-9b2a-3c5d6e7f8a9b/1234"])
+
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.downloadedFromWebsite, .contains, "blob:moz-extension"), path: file))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.rawWhereFromMetadata, .contains, "blob:moz-extension"), path: file))
+    }
+
     @Test func metadataStringOperatorsStayCaseSensitiveLikeOtherStringConditions() throws {
         let dir = TempDir()
         let file = dir.file("doc.pdf")

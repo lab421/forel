@@ -20,6 +20,7 @@ All notable changes to Forel are documented here. Format loosely follows
 - Deleting a rule now asks for confirmation first, so a misclick on the trash button no longer removes it.
 - Rules are now edited directly in the main window instead of a separate sheet. In a wide window, the open Matching Files panel stays visible in a column beside the rule.
 - The main window's sidebar is now translucent like other Mac apps, and can be hidden or shown with the sidebar button in the title bar or View > Hide Sidebar (⌃⌘S).
+- Download and tag conditions now explain exactly what they read. Downloaded from website only matches http and https addresses and points to Raw where-from metadata for other sources, such as blob: addresses from browser extensions.
 
 ### Fixed
 - Batch undo now supports combined Finder metadata changes on the same file without reporting a false collision.
