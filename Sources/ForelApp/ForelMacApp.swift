@@ -48,6 +48,8 @@ struct ForelMacApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 900, height: 620)
         .commands {
+            // View > Show/Hide Sidebar (⌃⌘S), like every sidebar app.
+            SidebarCommands()
             CommandGroup(replacing: .appInfo) {
                 Button("About Forel") {
                     var options: [NSApplication.AboutPanelOptionKey: Any] = [

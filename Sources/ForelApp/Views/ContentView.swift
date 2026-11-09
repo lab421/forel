@@ -19,12 +19,14 @@ import ForelCore
 
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 280, ideal: 270, max: 320)
-                .modifier(SidebarToggleRemovalModifier())
+                .navigationSplitViewColumnWidth(min: 280, ideal: 280, max: 320)
+                // Replaced by a toggle that shows whether the sidebar is open.
+                .toolbar(removing: .sidebarToggle)
         } detail: {
             Group {
                 if let rule = model.editingRule {
@@ -50,8 +52,15 @@ struct ContentView: View {
                         .padding(16)
                 }
             }
+            // One toggle, always at the start of the window's own title bar:
+            // beside the sidebar when shown, beside the window controls when not.
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    SidebarToggle(visibility: $columnVisibility)
+                }
+                .withoutSharedBackground()
+            }
         }
-        .toolbarBackground(ForelTheme.background, for: .windowToolbar)
         .alert(model.alertTitle, isPresented: errorBinding) {
             Button("OK") { model.errorMessage = nil }
         } message: {
@@ -111,14 +120,32 @@ struct ContentView: View {
     }
 }
 
-/// `.toolbar(removing: .sidebarToggle)` requires macOS 14+; there's no
-/// equivalent way to remove the default sidebar toggle on macOS 13.
-private struct SidebarToggleRemovalModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 14.0, *) {
-            content.toolbar(removing: .sidebarToggle)
+/// Plain title bar button that hides or shows the sidebar.
+private struct SidebarToggle: View {
+    @Binding var visibility: NavigationSplitViewVisibility
+
+    var body: some View {
+        let isShown = visibility != .detailOnly
+        Button {
+            withAnimation { visibility = isShown ? .detailOnly : .all }
+        } label: {
+            Image(systemName: "sidebar.left")
+                .foregroundStyle(ForelTheme.secondaryText)
+        }
+        .buttonStyle(.borderless)
+        .help(isShown ? "Hide Sidebar" : "Show Sidebar")
+        .accessibilityLabel(isShown ? "Hide Sidebar" : "Show Sidebar")
+    }
+}
+
+private extension ToolbarContent {
+    /// Drops the glass capsule macOS 26 draws around toolbar items.
+    @ToolbarContentBuilder
+    func withoutSharedBackground() -> some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            sharedBackgroundVisibility(.hidden)
         } else {
-            content
+            self
         }
     }
 }

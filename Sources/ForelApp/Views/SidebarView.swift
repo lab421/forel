@@ -31,8 +31,8 @@ struct SidebarView: View {
 
             GlassCard {
                 ToggleRow(
-                    title: "Watching",
-                    subtitle: model.paused ? "Paused — new files are ignored" : "Rules run automatically",
+                    title: model.paused ? "Paused" : "Watching",
+                    subtitle: model.paused ? "New files are ignored" : "Rules run automatically",
                     isOn: watchingBinding
                 )
             }
@@ -111,7 +111,9 @@ struct SidebarView: View {
         }
         .padding(16)
         .frame(minWidth: 250)
-        .background(ForelTheme.background)
+        // The system sidebar material is nearly opaque; this lets the desktop
+        // show through, up to the top of the window.
+        .background(VisualEffectBlur(material: .hudWindow).ignoresSafeArea())
     }
 
     private func folderDropTarget(_ index: Int) -> some View {
