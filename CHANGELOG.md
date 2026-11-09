@@ -3,7 +3,7 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.2.0] - 2026-11-09
 
 ### Added
 - The rule editor now has a Matching Files panel listing the files the rule matches in its folder right now, with what its first action would do, updated as you edit conditions and actions. It starts collapsed, showing only how many items were checked, and stays open once you open it.
