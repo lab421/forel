@@ -83,7 +83,23 @@ logic — only Dry Run skips `execute()`. `previewFile()` and `run()` both use a
 swift build
 swift test
 swift run ForelApp
+./build.sh strings   # update Localization/Localizable.xcstrings
 ```
+
+## Localization
+
+Forel is written in English and translated into French, Spanish, and German. It follows the language set in macOS unless the user picks one in Settings > General > Language, which writes the same per-app preference as System Settings > General > Language & Region > Applications (`AppLanguage`). The languages offered come from the app's `.lproj` folders, so a language added to the catalog appears there automatically.
+
+- All UI text lives in `Localization/Localizable.xcstrings` (one String Catalog, every language). The privacy texts of `Info.plist` are in `Localization/InfoPlist.xcstrings`; keep their English in sync with `write_info_plist` in `build.sh`.
+- `build.sh` compiles the catalogs into the app's own `Contents/Resources/<language>.lproj`. They are deliberately not SwiftPM resources: SwiftPM's native build system copies a catalog without compiling it, and SwiftUI and `String(localized:)` look in the main bundle, not the package's resource bundle.
+- After adding, changing, or removing user-facing text, run `./build.sh strings`, translate the new keys into every language of the catalog (with their plural forms), and commit the catalog. CI runs `./build.sh strings --check`: it fails when the catalog is out of date and warns about strings a language doesn't translate yet, which the app then shows in English.
+- Translations follow Apple's terminology for each language (Finder, System Settings, Trash…) and address the user the way macOS does: "vous" in French, "tú" in Spanish, "du" in German. Keep `{tokens}`, `$FOREL_FILE`, and format specifiers as they are; use positional specifiers (`%1$@`, `%2$@`) when a translation changes their order.
+- Write user-facing text so it can be translated:
+  - SwiftUI literals (`Text("…")`, `Button("…")`, `.help("…")`) are localizable as is. `Text(someString)` is shown verbatim: a `String` must already be localized. A custom view that shows a caller's text takes a `LocalizedStringKey` (or a `Text`), not a `String`.
+  - Text built outside SwiftUI uses `String(localized: "…", comment: "…")` in ForelApp, and `String(localized: "…", bundle: .forelStrings, comment: "…")` in ForelCore. `swift test` has no app bundle, so tests that check text with a count call `CompiledStrings.install()` in their suite's `init` to compile and use the catalog.
+  - One key per sentence with interpolation; never concatenate fragments, and never compare displayed text in code. Plurals are variations of a single key (`"\(count) items checked"`), never `count == 1 ? "" : "s"`. `./build.sh strings` adds the key but not its variations: add the English `one` form in the catalog (Xcode's String Catalog editor, "Vary by Plural").
+  - Use `.textCase(.uppercase)` rather than `.uppercased()`, and `FormatStyle` for displayed dates, numbers, and sizes.
+- Never translate text that ends up on disk or in stored data: folder and file names produced by actions (`{kind}`, `{extension}`'s "No Extension", date formats), destination tokens, and the user's own data.
 
 ## Changelog
 

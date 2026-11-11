@@ -132,9 +132,9 @@ public enum MoveConflictResolution: String, CaseIterable, Sendable {
 
     public var label: String {
         switch self {
-        case .rename: return "Rename the file"
-        case .replace: return "Replace existing file"
-        case .skip: return "Skip the file"
+        case .rename: return String(localized: "Rename the file", bundle: .forelStrings, comment: "When the destination already has a file with the same name")
+        case .replace: return String(localized: "Replace existing file", bundle: .forelStrings, comment: "When the destination already has a file with the same name")
+        case .skip: return String(localized: "Skip the file", bundle: .forelStrings, comment: "When the destination already has a file with the same name")
         }
     }
 }
@@ -145,8 +145,8 @@ public enum ShortcutInputMode: String, CaseIterable, Sendable {
 
     public var label: String {
         switch self {
-        case .matchedFile: return "Matched file"
-        case .none: return "No input"
+        case .matchedFile: return String(localized: "Matched file", bundle: .forelStrings, comment: "What a Run Shortcut action passes to the shortcut")
+        case .none: return String(localized: "No input", bundle: .forelStrings, comment: "What a Run Shortcut action passes to the shortcut")
         }
     }
 }
@@ -172,6 +172,9 @@ public struct ActionPlan: Equatable, Sendable {
     /// Only informs the preview: execution still attempts the action, so a
     /// wrong guess here can never block a run that would have worked.
     public let warning: String?
+    /// True when `description` already says why the action is skipped
+    /// (already in the destination, or set to skip an existing file).
+    public let explainsSkip: Bool
 
     public init(
         kind: ActionKind,
@@ -182,7 +185,8 @@ public struct ActionPlan: Equatable, Sendable {
         finalPath: String,
         copiedPath: String?,
         isTerminal: Bool,
-        warning: String? = nil
+        warning: String? = nil,
+        explainsSkip: Bool = false
     ) {
         self.kind = kind
         self.description = description
@@ -193,6 +197,7 @@ public struct ActionPlan: Equatable, Sendable {
         self.copiedPath = copiedPath
         self.isTerminal = isTerminal
         self.warning = warning
+        self.explainsSkip = explainsSkip
     }
 }
 
@@ -247,7 +252,7 @@ public enum ActionExecutor {
     private static func fileFlagTarget(_ action: Action) throws -> Bool {
         let key = action.kind == .toggleLock ? ActionParam.locked : ActionParam.extensionHidden
         guard let value = action.params[key]?.boolValue else {
-            throw ActionError("\(action.kind.label) requires a true or false value")
+            throw ActionError(String(localized: "\(action.kind.label) requires a true or false value", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         return value
     }
@@ -257,7 +262,9 @@ public enum ActionExecutor {
         let key: URLResourceKey = kind == .toggleLock ? .isUserImmutableKey : .hasHiddenExtensionKey
         let values = try url.resourceValues(forKeys: [key])
         guard let value = kind == .toggleLock ? values.isUserImmutable : values.hasHiddenExtension else {
-            throw ActionError("Cannot read \(kind == .toggleLock ? "the locked state" : "extension visibility") for this item.")
+            throw ActionError(kind == .toggleLock
+                ? String(localized: "Cannot read the locked state for this item.", bundle: .forelStrings, comment: "Error when an action fails")
+                : String(localized: "Cannot read extension visibility for this item.", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         return value
     }
@@ -270,13 +277,15 @@ public enum ActionExecutor {
         try url.setResourceValues(values)
         // Some volumes ignore unsupported resource properties without throwing.
         guard try fileFlag(kind, path: path) == value else {
-            throw ActionError("Cannot change \(kind == .toggleLock ? "the locked state" : "extension visibility") on this volume.")
+            throw ActionError(kind == .toggleLock
+                ? String(localized: "Cannot change the locked state on this volume.", bundle: .forelStrings, comment: "Error when an action fails")
+                : String(localized: "Cannot change extension visibility on this volume.", bundle: .forelStrings, comment: "Error when an action fails"))
         }
     }
 
     static func stringParam(_ action: Action, _ key: String, _ kind: String) throws -> String {
         guard let value = action.params[key]?.stringValue else {
-            throw ActionError("\(kind) requires '\(key)' param")
+            throw ActionError(String(localized: "\(kind) requires '\(key)' param", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         return value
     }
@@ -296,7 +305,9 @@ public enum ActionExecutor {
         }
     }
 
-    /// Folder name `{extension}` resolves to for a file without one.
+    /// Folder name `{extension}` resolves to for a file without one. Never
+    /// translated: it names a folder on disk, which must not change with the
+    /// app's language.
     static let noExtensionFolderName = "No Extension"
 
     /// Resolves the tokens a destination template may contain:
@@ -306,8 +317,8 @@ public enum ActionExecutor {
     ///   the quarter (1–4); the hour is 00–23;
     /// - `{extension}`, lowercased so `.JPG` and `.jpg` share a folder, or
     ///   "No Extension";
-    /// - `{kind}`, the file's kind as the Kind condition names it ("Image",
-    ///   "PDF", "Document"…).
+    /// - `{kind}`, the file's kind in English as the Kind condition names it
+    ///   ("Image", "PDF", "Document"…), whatever the app's language.
     /// Unknown `{...}` sequences are left as-is. A typed `~` is expanded to
     /// the home folder.
     private static func expandedDestination(_ rawTemplate: String, fileAtPath: String) -> String {
@@ -331,8 +342,8 @@ public enum ActionExecutor {
         }
         if result.contains("{kind}") {
             let kind = ConditionEvaluator.detectKind(path: fileAtPath, attrs: attrs ?? [:])
-            let label = FileKindCatalog.all.first { $0.value == kind }?.label ?? kind
-            result = result.replacingOccurrences(of: "{kind}", with: label)
+            let folderName = FileKindCatalog.all.first { $0.value == kind }?.folderName ?? kind
+            result = result.replacingOccurrences(of: "{kind}", with: folderName)
         }
         return result
     }
@@ -352,7 +363,7 @@ public enum ActionExecutor {
     }
 
     private static func volumeNotConnectedMessage(_ volume: String) -> String {
-        "“\(volume)” isn't connected. Connect the disk or network share, or choose the destination folder again."
+        String(localized: "“\(volume)” isn't connected. Connect the disk or network share, or choose the destination folder again.", bundle: .forelStrings, comment: "%@ is the name of a disk or network share")
     }
 
     private static func copyToFolder(_ action: Action, path: String) throws -> Applied {
@@ -378,7 +389,7 @@ public enum ActionExecutor {
     private static func uncompress(_ action: Action, path: String) throws -> Applied {
         let plan = try zipExtractionPlan(action, path: path)
         if plan.conflicts, plan.resolution == .skip {
-            throw ActionError("Skip — a file already exists at \(plan.target)")
+            throw ActionError(String(localized: "Skip — a file already exists at \(plan.target)", bundle: .forelStrings, comment: "Error when an action fails"))
         }
 
         let fm = FileManager.default
@@ -396,7 +407,7 @@ public enum ActionExecutor {
         do {
             try fm.unzipItem(at: archiveURL, to: URL(fileURLWithPath: tempDir))
         } catch {
-            throw ActionError("Could not uncompress ZIP archive: \(error)")
+            throw ActionError(String(localized: "Could not uncompress ZIP archive: \(String(describing: error))", bundle: .forelStrings, comment: "Error when an action fails"))
         }
 
         if plan.conflicts, plan.resolution == .replace {
@@ -436,13 +447,13 @@ public enum ActionExecutor {
                 // A failed write can leave an incomplete archive. Keep the
                 // source and remove only the new archive we tried to create.
                 try? FileManager.default.removeItem(atPath: dest)
-                throw ActionError("Could not create ZIP archive. The source was kept. \(error)")
+                throw ActionError(String(localized: "Could not create ZIP archive. The source was kept. \(String(describing: error))", bundle: .forelStrings, comment: "Error when an action fails"))
             }
             if deletesSourceAfterCompression(action) {
                 do {
                     try FileManager.default.removeItem(atPath: path)
                 } catch {
-                    throw ActionError("ZIP created at \(dest), but the source could not be deleted: \(error)")
+                    throw ActionError(String(localized: "ZIP created at \(dest), but the source could not be deleted: \(String(describing: error))", bundle: .forelStrings, comment: "Error when an action fails"))
                 }
                 return Applied(newPath: dest, undo: .none)
             }
@@ -461,7 +472,7 @@ public enum ActionExecutor {
         guard !trimmed.isEmpty else { return nil }
         let expanded = (trimmed as NSString).expandingTildeInPath
         guard expanded.hasPrefix("/"), !expanded.contains("\0") else {
-            throw ActionError("Archive destination must be an absolute folder path or start with ~/.")
+            throw ActionError(String(localized: "Archive destination must be an absolute folder path or start with ~/.", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         return (expanded as NSString).standardizingPath
     }
@@ -475,7 +486,7 @@ public enum ActionExecutor {
             let source = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().pathComponents
             let destination = URL(fileURLWithPath: directory).standardizedFileURL.resolvingSymlinksInPath().pathComponents
             guard !destination.starts(with: source) else {
-                throw ActionError("Choose an archive destination outside the source folder. A ZIP inside it would include itself and could be deleted with the source.")
+                throw ActionError(String(localized: "Choose an archive destination outside the source folder. A ZIP inside it would include itself and could be deleted with the source.", bundle: .forelStrings, comment: "Error when an action fails"))
             }
         }
         return directory
@@ -511,11 +522,11 @@ public enum ActionExecutor {
         guard !result.isEmpty, result != ".", result != "..",
               !result.contains("/"), !result.contains("\0"),
               !result.hasSuffix("."), !result.hasSuffix(" ") else {
-            throw ActionError("Archive name must be a filename, without '/' or null characters, and cannot end with a dot or space.")
+            throw ActionError(String(localized: "Archive name must be a filename, without '/' or null characters, and cannot end with a dot or space.", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         if !result.lowercased().hasSuffix(".zip") { result += ".zip" }
         guard result.utf8.count <= 255 else {
-            throw ActionError("Archive name is too long (maximum 255 bytes including .zip).")
+            throw ActionError(String(localized: "Archive name is too long (maximum 255 bytes including .zip).", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         return result
     }
@@ -603,11 +614,11 @@ public enum ActionExecutor {
             if process.isRunning {
                 process.interrupt()
             }
-            throw ActionError("script timed out after \(Int(scriptDefaultTimeout))s")
+            throw ActionError(String(localized: "script timed out after \(Int(scriptDefaultTimeout))s", bundle: .forelStrings, comment: "Error when an action fails"))
         }
 
         guard process.terminationStatus == 0 else {
-            throw ActionError("script exited with status \(process.terminationStatus)")
+            throw ActionError(String(localized: "script exited with status \(Int(process.terminationStatus))", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         return Applied(newPath: path, undo: .none)
     }
@@ -624,10 +635,10 @@ public enum ActionExecutor {
         let appPath = try stringParam(action, ActionParam.applicationPath, "OpenApplication")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !appPath.isEmpty else {
-            throw ActionError("Open Application requires '\(ActionParam.applicationPath)' param")
+            throw ActionError(String(localized: "Open Application requires '\(ActionParam.applicationPath)' param", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         guard FileManager.default.fileExists(atPath: appPath) else {
-            throw ActionError("Application not found at \(appPath)")
+            throw ActionError(String(localized: "Application not found at \(appPath)", bundle: .forelStrings, comment: "Error when an action fails"))
         }
 
         let appURL = URL(fileURLWithPath: appPath)
@@ -639,7 +650,7 @@ public enum ActionExecutor {
         }
         return Applied(newPath: path, undo: .none)
         #else
-        throw ActionError("Open Application is not available on this platform")
+        throw ActionError(String(localized: "Open Application is not available on this platform", bundle: .forelStrings, comment: "Error when an action fails"))
         #endif
     }
 
@@ -648,15 +659,15 @@ public enum ActionExecutor {
     private static func importToLibrary(_ action: Action, path: String) throws -> Applied {
         let libraryTypeRaw = action.params[ActionParam.libraryType]?.stringValue ?? LibraryType.music.rawValue
         guard let libraryType = LibraryType(rawValue: libraryTypeRaw) else {
-            throw ActionError("Import to Library requires a 'library_type' parameter")
+            throw ActionError(String(localized: "Import to Library requires a 'library_type' parameter", bundle: .forelStrings, comment: "Error when an action fails"))
         }
 
         guard canImportToLibrary(path, libraryType: libraryType) else {
-            throw ActionError("File format not supported by \(libraryType.label) — requires \(formatDescription(for: libraryType))")
+            throw ActionError(unsupportedFormatMessage(for: libraryType))
         }
 
         if let accessMessage = ensureLibraryAccess(libraryType: libraryType, launchIfNeeded: true) {
-            throw ActionError("Import to \(libraryType.label) — \(accessMessage)")
+            throw ActionError(String(localized: "Import to \(libraryType.label) — \(accessMessage)", bundle: .forelStrings, comment: "%1$@ is Music, Photos or TV; %2$@ explains why access is missing"))
         }
 
         let playlist = action.params[ActionParam.targetPlaylist]?.stringValue ?? ""
@@ -664,7 +675,7 @@ public enum ActionExecutor {
         let resolution = conflictResolution(action, default: .skip)
         if resolution == .skip {
             if try libraryContainsFile(path, libraryType: libraryType, launchIfNeeded: true) {
-                throw ActionError("Skip — file already exists in \(libraryType.label)")
+                throw ActionError(String(localized: "Skip — file already exists in \(libraryType.label)", bundle: .forelStrings, comment: "%@ is Music, Photos or TV"))
             }
         } else if resolution == .replace {
             if try libraryContainsFile(path, libraryType: libraryType, launchIfNeeded: true) {
@@ -691,11 +702,11 @@ public enum ActionExecutor {
         }
     }
 
-    static func formatDescription(for libraryType: LibraryType) -> String {
+    static func unsupportedFormatMessage(for libraryType: LibraryType) -> String {
         switch libraryType {
-        case .music: return "an audio file (MP3, AAC, WAV, AIFF, ALAC, etc.)"
-        case .photos: return "an image or video file (JPEG, PNG, TIFF, HEIC, RAW, MP4, MOV, etc.)"
-        case .tv: return "a video file (MP4, MOV, M4V, etc.)"
+        case .music: return String(localized: "File format not supported by Music — requires an audio file (MP3, AAC, WAV, AIFF, ALAC, etc.)", bundle: .forelStrings, comment: "Error when an action fails")
+        case .photos: return String(localized: "File format not supported by Photos — requires an image or video file (JPEG, PNG, TIFF, HEIC, RAW, MP4, MOV, etc.)", bundle: .forelStrings, comment: "Error when an action fails")
+        case .tv: return String(localized: "File format not supported by TV — requires a video file (MP4, MOV, M4V, etc.)", bundle: .forelStrings, comment: "Error when an action fails")
         }
     }
 
@@ -769,7 +780,7 @@ public enum ActionExecutor {
         let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
         let errorMsg = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard process.terminationStatus == 0 else {
-            throw ActionError("AppleScript failed: \(errorMsg)")
+            throw ActionError(String(localized: "AppleScript failed: \(errorMsg)", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -964,7 +975,7 @@ public enum ActionExecutor {
             }
         }
         #else
-        throw ActionError("Photos import is not available on this platform")
+        throw ActionError(String(localized: "Photos import is not available on this platform.", bundle: .forelStrings, comment: "Error when an action fails"))
         #endif
     }
 
@@ -980,7 +991,7 @@ public enum ActionExecutor {
             #if canImport(Photos)
             return ensurePhotosAccess()
             #else
-            return "Photos import is not available on this platform."
+            return String(localized: "Photos import is not available on this platform.", bundle: .forelStrings, comment: "Error when an action fails")
             #endif
         case .music, .tv:
             return ensureMusicTVAccess(libraryType: libraryType, launchIfNeeded: launchIfNeeded)
@@ -1002,9 +1013,9 @@ public enum ActionExecutor {
         case .authorized, .limited:
             return nil
         case .denied:
-            return "access denied. Grant access in System Settings > Privacy & Security > Photos."
+            return String(localized: "access denied. Grant access in System Settings > Privacy & Security > Photos.", bundle: .forelStrings, comment: "Follows “Import to Photos — ”")
         case .restricted:
-            return "access restricted by parental controls."
+            return String(localized: "access restricted by parental controls.", bundle: .forelStrings, comment: "Follows “Import to Photos — ”")
         case .notDetermined:
             let semaphore = DispatchSemaphore(value: 0)
             let box = AuthStatusBox()
@@ -1017,17 +1028,17 @@ public enum ActionExecutor {
             case .authorized, .limited:
                 return nil
             case .denied:
-                return "access denied. Grant access in System Settings > Privacy & Security > Photos."
+                return String(localized: "access denied. Grant access in System Settings > Privacy & Security > Photos.", bundle: .forelStrings, comment: "Follows “Import to Photos — ”")
             case .restricted:
-                return "access restricted by parental controls."
+                return String(localized: "access restricted by parental controls.", bundle: .forelStrings, comment: "Follows “Import to Photos — ”")
             default:
-                return "cannot determine access status."
+                return String(localized: "cannot determine access status.", bundle: .forelStrings, comment: "Follows “Import to Photos — ”")
             }
         @unknown default:
-            return "cannot determine access status."
+            return String(localized: "cannot determine access status.", bundle: .forelStrings, comment: "Follows “Import to Photos — ”")
         }
         #else
-        return "Photos import is not available on this platform."
+        return String(localized: "Photos import is not available on this platform.", bundle: .forelStrings, comment: "Error when an action fails")
         #endif
     }
 
@@ -1043,7 +1054,9 @@ public enum ActionExecutor {
             try runAppleScript(automationProbeScript(app: appName))
             return nil
         } catch {
-            return "automation access not granted. Allow Forel to control \(appName) in System Settings > Privacy & Security > Automation."
+            return libraryType == .music
+                ? String(localized: "automation access not granted. Allow Forel to control Music in System Settings > Privacy & Security > Automation.", bundle: .forelStrings, comment: "Follows “Import to Music — ”")
+                : String(localized: "automation access not granted. Allow Forel to control TV in System Settings > Privacy & Security > Automation.", bundle: .forelStrings, comment: "Follows “Import to TV — ”")
         }
     }
 
@@ -1065,7 +1078,7 @@ public enum ActionExecutor {
         switch undo {
         case .move(let from, let to):
             if FileManager.default.fileExists(atPath: from) {
-                throw ActionError("cannot restore \(from): a file already exists there")
+                throw ActionError(String(localized: "cannot restore \(from): a file already exists there", bundle: .forelStrings, comment: "Error when an action fails"))
             }
             let parent = (from as NSString).deletingLastPathComponent
             try FileManager.default.createDirectory(atPath: parent, withIntermediateDirectories: true)
@@ -1085,7 +1098,7 @@ public enum ActionExecutor {
         case .extensionHidden(let path, let previous):
             try setFileFlag(.toggleExtension, path: path, value: previous)
         case .none:
-            throw ActionError("this action cannot be undone")
+            throw ActionError(String(localized: "this action cannot be undone", bundle: .forelStrings, comment: "Error when an action fails"))
         }
     }
 
@@ -1106,13 +1119,14 @@ public enum ActionExecutor {
             if normalizedPath((path as NSString).deletingLastPathComponent) == normalizedPath(destDir) {
                 return ActionPlan(
                     kind: action.kind,
-                    description: "Already in destination",
+                    description: String(localized: "Already in destination", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"),
                     sourcePath: path,
                     targetPath: (destDir as NSString).appendingPathComponent(fileName),
                     status: .wouldSkip,
                     finalPath: path,
                     copiedPath: nil,
-                    isTerminal: false
+                    isTerminal: false,
+                    explainsSkip: true
                 )
             }
 
@@ -1123,7 +1137,7 @@ public enum ActionExecutor {
             if conflicts, resolution == .skip {
                 return ActionPlan(
                     kind: action.kind,
-                    description: "Skip — a file already exists at \(naiveTarget)",
+                    description: String(localized: "Skip — a file already exists at \(naiveTarget)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"),
                     sourcePath: path,
                     targetPath: naiveTarget,
                     status: .wouldSkip,
@@ -1133,11 +1147,12 @@ public enum ActionExecutor {
                     // run — so later actions in *this* rule (e.g. a tag meant
                     // to apply after the move) don't run on a file that
                     // never actually moved.
-                    isTerminal: true
+                    isTerminal: true,
+                    explainsSkip: true
                 )
             }
 
-            let (target, description) = conflictAwarePlan(verb: "Move", naiveTarget: naiveTarget, destDir: destDir, fileName: fileName, resolution: resolution, conflicts: conflicts)
+            let (target, description) = conflictAwarePlan(.move, naiveTarget: naiveTarget, destDir: destDir, fileName: fileName, resolution: resolution, conflicts: conflicts)
             return ActionPlan(
                 kind: action.kind,
                 description: description,
@@ -1158,7 +1173,7 @@ public enum ActionExecutor {
             if conflicts, resolution == .skip {
                 return ActionPlan(
                     kind: action.kind,
-                    description: "Skip — a file already exists at \(naiveTarget)",
+                    description: String(localized: "Skip — a file already exists at \(naiveTarget)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"),
                     sourcePath: path,
                     targetPath: naiveTarget,
                     status: .wouldSkip,
@@ -1167,11 +1182,12 @@ public enum ActionExecutor {
                     // Unlike moveToFolder, a copy never takes the file out of
                     // this location — later actions in this rule still act
                     // on the original, so this never needs to stop the chain.
-                    isTerminal: false
+                    isTerminal: false,
+                    explainsSkip: true
                 )
             }
 
-            let (target, description) = conflictAwarePlan(verb: "Copy", naiveTarget: naiveTarget, destDir: destDir, fileName: fileName, resolution: resolution, conflicts: conflicts)
+            let (target, description) = conflictAwarePlan(.copy, naiveTarget: naiveTarget, destDir: destDir, fileName: fileName, resolution: resolution, conflicts: conflicts)
             return ActionPlan(
                 kind: action.kind,
                 description: description,
@@ -1194,7 +1210,7 @@ public enum ActionExecutor {
             let target = ((path as NSString).deletingLastPathComponent as NSString).appendingPathComponent(newName)
             return ActionPlan(
                 kind: action.kind,
-                description: "Rename to \(newName)",
+                description: String(localized: "Rename to \(newName)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"),
                 sourcePath: path,
                 targetPath: target,
                 status: target == path ? .wouldSkip : conflictStatus(target),
@@ -1206,7 +1222,7 @@ public enum ActionExecutor {
             let target = (try trashDir() as NSString).appendingPathComponent(fileName)
             return ActionPlan(
                 kind: action.kind,
-                description: "Move to Trash",
+                description: String(localized: "Move to Trash", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"),
                 sourcePath: path,
                 targetPath: target,
                 status: .wouldRun,
@@ -1217,7 +1233,7 @@ public enum ActionExecutor {
         case .delete:
             return ActionPlan(
                 kind: action.kind,
-                description: "Delete permanently",
+                description: String(localized: "Delete permanently", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"),
                 sourcePath: path,
                 targetPath: nil,
                 status: .wouldRun,
@@ -1228,9 +1244,11 @@ public enum ActionExecutor {
         case .addTag:
             let tags = paramTags(action)
             let description: String
-            if tags.isEmpty { description = "Add tag" }
-            else if action.params["tag"] != nil && tags.count == 1 { description = "Add tag '\(tags[0])'" }
-            else { description = "Add tag\(tags.count > 1 ? "s" : ""): \(tags.joined(separator: ", "))" }
+            // No count is shown, so one tag and a list are separate sentences.
+            if tags.isEmpty { description = String(localized: "Add tag", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") }
+            else if action.params["tag"] != nil && tags.count == 1 { description = String(localized: "Add tag '\(tags[0])'", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") }
+            else if tags.count == 1 { description = String(localized: "Add tag: \(tags[0])", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") }
+            else { description = String(localized: "Add tags: \(tags.joined(separator: ", "))", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") }
             return ActionPlan(
                 kind: action.kind,
                 description: description,
@@ -1244,9 +1262,10 @@ public enum ActionExecutor {
         case .removeTag:
             let tags = paramTags(action)
             let description: String
-            if tags.isEmpty { description = "Remove tag" }
-            else if action.params["tag"] != nil && tags.count == 1 { description = "Remove tag '\(tags[0])'" }
-            else { description = "Remove tag\(tags.count > 1 ? "s" : ""): \(tags.joined(separator: ", "))" }
+            if tags.isEmpty { description = String(localized: "Remove tag", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") }
+            else if action.params["tag"] != nil && tags.count == 1 { description = String(localized: "Remove tag '\(tags[0])'", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") }
+            else if tags.count == 1 { description = String(localized: "Remove tag: \(tags[0])", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") }
+            else { description = String(localized: "Remove tags: \(tags.joined(separator: ", "))", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") }
             return ActionPlan(
                 kind: action.kind,
                 description: description,
@@ -1264,8 +1283,8 @@ public enum ActionExecutor {
             // execution checks the actual item before applying the change.
             let current = try? fileFlag(action.kind, path: path)
             let description = action.kind == .toggleLock
-                ? (target ? "Lock file" : "Unlock file")
-                : (target ? "Hide extension" : "Show extension")
+                ? (target ? String(localized: "Lock file", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") : String(localized: "Unlock file", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"))
+                : (target ? String(localized: "Hide extension", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") : String(localized: "Show extension", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"))
             return ActionPlan(
                 kind: action.kind,
                 description: description,
@@ -1280,7 +1299,7 @@ public enum ActionExecutor {
             let color = action.params[ActionParam.color]?.stringValue ?? ""
             return ActionPlan(
                 kind: action.kind,
-                description: color.isEmpty ? "Clear color label" : "Set color label to \(color)",
+                description: color.isEmpty ? String(localized: "Clear color label", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") : String(localized: "Set color label to \(FinderTags.displayName(forColor: color))", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"),
                 sourcePath: path,
                 targetPath: nil,
                 status: wouldChange(action, path: path) ? .wouldRun : .wouldSkip,
@@ -1293,7 +1312,7 @@ public enum ActionExecutor {
             let firstLine = script.split(separator: "\n").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
             return ActionPlan(
                 kind: action.kind,
-                description: firstLine.isEmpty ? "Run script" : "Run script: \(firstLine)",
+                description: firstLine.isEmpty ? String(localized: "Run script", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") : String(localized: "Run script: \(firstLine)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"),
                 sourcePath: path,
                 targetPath: nil,
                 status: .wouldRun,
@@ -1321,8 +1340,8 @@ public enum ActionExecutor {
             return ActionPlan(
                 kind: action.kind,
                 description: appName.isEmpty
-                    ? "Open application"
-                    : passesFile ? "Open \(appName) with file" : "Open \(appName)",
+                    ? String(localized: "Open application", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
+                    : passesFile ? String(localized: "Open \(appName) with file", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") : String(localized: "Open \(appName)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"),
                 sourcePath: path,
                 targetPath: nil,
                 status: appPath.isEmpty ? .wouldSkip : .wouldRun,
@@ -1333,16 +1352,16 @@ public enum ActionExecutor {
         case .importToLibrary:
             let libraryTypeRaw = action.params[ActionParam.libraryType]?.stringValue ?? LibraryType.music.rawValue
             guard let libraryType = LibraryType(rawValue: libraryTypeRaw) else {
-                throw ActionError("Import to Library requires a 'library_type' parameter")
+                throw ActionError(String(localized: "Import to Library requires a 'library_type' parameter", bundle: .forelStrings, comment: "Error when an action fails"))
             }
             guard canImportToLibrary(path, libraryType: libraryType) else {
-                throw ActionError("File format not supported by \(libraryType.label) — requires \(formatDescription(for: libraryType))")
+                throw ActionError(unsupportedFormatMessage(for: libraryType))
             }
 
             if let accessMessage = ensureLibraryAccess(libraryType: libraryType, launchIfNeeded: false) {
                 return ActionPlan(
                     kind: action.kind,
-                    description: "Import to \(libraryType.label) — \(accessMessage)",
+                    description: String(localized: "Import to \(libraryType.label) — \(accessMessage)", bundle: .forelStrings, comment: "%1$@ is Music, Photos or TV; %2$@ explains why access is missing"),
                     sourcePath: path,
                     targetPath: nil,
                     status: .needsConfirmation,
@@ -1358,20 +1377,22 @@ public enum ActionExecutor {
             if alreadyExists && resolution == .skip {
                 return ActionPlan(
                     kind: action.kind,
-                    description: "Skip — file already exists in \(libraryType.label)",
+                    description: String(localized: "Skip — file already exists in \(libraryType.label)", bundle: .forelStrings, comment: "%@ is Music, Photos or TV"),
                     sourcePath: path,
                     targetPath: nil,
                     status: .wouldSkip,
                     finalPath: path,
                     copiedPath: nil,
-                    isTerminal: false
+                    isTerminal: false,
+                    explainsSkip: true
                 )
             }
 
-            let descSuffix = alreadyExists && resolution == .replace ? " (replacing existing file)" : ""
             return ActionPlan(
                 kind: action.kind,
-                description: "Import to \(libraryType.label)\(descSuffix)",
+                description: alreadyExists && resolution == .replace
+                    ? String(localized: "Import to \(libraryType.label) (replacing existing file)", bundle: .forelStrings, comment: "%@ is Music, Photos or TV")
+                    : String(localized: "Import to \(libraryType.label)", bundle: .forelStrings, comment: "%@ is Music, Photos or TV"),
                 sourcePath: path,
                 targetPath: nil,
                 status: .wouldRun,
@@ -1384,24 +1405,25 @@ public enum ActionExecutor {
             if extraction.conflicts, extraction.resolution == .skip {
                 return ActionPlan(
                     kind: action.kind,
-                    description: "Skip — a file already exists at \(extraction.target)",
+                    description: String(localized: "Skip — a file already exists at \(extraction.target)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"),
                     sourcePath: path,
                     targetPath: extraction.target,
                     status: .wouldSkip,
                     finalPath: path,
                     copiedPath: nil,
-                    isTerminal: true
+                    isTerminal: true,
+                    explainsSkip: true
                 )
             }
 
-            let suffix = extraction.conflicts && extraction.resolution == .replace
-                ? " (replacing existing file)"
+            let description = extraction.conflicts && extraction.resolution == .replace
+                ? String(localized: "Uncompress to \(extraction.target) (replacing existing file)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
                 : extraction.conflicts && extraction.resolution == .rename
-                    ? " (renamed to avoid an existing file)"
-                    : ""
+                    ? String(localized: "Uncompress to \(extraction.target) (renamed to avoid an existing file)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
+                    : String(localized: "Uncompress to \(extraction.target)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
             return ActionPlan(
                 kind: action.kind,
-                description: "Uncompress to \(extraction.target)\(suffix)",
+                description: description,
                 sourcePath: path,
                 targetPath: extraction.target,
                 status: .wouldRun,
@@ -1417,12 +1439,14 @@ public enum ActionExecutor {
             // Existing archives are always preserved by numbering the new one.
             let target = try resolveDestination(naiveDest: naiveTarget, dir: dir, fileName: fileName, resolution: .rename)
             let cleanup = deletesSourceAfterCompression(action)
-            var description = "Compress to \(target)"
-            if conflicts { description += " (renamed to avoid an existing archive)" }
-            if cleanup { description += "; permanently delete source after success" }
+            let description = switch (conflicts, cleanup) {
+            case (false, false): String(localized: "Compress to \(target)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
+            case (true, false): String(localized: "Compress to \(target) (renamed to avoid an existing archive)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
+            case (false, true): String(localized: "Compress to \(target); permanently delete source after success", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
+            case (true, true): String(localized: "Compress to \(target) (renamed to avoid an existing archive); permanently delete source after success", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
+            }
             let cleanupWarning = cleanup
-                ? "The original file or folder and all its contents will be permanently deleted after the ZIP is created. "
-                    + "This cannot be undone. Following actions apply to the ZIP."
+                ? String(localized: "The original file or folder and all its contents will be permanently deleted after the ZIP is created. This cannot be undone. Following actions apply to the ZIP.", bundle: .forelStrings, comment: "Warning in Dry Run for a Compress action")
                 : nil
             let warning = [destinationWarning(dir), cleanupWarning].compactMap { $0 }.joined(separator: " ")
             return ActionPlan(
@@ -1486,12 +1510,12 @@ public enum ActionExecutor {
 
     private static func shortcutDescription(name: String, inputMode: ShortcutInputMode) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "Run shortcut" }
+        guard !trimmed.isEmpty else { return String(localized: "Run shortcut", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") }
         switch inputMode {
         case .matchedFile:
-            return "Run shortcut: \(trimmed)"
+            return String(localized: "Run shortcut: \(trimmed)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
         case .none:
-            return "Run shortcut: \(trimmed) with no input"
+            return String(localized: "Run shortcut: \(trimmed) with no input", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
         }
     }
 
@@ -1511,12 +1535,12 @@ public enum ActionExecutor {
     private static func zipExtractionPlan(_ action: Action, path: String) throws -> ZipExtractionPlan {
         let url = URL(fileURLWithPath: path)
         guard url.pathExtension.lowercased() == "zip" else {
-            throw ActionError("Only ZIP archives can be uncompressed right now.")
+            throw ActionError(String(localized: "Only ZIP archives can be uncompressed right now.", bundle: .forelStrings, comment: "Error when an action fails"))
         }
 
         let topLevelItems = try zipTopLevelItems(path: path)
         guard !topLevelItems.isEmpty else {
-            throw ActionError("ZIP archive is empty.")
+            throw ActionError(String(localized: "ZIP archive is empty.", bundle: .forelStrings, comment: "Error when an action fails"))
         }
 
         let parent = (path as NSString).deletingLastPathComponent
@@ -1551,7 +1575,7 @@ public enum ActionExecutor {
         do {
             archive = try Archive(url: URL(fileURLWithPath: path), accessMode: .read, pathEncoding: nil)
         } catch {
-            throw ActionError("Could not read ZIP archive: \(error)")
+            throw ActionError(String(localized: "Could not read ZIP archive: \(String(describing: error))", bundle: .forelStrings, comment: "Error when an action fails"))
         }
 
         var items: Set<String> = []
@@ -1562,7 +1586,7 @@ public enum ActionExecutor {
             let item = String(first)
             if item == "__MACOSX" { continue }
             if item == "." || item == ".." {
-                throw ActionError("ZIP archive contains an invalid entry path.")
+                throw ActionError(String(localized: "ZIP archive contains an invalid entry path.", bundle: .forelStrings, comment: "Error when an action fails"))
             }
             items.insert(item)
         }
@@ -1572,19 +1596,30 @@ public enum ActionExecutor {
     /// Shared by `moveToFolder`/`copyToFolder` planning: the resolved target
     /// path and a human-readable description, for whichever resolution
     /// doesn't just skip outright (that's handled separately by the caller).
-    private static func conflictAwarePlan(verb: String, naiveTarget: String, destDir: String, fileName: String, resolution: MoveConflictResolution, conflicts: Bool) -> (target: String, description: String) {
+    private enum Transfer { case move, copy }
+
+    private static func conflictAwarePlan(_ transfer: Transfer, naiveTarget: String, destDir: String, fileName: String, resolution: MoveConflictResolution, conflicts: Bool) -> (target: String, description: String) {
         switch resolution {
         case .rename:
             let target = conflicts ? uniqueDest(dir: destDir, fileName: fileName) : naiveTarget
-            let description = conflicts ? "\(verb) to \(target) (renamed to avoid an existing file)" : "\(verb) to \(target)"
-            return (target, description)
+            return (target, transferDescription(transfer, to: target, renamed: conflicts))
         case .replace:
-            let description = conflicts ? "\(verb) to \(naiveTarget) (replacing existing file)" : "\(verb) to \(naiveTarget)"
-            return (naiveTarget, description)
+            return (naiveTarget, transferDescription(transfer, to: naiveTarget, replacing: conflicts))
         case .skip:
             // `conflicts` is false here (the conflicting case is returned
             // separately by the caller), so this behaves like a plain move/copy.
-            return (naiveTarget, "\(verb) to \(naiveTarget)")
+            return (naiveTarget, transferDescription(transfer, to: naiveTarget))
+        }
+    }
+
+    private static func transferDescription(_ transfer: Transfer, to target: String, renamed: Bool = false, replacing: Bool = false) -> String {
+        switch (transfer, renamed, replacing) {
+        case (.move, true, _): String(localized: "Move to \(target) (renamed to avoid an existing file)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
+        case (.move, _, true): String(localized: "Move to \(target) (replacing existing file)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
+        case (.move, _, _): String(localized: "Move to \(target)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
+        case (.copy, true, _): String(localized: "Copy to \(target) (renamed to avoid an existing file)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
+        case (.copy, _, true): String(localized: "Copy to \(target) (replacing existing file)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
+        case (.copy, _, _): String(localized: "Copy to \(target)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
         }
     }
 
@@ -1605,7 +1640,7 @@ public enum ActionExecutor {
         if let volume = VolumePaths.unmountedVolume(of: destDir) {
             return volumeNotConnectedMessage(volume)
         }
-        return "The destination folder can't be reached or written to right now. Check that the disk or network share is connected and that Forel is allowed to access it."
+        return String(localized: "The destination folder can't be reached or written to right now. Check that the disk or network share is connected and that Forel is allowed to access it.", bundle: .forelStrings, comment: "Warning in Dry Run")
     }
 
     static func normalizedPath(_ path: String) -> String {
@@ -1652,7 +1687,7 @@ public enum ActionExecutor {
         }
 
         if result.isEmpty {
-            throw ActionError("rename pattern produced empty filename")
+            throw ActionError(String(localized: "rename pattern produced empty filename", bundle: .forelStrings, comment: "Error when an action fails"))
         }
 
         try validateMacOSFilename(result)
@@ -1736,7 +1771,7 @@ public enum ActionExecutor {
 
     static func trashDir() throws -> String {
         guard let home = ProcessInfo.processInfo.environment["HOME"] else {
-            throw ActionError("HOME not set")
+            throw ActionError(String(localized: "HOME not set", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         return (home as NSString).appendingPathComponent(".Trash")
     }
@@ -1747,16 +1782,16 @@ public enum ActionExecutor {
     /// Note: empty is already rejected earlier.
     private static func validateMacOSFilename(_ name: String) throws {
         if name.contains("/") {
-            throw ActionError("rename pattern produced an invalid filename (contains '/')")
+            throw ActionError(String(localized: "rename pattern produced an invalid filename (contains '/')", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         if name == "." || name == ".." {
-            throw ActionError("rename pattern produced an invalid filename ('.' and '..' are not allowed)")
+            throw ActionError(String(localized: "rename pattern produced an invalid filename ('.' and '..' are not allowed)", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         if name.utf8.count > 255 {
-            throw ActionError("rename pattern produced a filename longer than 255 characters")
+            throw ActionError(String(localized: "rename pattern produced a filename longer than 255 characters", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         if let lastChar = name.last, lastChar == "." || lastChar == " " {
-            throw ActionError("rename pattern produced a filename ending with '.' or space — not supported by macOS")
+            throw ActionError(String(localized: "rename pattern produced a filename ending with '.' or space — not supported by macOS", bundle: .forelStrings, comment: "Error when an action fails"))
         }
     }
 }
@@ -1809,7 +1844,7 @@ enum ShortcutRunner {
     static func run(name: String, input: Input, timeout: TimeInterval = defaultTimeout) throws {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
-            throw ActionError("RunShortcut requires '\(ActionParam.shortcutName)' param")
+            throw ActionError(String(localized: "RunShortcut requires '\(ActionParam.shortcutName)' param", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executablePath)
@@ -1829,11 +1864,11 @@ enum ShortcutRunner {
         if group.wait(timeout: DispatchTime.now() + timeout) == .timedOut {
             process.terminate()
             _ = group.wait(timeout: DispatchTime.now() + 2)
-            throw ActionError("shortcut timed out")
+            throw ActionError(String(localized: "shortcut timed out", bundle: .forelStrings, comment: "Error when an action fails"))
         }
 
         guard process.terminationStatus == 0 else {
-            throw ActionError("shortcut exited with status \(process.terminationStatus)")
+            throw ActionError(String(localized: "shortcut exited with status \(Int(process.terminationStatus))", bundle: .forelStrings, comment: "Error when an action fails"))
         }
     }
 

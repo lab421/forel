@@ -65,18 +65,24 @@ public struct VolumeUnavailableNotifier: Sendable {
         guard !pendingVolumes.isEmpty else { return nil }
         let volumes = pendingVolumes.sorted()
         let one = volumes.count == 1
-        let title = one ? "“\(volumes[0])” isn't connected" : "\(volumes.count) disks or shares aren't connected"
+        let title = one
+            ? String(localized: "“\(volumes[0])” isn't connected", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
+            : String(localized: "\(volumes.count) disks or shares aren't connected", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
 
-        let fileLabel = pendingFileCount == 1 ? "file" : "files"
         let ruleNames = pendingRuleNames.sorted()
-        let visibleRules = ruleNames.prefix(3)
-        let remainingRuleCount = ruleNames.count - visibleRules.count
-        let rulesText = visibleRules.joined(separator: ", ")
-            + (remainingRuleCount > 0 ? " and \(remainingRuleCount) more" : "")
-        let next = pendingAllRetry
-            ? "Forel will try again when \(one ? "it's" : "they're") connected, if watching is still on."
-            : "Connect \(one ? "it" : "them"), then use Run Now."
-        let body = "\(pendingFileCount) \(fileLabel) couldn't be moved or copied. Rules: \(rulesText). \(next)"
+        let visibleRules = ruleNames.prefix(3).joined(separator: ", ")
+        let remainingRuleCount = ruleNames.count - ruleNames.prefix(3).count
+        let rulesText = remainingRuleCount > 0
+            ? String(localized: "\(visibleRules) and \(remainingRuleCount) more", bundle: .forelStrings, comment: "Rule names in a notification; %1$@ lists up to three of them")
+            : visibleRules
+        let problem = String(localized: "\(pendingFileCount) files couldn't be moved or copied. Rules: \(rulesText).", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
+        let next = switch (pendingAllRetry, one) {
+        case (true, true): String(localized: "Forel will try again when it's connected, if watching is still on.", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
+        case (true, false): String(localized: "Forel will try again when they're connected, if watching is still on.", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
+        case (false, true): String(localized: "Connect it, then use Run Now.", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
+        case (false, false): String(localized: "Connect them, then use Run Now.", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
+        }
+        let body = "\(problem) \(next)"
 
         reported.formUnion(pendingVolumes)
         discardPending()

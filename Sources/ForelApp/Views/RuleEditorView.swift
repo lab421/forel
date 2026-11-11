@@ -201,7 +201,7 @@ struct RuleEditorView: View {
         !validationMessages.isEmpty
     }
 
-    private func placeholder(_ text: String) -> some View {
+    private func placeholder(_ text: LocalizedStringKey) -> some View {
         Text(text)
             .font(.system(size: 11))
             .foregroundStyle(ForelTheme.secondaryText)
@@ -215,7 +215,7 @@ enum RuleEditorDraftCheck {
     static func problems(_ rule: Rule) -> [String] {
         var problems: [String] = []
         if rule.name.trimmingCharacters(in: .whitespaces).isEmpty {
-            problems.append("The rule needs a name.")
+            problems.append(String(localized: "The rule needs a name."))
         }
         problems += (RuleValidator.validate(rule.conditions) + RuleValidator.validate(rule.actions)).map(\.message)
         return problems
@@ -331,7 +331,7 @@ private struct RuleMatchPreviewCard: View {
             if summary.total == 0 {
                 note(summary.isComplete
                      ? "Nothing in this folder matches right now. Matching files are processed when they arrive."
-                     : "Nothing matches in the first \(summary.checked.formatted()) items of this folder.")
+                     : "Nothing matches in the first \(summary.checked) items of this folder.")
             } else {
                 Text(matchLabel(summary))
                     .font(.system(size: 15, weight: .semibold))
@@ -347,7 +347,7 @@ private struct RuleMatchPreviewCard: View {
                     row(match, showsAction: sharedNote(summary) == nil)
                 }
                 if summary.total > shown.count {
-                    Text(summary.isComplete ? "and \((summary.total - shown.count).formatted()) more…" : "and more…")
+                    Text(summary.isComplete ? "and \(summary.total - shown.count) more…" : "and more…")
                         .font(.caption)
                         .foregroundStyle(ForelTheme.secondaryText)
                 }
@@ -392,7 +392,7 @@ private struct RuleMatchPreviewCard: View {
         }
     }
 
-    private func note(_ text: String) -> some View {
+    private func note(_ text: LocalizedStringKey) -> some View {
         Text(text)
             .font(.subheadline)
             .foregroundStyle(ForelTheme.secondaryText)
@@ -402,23 +402,23 @@ private struct RuleMatchPreviewCard: View {
     /// One message instead of the same one on every row: the actions are
     /// incomplete, or every listed file hits the same problem.
     private func sharedNote(_ summary: RuleMatchSummary) -> String? {
-        if rule.actions.isEmpty { return "Add an action to see what would happen to these files." }
-        if !RuleValidator.validate(rule.actions).isEmpty { return "Complete the actions above to see what would happen to these files." }
+        if rule.actions.isEmpty { return String(localized: "Add an action to see what would happen to these files.") }
+        if !RuleValidator.validate(rule.actions).isEmpty { return String(localized: "Complete the actions above to see what would happen to these files.") }
         let warnings = Set(summary.matches.prefix(Self.shownLimit).map(\.warning))
         if warnings.count == 1, let warning = warnings.first ?? nil { return warning }
         return nil
     }
 
     private func matchLabel(_ summary: RuleMatchSummary) -> String {
-        let count = summary.total.formatted()
-        let items = summary.total == 1 ? "item matches" : "items match"
-        return summary.isComplete ? "\(count) \(items)" : "At least \(count) \(items)"
+        summary.isComplete
+            ? String(localized: "\(summary.total) items match", comment: "Matching Files preview in the rule editor")
+            : String(localized: "At least \(summary.total) items match", comment: "Matching Files preview in the rule editor")
     }
 
     private func checkedLabel(_ summary: RuleMatchSummary) -> String {
-        let count = summary.checked.formatted()
-        if !summary.isComplete { return "First \(count) items checked" }
-        return "\(count) item\(summary.checked == 1 ? "" : "s") checked"
+        summary.isComplete
+            ? String(localized: "\(summary.checked) items checked", comment: "Matching Files preview in the rule editor")
+            : String(localized: "First \(summary.checked) items checked", comment: "Matching Files preview in the rule editor")
     }
 
     private var needsPro: Bool {
@@ -555,9 +555,8 @@ private struct ScopeEditor: View {
     }
 
     private var scopeSummary: String {
-        guard let depth else { return "All subfolder levels" }
-        let safeDepth = max(1, depth)
-        return "\(safeDepth) subfolder level\(safeDepth == 1 ? "" : "s")"
+        guard let depth else { return String(localized: "All subfolder levels") }
+        return String(localized: "\(Int(max(1, depth))) subfolder levels")
     }
 }
 
@@ -631,7 +630,7 @@ private struct ConditionRow: View {
 
     private var rowHelpText: String? {
         if condition.kind == .kind, condition.value == "archive" {
-            return "Archive matches compressed formats such as ZIP, TAR, GZ, 7Z, RAR, XZ, ZST, TGZ, TBZ, and CAB."
+            return String(localized: "Archive matches compressed formats such as ZIP, TAR, GZ, 7Z, RAR, XZ, ZST, TGZ, TBZ, and CAB.", comment: "Help shown next to a Kind condition set to Archive")
         }
         return condition.kind.helpText
     }
@@ -847,7 +846,7 @@ private struct RegexValueEditor: View {
             _ = try NSRegularExpression(pattern: value)
             return nil
         } catch {
-            return "Invalid regular expression"
+            return String(localized: "Invalid regular expression")
         }
     }
 
@@ -894,7 +893,7 @@ private struct RelativeDateValueEditor: View {
         HStack(spacing: 8) {
             GlassField(placeholder: "7", text: numberBinding)
                 .frame(width: 72)
-            StringSelectMenu(selection: unitBinding, options: units)
+            StringSelectMenu(selection: unitBinding, options: units, label: Self.unitLabel)
             .frame(width: 120)
             Spacer(minLength: 0)
         }
@@ -914,6 +913,18 @@ private struct RelativeDateValueEditor: View {
         )
     }
 
+    /// The stored value keeps the English unit ("7 days"): the engine reads it.
+    private static func unitLabel(_ unit: String) -> String {
+        switch unit {
+        case "hours": String(localized: "hours", comment: "Unit of a relative date condition, as in “is within the last 7 hours”")
+        case "days": String(localized: "days", comment: "Unit of a relative date condition, as in “is within the last 7 days”")
+        case "weeks": String(localized: "weeks", comment: "Unit of a relative date condition, as in “is within the last 7 weeks”")
+        case "months": String(localized: "months", comment: "Unit of a relative date condition, as in “is within the last 7 months”")
+        case "years": String(localized: "years", comment: "Unit of a relative date condition, as in “is within the last 7 years”")
+        default: unit
+        }
+    }
+
     private var parts: (number: String, unit: String) {
         // omittingEmptySubsequences: false keeps "" as the number when the
         // field is transiently empty mid-edit, so the unit survives keystrokes.
@@ -931,7 +942,7 @@ private struct SizeValueEditor: View {
         HStack(spacing: 8) {
             GlassField(placeholder: "0", text: numberBinding)
                 .frame(width: 90)
-            StringSelectMenu(selection: unitBinding, options: ["bytes", "KB", "MB", "GB"])
+            StringSelectMenu(selection: unitBinding, options: ["bytes", "KB", "MB", "GB"], label: Self.unitLabel)
             .frame(width: 110)
             Spacer(minLength: 0)
         }
@@ -949,6 +960,17 @@ private struct SizeValueEditor: View {
             get: { parts.unit },
             set: { value = "\(parts.number) \($0)" }
         )
+    }
+
+    /// The stored value keeps the English unit ("10 MB"): the engine reads it.
+    private static func unitLabel(_ unit: String) -> String {
+        switch unit {
+        case "bytes": String(localized: "bytes", comment: "Unit of a Size condition")
+        case "KB": String(localized: "KB", comment: "Unit of a Size condition: kilobytes")
+        case "MB": String(localized: "MB", comment: "Unit of a Size condition: megabytes")
+        case "GB": String(localized: "GB", comment: "Unit of a Size condition: gigabytes")
+        default: unit
+        }
     }
 
     private var parts: (number: String, unit: String) {
@@ -1053,7 +1075,7 @@ private struct KindValuePicker: View {
         StringSelectMenu(
             selection: valueBinding,
             options: FileKindCatalog.all.map(\.value),
-            label: { value in FileKindCatalog.all.first { $0.value == value }?.label ?? value }
+            label: { value in FileKindCatalog.label(for: value) }
         )
         .frame(width: 180, alignment: .leading)
     }
@@ -1345,8 +1367,7 @@ private struct ActionOptionsView: View {
                 .font(.system(size: 12))
             if ActionExecutor.deletesSourceAfterCompression(action) {
                 Label(
-                    "After the ZIP is created successfully, the original file or folder and all its contents are permanently deleted. "
-                        + "This cannot be undone. Following actions apply to the ZIP.",
+                    "After the ZIP is created successfully, the original file or folder and all its contents are permanently deleted. This cannot be undone. Following actions apply to the ZIP.",
                     systemImage: "exclamationmark.triangle"
                 )
                     .font(.system(size: 11))
@@ -1559,7 +1580,7 @@ private struct PlaylistPicker: View {
             StringSelectMenu(
                 selection: $selection,
                 options: items,
-                label: { $0.isEmpty ? "None" : $0 }
+                label: { $0.isEmpty ? String(localized: "None", comment: "No playlist or album") : $0 }
             )
             if isLoading {
                 ProgressView()
@@ -1609,7 +1630,7 @@ private struct AlbumPicker: View {
             StringSelectMenu(
                 selection: $selection,
                 options: items,
-                label: { $0.isEmpty ? "None" : $0 }
+                label: { $0.isEmpty ? String(localized: "None", comment: "No playlist or album") : $0 }
             )
             if isLoading {
                 ProgressView()
@@ -1632,7 +1653,7 @@ private struct AlbumPicker: View {
             let collections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: options)
             var names: [String] = []
             collections.enumerateObjects { collection, _, _ in
-                names.append(collection.localizedTitle ?? "Untitled")
+                names.append(collection.localizedTitle ?? String(localized: "Untitled", comment: "A Photos album without a name"))
             }
             items = [""] + names.sorted()
             #endif
@@ -1643,7 +1664,7 @@ private struct AlbumPicker: View {
 
 private struct TagTokensEditor: View {
     @Binding var tags: [String]
-    let placeholder: String
+    let placeholder: LocalizedStringKey
     @State private var draft = ""
     @FocusState private var isFocused: Bool
 
@@ -1718,9 +1739,9 @@ private struct ArchiveNameEditor: View {
     @Binding var pattern: String
 
     private let tokens = [
-        (value: "{name}", label: "Source name"),
-        (value: "{current_date}", label: "Current date"),
-        (value: "{timestamp}", label: "Timestamp"),
+        (value: "{name}", label: String(localized: "Source name", comment: "Archive name token")),
+        (value: "{current_date}", label: String(localized: "Current date", comment: "Archive name token")),
+        (value: "{timestamp}", label: String(localized: "Timestamp", comment: "Archive name token")),
     ]
 
     var body: some View {
@@ -1748,7 +1769,7 @@ private struct ArchiveNameEditor: View {
 
     private var preview: String {
         do {
-            return "Preview: \(try ActionExecutor.archiveFileName(pattern: pattern, sourceName: "file"))"
+            return String(localized: "Preview: \(try ActionExecutor.archiveFileName(pattern: pattern, sourceName: "file"))", comment: "Example archive name")
         } catch {
             return String(describing: error)
         }
@@ -1767,12 +1788,12 @@ private struct RenamePatternEditor: View {
     let cleanFileName: Bool
 
     private let tokens: [(placeholder: String, label: String)] = [
-        ("{name}", "name"),
-        ("{extension}", "extension"),
-        ("{date_modified}", "date modified"),
-        ("{date_created}", "date created"),
-        ("{current_date}", "current date"),
-        ("{size}", "size"),
+        ("{name}", String(localized: "name", comment: "Rename pattern token")),
+        ("{extension}", String(localized: "extension", comment: "Rename pattern token")),
+        ("{date_modified}", String(localized: "date modified", comment: "Rename pattern token")),
+        ("{date_created}", String(localized: "date created", comment: "Rename pattern token")),
+        ("{current_date}", String(localized: "current date", comment: "Rename pattern token")),
+        ("{size}", String(localized: "size", comment: "Rename pattern token")),
     ]
 
     var body: some View {
@@ -1796,9 +1817,9 @@ private struct RenamePatternEditor: View {
 
     private var preview: String {
         let candidate = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !candidate.isEmpty else { return "Preview: " }
+        guard !candidate.isEmpty else { return String(localized: "Preview: \("")", comment: "Example file name for a rename pattern") }
         if candidate.contains("/") {
-            return "⚠️ Pattern contains '/' which is not allowed in filenames"
+            return String(localized: "⚠️ Pattern contains '/' which is not allowed in filenames")
         }
         let previewName = candidate
             .replacingOccurrences(of: "{name}", with: "file")
@@ -1806,15 +1827,15 @@ private struct RenamePatternEditor: View {
             .replacingOccurrences(of: "{current_date}", with: dateString())
         let displayName = cleanFileName ? ActionExecutor.cleanFileName(previewName) : previewName
         if displayName == "." || displayName == ".." {
-            return "⚠️ Pattern resolves to '\(displayName)' which is not a valid filename"
+            return String(localized: "⚠️ Pattern resolves to '\(displayName)' which is not a valid filename")
         }
         if displayName.utf8.count > 255 {
-            return "⚠️ Pattern resolves to a filename longer than 255 characters"
+            return String(localized: "⚠️ Pattern resolves to a filename longer than 255 characters")
         }
         if let last = displayName.last, last == "." || last == " " {
-            return "⚠️ Pattern resolves to '\(displayName)' — trailing '.' or space is not supported"
+            return String(localized: "⚠️ Pattern resolves to '\(displayName)' — trailing '.' or space is not supported")
         }
-        return "Preview: \(displayName)"
+        return String(localized: "Preview: \(displayName)", comment: "Example file name for a rename pattern")
     }
 
     private func dateString() -> String {

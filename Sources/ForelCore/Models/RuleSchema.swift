@@ -33,21 +33,21 @@ public extension Operator {
     /// Human-readable label shown in the rule editor.
     var label: String {
         switch self {
-        case .isTrue: return "true"
-        case .isFalse: return "false"
-        case .is: return "is"
-        case .isNot: return "is not"
-        case .contains: return "contains"
-        case .doesNotContain: return "does not contain"
-        case .startsWith: return "starts with"
-        case .endsWith: return "ends with"
-        case .matchesRegex: return "matches regex"
-        case .greaterThan: return "greater than"
-        case .lessThan: return "less than"
-        case .before: return "is before"
-        case .after: return "is after"
-        case .olderThan: return "is not in the last"
-        case .withinLast: return "is within the last"
+        case .isTrue: return String(localized: "true", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .isFalse: return String(localized: "false", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .is: return String(localized: "is", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .isNot: return String(localized: "is not", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .contains: return String(localized: "contains", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .doesNotContain: return String(localized: "does not contain", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .startsWith: return String(localized: "starts with", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .endsWith: return String(localized: "ends with", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .matchesRegex: return String(localized: "matches regex", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .greaterThan: return String(localized: "greater than", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .lessThan: return String(localized: "less than", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .before: return String(localized: "is before", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .after: return String(localized: "is after", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .olderThan: return String(localized: "is not in the last", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
+        case .withinLast: return String(localized: "is within the last", bundle: .forelStrings, comment: "Rule condition operator, as in “Name contains …”")
         }
     }
 
@@ -84,22 +84,22 @@ public enum ConditionValueKind: Sendable, Equatable {
 public extension ConditionKind {
     var label: String {
         switch self {
-        case .name: return "Name"
-        case .comment: return "Comment"
-        case .locked: return "Locked"
-        case .extension_: return "Extension"
-        case .kind: return "Kind"
-        case .sizeBytes: return "Size"
-        case .tags: return "Tags"
-        case .colorLabel: return "Color label"
-        case .contents: return "Contents"
-        case .createdAt: return "Date created"
-        case .dateModified: return "Date modified"
-        case .dateAdded: return "Date added"
-        case .dateLastOpened: return "Date last opened"
-        case .downloadedFromWebsite: return "Downloaded from website"
-        case .downloadedWithApp: return "Downloaded with app"
-        case .rawWhereFromMetadata: return "Raw where-from metadata"
+        case .name: return String(localized: "Name", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .comment: return String(localized: "Comment", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .locked: return String(localized: "Locked", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .extension_: return String(localized: "Extension", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .kind: return String(localized: "Kind", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .sizeBytes: return String(localized: "Size", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .tags: return String(localized: "Tags", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .colorLabel: return String(localized: "Color label", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .contents: return String(localized: "Contents", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .createdAt: return String(localized: "Date created", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .dateModified: return String(localized: "Date modified", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .dateAdded: return String(localized: "Date added", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .dateLastOpened: return String(localized: "Date last opened", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .downloadedFromWebsite: return String(localized: "Downloaded from website", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .downloadedWithApp: return String(localized: "Downloaded with app", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
+        case .rawWhereFromMetadata: return String(localized: "Raw where-from metadata", bundle: .forelStrings, comment: "Rule condition: the file property it checks")
         }
     }
 
@@ -171,21 +171,21 @@ public extension ConditionKind {
     var helpText: String? {
         switch self {
         case .locked:
-            return "Matches the Locked checkbox in Finder's Get Info window, independently of read and write permissions."
+            return String(localized: "Matches the Locked checkbox in Finder's Get Info window, independently of read and write permissions.", bundle: .forelStrings, comment: "Help shown next to a rule condition")
         case .comment:
-            return "Matches the Finder comment shown in Get Info. Files without a comment are treated as having an empty comment."
+            return String(localized: "Matches the Finder comment shown in Get Info. Files without a comment are treated as having an empty comment.", bundle: .forelStrings, comment: "Help shown next to a rule condition")
         case .dateLastOpened:
-            return "Uses the last-opened date recorded by macOS, not the last filesystem access. Items without this date do not match."
+            return String(localized: "Uses the last-opened date recorded by macOS, not the last filesystem access. Items without this date do not match.", bundle: .forelStrings, comment: "Help shown next to a rule condition")
         case .tags:
-            return "Matches the Finder tags shown in Get Info, not other file metadata."
+            return String(localized: "Matches the Finder tags shown in Get Info, not other file metadata.", bundle: .forelStrings, comment: "Help shown next to a rule condition")
         case .downloadedFromWebsite:
-            return "Matches only http and https addresses from the file's download metadata. For other sources, such as blob: addresses, use Raw where-from metadata."
+            return String(localized: "Matches only http and https addresses from the file's download metadata. For other sources, such as blob: addresses, use Raw where-from metadata.", bundle: .forelStrings, comment: "Help shown next to a rule condition")
         case .downloadedWithApp:
-            return "Matches the app that macOS recorded as having downloaded the file, such as Safari or Firefox. Availability depends on that app."
+            return String(localized: "Matches the app that macOS recorded as having downloaded the file, such as Safari or Firefox. Availability depends on that app.", bundle: .forelStrings, comment: "Help shown next to a rule condition")
         case .rawWhereFromMetadata:
-            return "Matches every value of the file's download metadata, as Finder shows it in Get Info under Where from. Availability depends on the app that created the file."
+            return String(localized: "Matches every value of the file's download metadata, as Finder shows it in Get Info under Where from. Availability depends on the app that created the file.", bundle: .forelStrings, comment: "Help shown next to a rule condition")
         case .contents:
-            return "Matches text from plain files, PDFs, Word documents, and images via OCR when available."
+            return String(localized: "Matches text from plain files, PDFs, Word documents, and images via OCR when available.", bundle: .forelStrings, comment: "Help shown next to a rule condition")
         default:
             return nil
         }
@@ -195,9 +195,12 @@ public extension ConditionKind {
 // MARK: - File kinds (for the `kind` condition)
 
 public enum FileKindCatalog {
-    /// `(value, label)` pairs for the file-kind picker. `value` matches the
-    /// strings `ConditionEvaluator.detectKind` produces.
-    public static let all: [(value: String, label: String)] = [
+    /// `(value, folderName)` pairs in picker order. `value` matches the
+    /// strings `ConditionEvaluator.detectKind` produces. `folderName` is what
+    /// the `{kind}` destination token writes to disk: it stays in English
+    /// whatever the app's language, so a rule keeps filing into the same
+    /// folders when the language changes.
+    public static let all: [(value: String, folderName: String)] = [
         ("image", "Image"),
         ("movie", "Movie"),
         ("music", "Music"),
@@ -210,6 +213,24 @@ public enum FileKindCatalog {
         ("folder", "Folder"),
         ("application", "Application"),
     ]
+
+    /// The file kind's name in the picker, in the app's language.
+    public static func label(for value: String) -> String {
+        switch value {
+        case "image": return String(localized: "Image", bundle: .forelStrings, comment: "File kind")
+        case "movie": return String(localized: "Movie", bundle: .forelStrings, comment: "File kind")
+        case "music": return String(localized: "Music", bundle: .forelStrings, comment: "File kind")
+        case "pdf": return String(localized: "PDF", bundle: .forelStrings, comment: "File kind")
+        case "text": return String(localized: "Text", bundle: .forelStrings, comment: "File kind")
+        case "document": return String(localized: "Document", bundle: .forelStrings, comment: "File kind")
+        case "presentation": return String(localized: "Presentation", bundle: .forelStrings, comment: "File kind")
+        case "archive": return String(localized: "Archive", bundle: .forelStrings, comment: "File kind")
+        case "disk_image": return String(localized: "Disk Image", bundle: .forelStrings, comment: "File kind")
+        case "folder": return String(localized: "Folder", bundle: .forelStrings, comment: "File kind")
+        case "application": return String(localized: "Application", bundle: .forelStrings, comment: "File kind")
+        default: return value
+        }
+    }
 }
 
 // MARK: - Action parameters
@@ -267,23 +288,23 @@ public struct ActionParamSpec: Sendable, Equatable {
 public extension ActionKind {
     var label: String {
         switch self {
-        case .moveToFolder: return "Move to folder"
-        case .copyToFolder: return "Copy to folder"
-        case .syncFolders: return "Sync folders"
-        case .rename: return "Rename"
-        case .moveToTrash: return "Move to Trash"
-        case .delete: return "Delete"
-        case .addTag: return "Add tag"
-        case .removeTag: return "Remove tag"
-        case .setColorLabel: return "Set color label"
-        case .toggleLock: return "Toggle lock"
-        case .toggleExtension: return "Toggle extension"
-        case .runScript: return "Run script"
-        case .runShortcut: return "Run shortcut"
-        case .openApplication: return "Open application"
-        case .importToLibrary: return "Import to library"
-        case .compress: return "Compress"
-        case .uncompress: return "Uncompress"
+        case .moveToFolder: return String(localized: "Move to folder", bundle: .forelStrings, comment: "Rule action")
+        case .copyToFolder: return String(localized: "Copy to folder", bundle: .forelStrings, comment: "Rule action")
+        case .syncFolders: return String(localized: "Sync folders", bundle: .forelStrings, comment: "Rule action")
+        case .rename: return String(localized: "Rename", bundle: .forelStrings, comment: "Rule action")
+        case .moveToTrash: return String(localized: "Move to Trash", bundle: .forelStrings, comment: "Rule action")
+        case .delete: return String(localized: "Delete", bundle: .forelStrings, comment: "Rule action")
+        case .addTag: return String(localized: "Add tag", bundle: .forelStrings, comment: "Rule action")
+        case .removeTag: return String(localized: "Remove tag", bundle: .forelStrings, comment: "Rule action")
+        case .setColorLabel: return String(localized: "Set color label", bundle: .forelStrings, comment: "Rule action")
+        case .toggleLock: return String(localized: "Toggle lock", bundle: .forelStrings, comment: "Rule action")
+        case .toggleExtension: return String(localized: "Toggle extension", bundle: .forelStrings, comment: "Rule action")
+        case .runScript: return String(localized: "Run script", bundle: .forelStrings, comment: "Rule action")
+        case .runShortcut: return String(localized: "Run shortcut", bundle: .forelStrings, comment: "Rule action")
+        case .openApplication: return String(localized: "Open application", bundle: .forelStrings, comment: "Rule action")
+        case .importToLibrary: return String(localized: "Import to library", bundle: .forelStrings, comment: "Rule action")
+        case .compress: return String(localized: "Compress", bundle: .forelStrings, comment: "Rule action")
+        case .uncompress: return String(localized: "Uncompress", bundle: .forelStrings, comment: "Rule action")
         }
     }
 
@@ -388,7 +409,7 @@ public enum RuleSchema {
             .name, .extension_, .kind, .sizeBytes, .tags, .colorLabel, .locked, .contents,
             .createdAt, .dateModified, .dateAdded, .dateLastOpened,
         ]),
-        ConditionKindGroup(title: "Metadata", kinds: [
+        ConditionKindGroup(title: String(localized: "Metadata", bundle: .forelStrings, comment: "Section of the condition picker"), kinds: [
             .comment, .downloadedFromWebsite, .downloadedWithApp,
         ]),
     ]
@@ -397,11 +418,11 @@ public enum RuleSchema {
 
     public static let actionKindGroups: [ActionKindGroup] = [
         ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .syncFolders, .rename, .compress, .uncompress]),
-        ActionKindGroup(title: "Tags", kinds: [.addTag, .removeTag, .setColorLabel]),
-        ActionKindGroup(title: "Finder", kinds: [.toggleLock, .toggleExtension]),
-        ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut, .openApplication]),
-        ActionKindGroup(title: "Disposal", kinds: [.moveToTrash, .delete]),
-        ActionKindGroup(title: "Library", kinds: [.importToLibrary]),
+        ActionKindGroup(title: String(localized: "Tags", bundle: .forelStrings, comment: "Section of the action picker"), kinds: [.addTag, .removeTag, .setColorLabel]),
+        ActionKindGroup(title: String(localized: "Finder", bundle: .forelStrings, comment: "Section of the action picker"), kinds: [.toggleLock, .toggleExtension]),
+        ActionKindGroup(title: String(localized: "Automation", bundle: .forelStrings, comment: "Section of the action picker"), kinds: [.runScript, .runShortcut, .openApplication]),
+        ActionKindGroup(title: String(localized: "Disposal", bundle: .forelStrings, comment: "Section of the action picker"), kinds: [.moveToTrash, .delete]),
+        ActionKindGroup(title: String(localized: "Library", bundle: .forelStrings, comment: "Section of the action picker"), kinds: [.importToLibrary]),
     ]
 
     public static let actionKinds: [ActionKind] = actionKindGroups.flatMap(\.kinds)

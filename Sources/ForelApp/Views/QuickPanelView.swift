@@ -178,7 +178,7 @@ struct QuickPanelView: View {
 /// A big number over a small label, used for the quick panel's overview row.
 private struct QuickCount: View {
     let value: Int
-    let label: String
+    let label: LocalizedStringKey
 
     var body: some View {
         VStack(spacing: 2) {

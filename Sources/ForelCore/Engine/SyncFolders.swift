@@ -23,9 +23,9 @@ public enum SyncDeletePolicy: String, CaseIterable, Sendable {
 
     public var label: String {
         switch self {
-        case .keepOtherSide: return "Keep counterpart"
-        case .moveToTrash: return "Move counterpart to Trash"
-        case .delete: return "Delete counterpart permanently"
+        case .keepOtherSide: return String(localized: "Keep counterpart", bundle: .forelStrings, comment: "What Sync Folders does with a copy when its file leaves the watched folder")
+        case .moveToTrash: return String(localized: "Move counterpart to Trash", bundle: .forelStrings, comment: "What Sync Folders does with a copy when its file leaves the watched folder")
+        case .delete: return String(localized: "Delete counterpart permanently", bundle: .forelStrings, comment: "What Sync Folders does with a copy when its file leaves the watched folder")
         }
     }
 }
@@ -42,12 +42,12 @@ extension ActionExecutor {
     static func planSyncFolders(_ action: Action, path: String, root: String?) throws -> ActionPlan {
         let sourceRoot = root ?? (path as NSString).deletingLastPathComponent
         if try isSyncDestinationPath(action, path: path) {
-            return ActionPlan(kind: action.kind, description: "Already synced", sourcePath: path,
+            return ActionPlan(kind: action.kind, description: String(localized: "Already synced", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"), sourcePath: path,
                               targetPath: nil, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
         }
         // A package is synced whole, never file by file.
         if syncPackage(containing: path, root: sourceRoot) != nil {
-            return ActionPlan(kind: action.kind, description: "Synced with its package", sourcePath: path,
+            return ActionPlan(kind: action.kind, description: String(localized: "Synced with its package", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"), sourcePath: path,
                               targetPath: nil, status: .wouldSkip, finalPath: path, copiedPath: nil, isTerminal: false)
         }
         let naiveTarget = try syncCounterpartPath(action, path: path, root: sourceRoot)
@@ -56,7 +56,7 @@ extension ActionExecutor {
         if isAlreadySynced(path, naiveTarget) {
             return ActionPlan(
                 kind: action.kind,
-                description: "Already synced",
+                description: String(localized: "Already synced", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity"),
                 sourcePath: path,
                 targetPath: naiveTarget,
                 status: .wouldSkip,
@@ -68,9 +68,9 @@ extension ActionExecutor {
 
         let description: String
         if isSyncedAsFolder(path) {
-            description = conflicts ? "Sync folder at \(naiveTarget)" : "Create synced folder at \(naiveTarget)"
+            description = conflicts ? String(localized: "Sync folder at \(naiveTarget)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") : String(localized: "Create synced folder at \(naiveTarget)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
         } else {
-            description = conflicts ? "Sync to \(naiveTarget), updating existing file" : "Sync to \(naiveTarget)"
+            description = conflicts ? String(localized: "Sync to \(naiveTarget), updating existing file", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity") : String(localized: "Sync to \(naiveTarget)", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
         }
         return ActionPlan(
             kind: action.kind,
@@ -121,7 +121,7 @@ extension ActionExecutor {
     public static func syncCounterpartPath(_ action: Action, path: String, root: String) throws -> String {
         let targetRoot = try syncDestinationRoot(action)
         guard let relative = relativePath(root: root, path: path) else {
-            throw ActionError("Sync folders can only sync files inside the watched folder")
+            throw ActionError(String(localized: "Sync folders can only sync files inside the watched folder", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         let counterpart = relative.isEmpty ? targetRoot : (targetRoot as NSString).appendingPathComponent(relative)
         // The configured root may be an alias selected by the user. Below
@@ -132,7 +132,7 @@ extension ActionExecutor {
             parent = (parent as NSString).appendingPathComponent(part)
             let attributes = try? FileManager.default.attributesOfItem(atPath: parent)
             if (attributes?[.type] as? FileAttributeType) == .typeSymbolicLink {
-                throw ActionError("The sync destination contains a symbolic link in a parent folder. No file was changed.")
+                throw ActionError(String(localized: "The sync destination contains a symbolic link in a parent folder. No file was changed.", bundle: .forelStrings, comment: "Error when an action fails"))
             }
         }
         return counterpart
@@ -152,7 +152,7 @@ extension ActionExecutor {
     static func syncDestinationRoot(_ action: Action) throws -> String {
         let value = normalizedPath(try stringParam(action, ActionParam.destination, "SyncFolders"))
         guard value.hasPrefix("/"), !value.contains("\0") else {
-            throw ActionError("Choose an absolute destination folder for Sync Folders.")
+            throw ActionError(String(localized: "Choose an absolute destination folder for Sync Folders.", bundle: .forelStrings, comment: "Error when an action fails"))
         }
         return value
     }
@@ -210,7 +210,7 @@ extension ActionExecutor {
         while !FileManager.default.fileExists(atPath: existing.path), existing.path != "/" {
             let attributes = try? FileManager.default.attributesOfItem(atPath: existing.path)
             if (attributes?[.type] as? FileAttributeType) == .typeSymbolicLink {
-                throw ActionError("The sync path contains a broken symbolic link. Choose a reachable destination folder.")
+                throw ActionError(String(localized: "The sync path contains a broken symbolic link. Choose a reachable destination folder.", bundle: .forelStrings, comment: "Error when an action fails"))
             }
             missing.append(existing.lastPathComponent)
             existing.deleteLastPathComponent()
@@ -305,15 +305,15 @@ extension RuleEngine {
         for (rule, action) in syncActions(rules) {
             let policy = ActionExecutor.syncDeletePolicy(action)
             let description = policy == .delete
-                ? "Delete permanently, removed from the watched folder"
-                : "Move to Trash, removed from the watched folder"
+                ? String(localized: "Delete permanently, removed from the watched folder", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
+                : String(localized: "Move to Trash, removed from the watched folder", bundle: .forelStrings, comment: "Planned action, shown in Dry Run and Activity")
             let items: [String]
             do {
                 items = try syncRemovals(rule: rule, action: action, root: root, path: path, allowOCR: isPro)
             } catch {
                 previews.append(FilePreview(path: path, name: (path as NSString).lastPathComponent, rules: [
                     RulePreview(ruleId: rule.id, ruleName: rule.name, conditions: [], actions: [
-                        ActionPreview(kind: action.kind, description: "Preview unavailable: \(error)", sourcePath: path, targetPath: nil, status: .wouldSkip),
+                        ActionPreview(kind: action.kind, description: String(localized: "Preview unavailable: \(String(describing: error))", bundle: .forelStrings, comment: "Dry Run; %@ is the error"), sourcePath: path, targetPath: nil, status: .wouldSkip),
                     ]),
                 ]))
                 continue
@@ -353,11 +353,11 @@ extension RuleEngine {
                 do {
                     if ActionExecutor.syncDeletePolicy(action) == .delete {
                         try FileManager.default.removeItem(atPath: item)
-                        history.append(entry(item, item, message: "Removed from the watched folder, so its copy was deleted permanently."))
+                        history.append(entry(item, item, message: String(localized: "Removed from the watched folder, so its copy was deleted permanently.", bundle: .forelStrings, comment: "Activity message")))
                     } else {
                         let trashed = try ActionExecutor.moveToTrashOnItsVolume(item)
                         history.append(entry(item, trashed, undo: .move(from: item, to: trashed),
-                                             message: "Removed from the watched folder, so its copy was moved to the Trash."))
+                                             message: String(localized: "Removed from the watched folder, so its copy was moved to the Trash.", bundle: .forelStrings, comment: "Activity message")))
                     }
                 } catch {
                     history.append(entry(item, item, status: .failed, message: String(describing: error)))
@@ -401,7 +401,7 @@ extension RuleEngine {
                    [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(error.code) { return false }
                 if error.domain == NSPOSIXErrorDomain,
                    [Int(ENOENT), Int(ENOTDIR)].contains(error.code) { return false }
-                throw ActionError("Cannot check whether \(path) still exists: \(error.localizedDescription) Sync cleanup was stopped.")
+                throw ActionError(String(localized: "Cannot check whether \(path) still exists: \(error.localizedDescription) Sync cleanup was stopped.", bundle: .forelStrings, comment: "Error when an action fails"))
             }
         }
 

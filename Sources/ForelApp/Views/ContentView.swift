@@ -97,14 +97,16 @@ struct ContentView: View {
 
     private var unsavedRuleTitle: String {
         let name = model.editingDraft?.name.trimmingCharacters(in: .whitespaces) ?? ""
-        return name.isEmpty ? "Save changes to this rule?" : "Save changes to the rule “\(name)”?"
+        return name.isEmpty
+            ? String(localized: "Save changes to this rule?")
+            : String(localized: "Save changes to the rule “\(name)”?")
     }
 
     private var unsavedRuleMessage: String {
         if let problem = unsavedRuleProblems.first {
-            return "It can't be saved yet: \(problem) Keep editing to fix it, or discard your changes."
+            return String(localized: "It can't be saved yet: \(problem) Keep editing to fix it, or discard your changes.", comment: "%@ is a sentence explaining what is wrong with the rule")
         }
-        return "Your changes to this rule are lost if you don't save them."
+        return String(localized: "Your changes to this rule are lost if you don't save them.")
     }
 
     private var errorBinding: Binding<Bool> {
@@ -113,7 +115,7 @@ struct ContentView: View {
             set: {
                 if !$0 {
                     model.errorMessage = nil
-                    model.alertTitle = "Error"
+                    model.alertTitle = String(localized: "Error", comment: "Alert title")
                 }
             }
         )

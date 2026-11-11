@@ -35,8 +35,8 @@ struct LicenseSettingsView: View {
                 SectionLabel(title: "Licensed Device")
                 GlassCard {
                     SettingsActionRow(
-                        title: license.deviceName,
-                        subtitle: license.licenseKey,
+                        title: Text(verbatim: license.deviceName),
+                        subtitle: license.licenseKey.map { Text(verbatim: $0) },
                         buttonTitle: "Deactivate",
                         action: { showingDeactivationConfirmation = true }
                     )
@@ -108,8 +108,8 @@ struct LicenseSettingsView: View {
 
     private var statusSymbol: String { license.hasAccess ? "checkmark.seal.fill" : "person.crop.circle" }
     private var statusColor: Color { license.hasAccess ? .green : ForelTheme.secondaryText }
-    private var statusTitle: String { license.hasAccess ? "Forel Pro" : "Forel Free" }
-    private var statusSubtitle: String {
+    private var statusTitle: LocalizedStringKey { license.hasAccess ? "Forel Pro" : "Forel Free" }
+    private var statusSubtitle: LocalizedStringKey {
         license.hasAccess
             ? "Unlimited folders and files, with OCR and media imports."
             : "Free forever: 2 watched folders and 300 processed files per month, with unlimited rules and actions. No trial."

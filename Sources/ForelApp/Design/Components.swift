@@ -42,10 +42,20 @@ struct VisualEffectBlur: NSViewRepresentable {
 
 /// Small caps section header, e.g. "WATCHED FOLDERS".
 struct SectionLabel: View {
-    let title: String
+    let title: Text
+
+    init(title: LocalizedStringKey) {
+        self.title = Text(title)
+    }
+
+    /// For text built elsewhere, such as a date.
+    init(verbatim title: String) {
+        self.title = Text(verbatim: title)
+    }
 
     var body: some View {
-        Text(title.uppercased())
+        title
+            .textCase(.uppercase)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(ForelTheme.secondaryText)
             .padding(.horizontal, 2)
@@ -143,8 +153,8 @@ struct UpdateAvailableBanner: View {
 
 /// A title/subtitle row with a trailing switch, e.g. "Watching".
 struct ToggleRow: View {
-    let title: String
-    let subtitle: String
+    let title: LocalizedStringKey
+    let subtitle: LocalizedStringKey
     @Binding var isOn: Bool
 
     var body: some View {
@@ -228,13 +238,13 @@ struct QuickFolderRow: View {
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 14)
-        .help(isBlocked ? "Reorder folders or activate Pro to use this folder." : folder.path)
+        .help(isBlocked ? String(localized: "Reorder folders or activate Pro to use this folder.") : folder.path)
     }
 }
 
 /// A title row with a trailing segmented picker, used in Settings (e.g. "Theme").
 struct PickerRow<Value: Hashable, Content: View>: View {
-    let title: String
+    let title: LocalizedStringKey
     @Binding var selection: Value
     @ViewBuilder var options: Content
 
@@ -255,17 +265,32 @@ struct PickerRow<Value: Hashable, Content: View>: View {
 /// A title/subtitle row with a trailing borderless action button, e.g.
 /// "Check for updates now".
 struct SettingsActionRow: View {
-    let title: String
-    let subtitle: String?
-    let buttonTitle: String
+    let title: Text
+    let subtitle: Text?
+    let buttonTitle: LocalizedStringKey
     let action: () -> Void
+
+    init(title: LocalizedStringKey, subtitle: LocalizedStringKey?, buttonTitle: LocalizedStringKey, action: @escaping () -> Void) {
+        self.title = Text(title)
+        self.subtitle = subtitle.map { Text($0) }
+        self.buttonTitle = buttonTitle
+        self.action = action
+    }
+
+    /// For text built elsewhere, such as the user's device name.
+    init(title: Text, subtitle: Text?, buttonTitle: LocalizedStringKey, action: @escaping () -> Void) {
+        self.title = title
+        self.subtitle = subtitle
+        self.buttonTitle = buttonTitle
+        self.action = action
+    }
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
+                title.font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
                 if let subtitle {
-                    Text(subtitle).font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
+                    subtitle.font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
                 }
             }
             Spacer()
@@ -282,7 +307,7 @@ struct SettingsActionRow: View {
 /// by the menu-bar quick panel — mirrors how native macOS widgets (Control
 /// Center, the Notification Center weather widget) lay out footer actions.
 struct QuickPanelFooterButton: View {
-    let title: String
+    let title: LocalizedStringKey
     let systemImage: String
     let action: () -> Void
 
@@ -304,7 +329,7 @@ struct QuickPanelFooterButton: View {
 
 /// Borderless footer link, e.g. "Settings" / "Quit".
 struct FooterLink: View {
-    let title: String
+    let title: LocalizedStringKey
     let systemImage: String
     let action: () -> Void
 
@@ -380,12 +405,17 @@ struct BrandMark: View {
 /// Standard window header: brand mark + title/subtitle + optional trailing
 /// content.
 struct ViewHeader<Trailing: View>: View {
-    let title: String
-    let subtitle: String
+    let title: Text
+    let subtitle: Text
     var systemImage: String?
     @ViewBuilder var trailing: Trailing
 
-    init(title: String, subtitle: String, systemImage: String? = nil, @ViewBuilder trailing: () -> Trailing) {
+    init(title: LocalizedStringKey, subtitle: LocalizedStringKey, systemImage: String? = nil, @ViewBuilder trailing: () -> Trailing) {
+        self.init(title: Text(title), subtitle: Text(subtitle), systemImage: systemImage, trailing: trailing)
+    }
+
+    /// For text built elsewhere, such as a folder's name.
+    init(title: Text, subtitle: Text, systemImage: String? = nil, @ViewBuilder trailing: () -> Trailing) {
         self.title = title
         self.subtitle = subtitle
         self.systemImage = systemImage
@@ -407,11 +437,11 @@ struct ViewHeader<Trailing: View>: View {
                 BrandMark()
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(title)
+                title
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(ForelTheme.primaryText)
                     .lineLimit(1)
-                Text(subtitle)
+                subtitle
                     .font(.system(size: 11))
                     .foregroundStyle(ForelTheme.secondaryText)
                     .lineLimit(1)
@@ -425,7 +455,11 @@ struct ViewHeader<Trailing: View>: View {
 }
 
 extension ViewHeader where Trailing == EmptyView {
-    init(title: String, subtitle: String, systemImage: String? = nil) {
+    init(title: LocalizedStringKey, subtitle: LocalizedStringKey, systemImage: String? = nil) {
+        self.init(title: title, subtitle: subtitle, systemImage: systemImage) { EmptyView() }
+    }
+
+    init(title: Text, subtitle: Text, systemImage: String? = nil) {
         self.init(title: title, subtitle: subtitle, systemImage: systemImage) { EmptyView() }
     }
 }
@@ -484,7 +518,7 @@ struct IconButtonStyle: ButtonStyle {
 
 /// Dark glass text field matching the surface styling.
 struct GlassField: View {
-    let placeholder: String
+    let placeholder: LocalizedStringKey
     @Binding var text: String
 
     var body: some View {
@@ -504,10 +538,10 @@ struct GlassField: View {
 /// with tokens (e.g. `/Volumes/Archive/{year}/{month}`) can be typed.
 /// Used everywhere a folder is selected.
 struct FolderField: View {
-    let placeholder: String
+    let placeholder: LocalizedStringKey
     @Binding var path: String
     /// Shown under the field only while the user is typing in it.
-    var hint: String? = nil
+    var hint: LocalizedStringKey? = nil
     @FocusState private var isEditing: Bool
 
     var body: some View {
@@ -554,7 +588,7 @@ enum FolderPicker {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "Choose"
+        panel.prompt = String(localized: "Choose", comment: "Button of the folder picker")
         if let path, !path.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: path)
         }
@@ -572,7 +606,8 @@ struct ColorLabelPicker: View {
     @Binding var selection: String
     var allowNone: Bool = true
 
-    /// Approximation of the macOS Finder label colours.
+    /// Approximation of the macOS Finder label colours. The names are stored
+    /// in rules as is; `FinderTags.displayName(forColor:)` gives the one to show.
     static let colors: [(name: String, color: Color)] = [
         ("Red", .red),
         ("Orange", .orange),
@@ -615,6 +650,6 @@ struct ColorLabelPicker: View {
                 }
         }
         .buttonStyle(.plain)
-        .help(name.isEmpty ? "No label" : name)
+        .help(name.isEmpty ? String(localized: "No label", comment: "Color label") : FinderTags.displayName(forColor: name))
     }
 }

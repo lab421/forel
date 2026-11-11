@@ -271,7 +271,7 @@ public enum RuleEngine {
                 let result = ConditionEvaluator.evaluateContents(condition, path: path, allowOCR: allowOCR)
                 let detail: String
                 if let message = result.message {
-                    detail = "\(result.strategy.label) — \(message)"
+                    detail = String(localized: "\(result.strategy.label) — \(message)", bundle: .forelStrings, comment: "Dry Run detail for a Contents condition: %1$@ is how the file was read, %2$@ why it failed")
                 } else {
                     detail = result.strategy.label
                 }
@@ -432,8 +432,7 @@ public enum RuleEngine {
                     // conflict-aware skips (already in destination, or
                     // explicitly configured to skip); everything else is
                     // skipped because it simply wouldn't change the file.
-                    let isConflictAwareSkip = actionPlan.description == "Already in destination" || actionPlan.description.hasPrefix("Skip —")
-                    history.append(
+                                        history.append(
                         HistoryEntry(
                             batchId: batchId,
                             ruleId: rule.id,
@@ -444,7 +443,7 @@ public enum RuleEngine {
                             undo: Undo.none.toJSON(),
                             reversible: false,
                             status: .skipped,
-                            message: isConflictAwareSkip ? actionPlan.description : "Skipped because the action would not change this file."
+                            message: actionPlan.explainsSkip ? actionPlan.description : String(localized: "Skipped because the action would not change this file.", bundle: .forelStrings, comment: "Activity message")
                         )
                     )
                 case .blockedByConflict:
@@ -459,7 +458,7 @@ public enum RuleEngine {
                             undo: Undo.none.toJSON(),
                             reversible: false,
                             status: .failed,
-                            message: "A file already exists at the destination."
+                            message: String(localized: "A file already exists at the destination.", bundle: .forelStrings, comment: "Activity message")
                         )
                     )
                 case .needsConfirmation:
@@ -564,7 +563,7 @@ public enum RuleEngine {
                 actions.append(
                     ActionPreview(
                         kind: action.kind,
-                        description: "Preview unavailable: \(error)",
+                        description: String(localized: "Preview unavailable: \(String(describing: error))", bundle: .forelStrings, comment: "Dry Run; %@ is the error"),
                         sourcePath: current,
                         targetPath: nil,
                         status: .wouldSkip

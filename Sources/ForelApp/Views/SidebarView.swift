@@ -193,7 +193,7 @@ struct SidebarView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(isSelected ? (isAllowed ? ForelTheme.accent : ForelTheme.secondaryText).opacity(0.5) : ForelTheme.surfaceBorder)
         )
-        .help(isAllowed ? folder.path : "Reorder folders or activate Pro to use this folder.")
+        .help(isAllowed ? folder.path : String(localized: "Reorder folders or activate Pro to use this folder."))
         .contentShape(Rectangle())
         .onTapGesture {
             model.leaveRuleEditor {

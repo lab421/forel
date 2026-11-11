@@ -104,9 +104,9 @@ public final class ForelKeychainLicenseStore: LicenseSecureStoring {
 
         var errorDescription: String? {
             if status == errSecInteractionNotAllowed || status == errSecAuthFailed || status == errSecUserCanceled {
-                return "Activate your Pro license again in License settings to allow access to its saved Keychain record."
+                return String(localized: "Activate your Pro license again in License settings to allow access to its saved Keychain record.", bundle: .forelStrings, comment: "License error")
             }
-            return SecCopyErrorMessageString(status, nil) as String? ?? "Keychain error \(status)."
+            return SecCopyErrorMessageString(status, nil) as String? ?? String(localized: "Keychain error \(Int(status)).", bundle: .forelStrings, comment: "License error")
         }
     }
 }

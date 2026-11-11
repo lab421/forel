@@ -36,37 +36,37 @@ public enum UndoChecker {
     /// user asked to undo.
     public static func evaluate(_ entry: HistoryEntry, activeRules: [Rule] = [], watchedRoot: String? = nil, isPro: Bool = true) -> UndoSafety {
         guard entry.reversible else {
-            return .unsafe(reason: "This action cannot be undone.")
+            return .unsafe(reason: String(localized: "This action cannot be undone.", bundle: .forelStrings, comment: "Why an action in Activity can’t be undone"))
         }
         guard entry.status == .applied else {
-            return .unsafe(reason: "This action is not currently applied.")
+            return .unsafe(reason: String(localized: "This action is not currently applied.", bundle: .forelStrings, comment: "Why an action in Activity can’t be undone"))
         }
 
         let undo = Undo.fromJSON(entry.undo)
         switch undo {
         case .none:
-            return .unsafe(reason: "This action cannot be undone.")
+            return .unsafe(reason: String(localized: "This action cannot be undone.", bundle: .forelStrings, comment: "Why an action in Activity can’t be undone"))
         case .move(let from, let to):
             guard FileManager.default.fileExists(atPath: to) else {
-                return .unsafe(reason: "The file Forel moved no longer exists at \((to as NSString).lastPathComponent).")
+                return .unsafe(reason: String(localized: "The file Forel moved no longer exists at \((to as NSString).lastPathComponent).", bundle: .forelStrings, comment: "Why an action in Activity can’t be undone"))
             }
             guard !FileManager.default.fileExists(atPath: from) else {
-                return .unsafe(reason: "A file already exists at the original location.")
+                return .unsafe(reason: String(localized: "A file already exists at the original location.", bundle: .forelStrings, comment: "Why an action in Activity can’t be undone"))
             }
             if let mismatch = identityMismatchReason(entry, currentPath: to) {
                 return .unsafe(reason: mismatch)
             }
         case .copy(let copy):
             guard FileManager.default.fileExists(atPath: copy) else {
-                return .unsafe(reason: "The copy Forel created no longer exists.")
+                return .unsafe(reason: String(localized: "The copy Forel created no longer exists.", bundle: .forelStrings, comment: "Why an action in Activity can’t be undone"))
             }
         case .addTags, .removeTags, .color:
             guard FileManager.default.fileExists(atPath: entry.resultPath) else {
-                return .unsafe(reason: "The file no longer exists at its expected location.")
+                return .unsafe(reason: String(localized: "The file no longer exists at its expected location.", bundle: .forelStrings, comment: "Why an action in Activity can’t be undone"))
             }
         case .locked(let path, _), .extensionHidden(let path, _):
             guard FileManager.default.fileExists(atPath: path) else {
-                return .unsafe(reason: "The file no longer exists at its expected location.")
+                return .unsafe(reason: String(localized: "The file no longer exists at its expected location.", bundle: .forelStrings, comment: "Why an action in Activity can’t be undone"))
             }
             if let mismatch = identityMismatchReason(entry, currentPath: path) {
                 return .unsafe(reason: mismatch)
@@ -76,7 +76,7 @@ public enum UndoChecker {
         // Copy-undo only deletes the copy — the original is never restored
         // anywhere, so there's nothing for a rule to reprocess.
         if !isCopyUndo(undo), let ruleName = ruleThatWouldReprocess(entry, activeRules: activeRules, watchedRoot: watchedRoot, isPro: isPro) {
-            return .unsafe(reason: "The rule \"\(ruleName)\" would immediately reprocess this file once it's restored.")
+            return .unsafe(reason: String(localized: "The rule \"\(ruleName)\" would immediately reprocess this file once it's restored.", bundle: .forelStrings, comment: "Why an action in Activity can’t be undone"))
         }
 
         return .safe
@@ -116,7 +116,7 @@ public enum UndoChecker {
         guard let expectedVolume = entry.resultVolumeId, let expectedFile = entry.resultFileId else { return nil }
         guard let actual = FileFingerprint.identity(currentPath) else { return nil }
         guard actual.volumeId != expectedVolume || actual.fileId != expectedFile else { return nil }
-        return "The file at this location is no longer the same file Forel moved."
+        return String(localized: "The file at this location is no longer the same file Forel moved.", bundle: .forelStrings, comment: "Why an action in Activity can’t be undone")
     }
 
     /// Name of the first active rule that would plan a `wouldRun` action

@@ -24,7 +24,7 @@ import ForelCore
 /// edge (and remembered), and it can open in a larger window.
 struct ScriptEditor: View {
     @Binding var script: String
-    var placeholder = "Bash script — the matched file's path is in $FOREL_FILE"
+    var placeholder: LocalizedStringKey = "Bash script — the matched file's path is in $FOREL_FILE"
     @AppStorage("scriptEditorHeight") private var height: Double = 150
     @StateObject private var controller = ScriptEditorController()
     @State private var syntaxError: String?
@@ -116,7 +116,7 @@ struct ScriptEditor: View {
 
     private var lineCountLabel: String {
         let lines = script.isEmpty ? 0 : script.split(separator: "\n", omittingEmptySubsequences: false).count
-        return "\(lines) line\(lines == 1 ? "" : "s")"
+        return String(localized: "\(lines) lines", comment: "Length of a script")
     }
 
     private func checkSyntax() async {

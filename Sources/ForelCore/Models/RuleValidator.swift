@@ -28,14 +28,14 @@ public enum RuleValidator {
         conditions.compactMap { condition in
             if condition.kind == .locked {
                 return condition.kind.validOperators.contains(condition.operator)
-                    ? nil : Issue(message: "Locked requires true or false")
+                    ? nil : Issue(message: String(localized: "Locked requires true or false", bundle: .forelStrings, comment: "Problem with a rule, shown in the rule editor"))
             }
             if condition.value.trimmingCharacters(in: .whitespaces).isEmpty {
-                return Issue(message: "Condition value cannot be empty")
+                return Issue(message: String(localized: "Condition value cannot be empty", bundle: .forelStrings, comment: "Problem with a rule, shown in the rule editor"))
             }
             if condition.operator == .matchesRegex,
                (try? NSRegularExpression(pattern: condition.value)) == nil {
-                return Issue(message: "Regex pattern is invalid")
+                return Issue(message: String(localized: "Regex pattern is invalid", bundle: .forelStrings, comment: "Problem with a rule, shown in the rule editor"))
             }
             return nil
         }
@@ -47,15 +47,15 @@ public enum RuleValidator {
             case .toggleLock, .toggleExtension:
                 let key = action.kind == .toggleLock ? ActionParam.locked : ActionParam.extensionHidden
                 if action.params[key]?.boolValue == nil {
-                    return Issue(message: "\(action.kind.label) requires a true or false value")
+                    return Issue(message: String(localized: "\(action.kind.label) requires a true or false value", bundle: .forelStrings, comment: "Problem with a rule, shown in the rule editor"))
                 }
             case .moveToFolder, .copyToFolder, .syncFolders:
                 if action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
-                    return Issue(message: "Destination path cannot be empty")
+                    return Issue(message: String(localized: "Destination path cannot be empty", bundle: .forelStrings, comment: "Problem with a rule, shown in the rule editor"))
                 }
             case .rename:
                 if action.params[ActionParam.pattern]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
-                    return Issue(message: "Rename pattern cannot be empty")
+                    return Issue(message: String(localized: "Rename pattern cannot be empty", bundle: .forelStrings, comment: "Problem with a rule, shown in the rule editor"))
                 }
             case .compress:
                 do {
@@ -66,11 +66,11 @@ public enum RuleValidator {
                 }
             case .addTag, .removeTag:
                 if tags(in: action).isEmpty {
-                    return Issue(message: "At least one tag is required")
+                    return Issue(message: String(localized: "At least one tag is required", bundle: .forelStrings, comment: "Problem with a rule, shown in the rule editor"))
                 }
             case .openApplication:
                 if action.params[ActionParam.applicationPath]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
-                    return Issue(message: "Application cannot be empty")
+                    return Issue(message: String(localized: "Application cannot be empty", bundle: .forelStrings, comment: "Problem with a rule, shown in the rule editor"))
                 }
             default:
                 break

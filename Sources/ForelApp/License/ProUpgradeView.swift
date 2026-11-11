@@ -13,15 +13,15 @@ enum ProUpgradeContext: Identifiable {
     }
     var title: String {
         switch self {
-        case .folders: "Automate more folders"
-        case .monthlyFiles: "Keep processing with Pro"
+        case .folders: String(localized: "Automate more folders")
+        case .monthlyFiles: String(localized: "Keep processing with Pro")
         case .feature(let feature): feature.title
         }
     }
     var message: String {
         switch self {
-        case .folders: "Free includes 2 watched folders. With Pro, organize your projects, invoices, and downloads with unlimited folders."
-        case .monthlyFiles: "Free includes 300 processed files per calendar month, shared across all folders. Activate Pro for unlimited processing, or resume next month. Dry Run remains available and your remaining files stay in place."
+        case .folders: String(localized: "Free includes 2 watched folders. With Pro, organize your projects, invoices, and downloads with unlimited folders.")
+        case .monthlyFiles: String(localized: "Free includes 300 processed files per calendar month, shared across all folders. Activate Pro for unlimited processing, or resume next month. Dry Run remains available and your remaining files stay in place.")
         case .feature(let feature): feature.benefit
         }
     }

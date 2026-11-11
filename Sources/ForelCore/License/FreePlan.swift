@@ -5,14 +5,14 @@ public enum ProFeature: String, CaseIterable, Identifiable, Sendable {
     public var id: String { rawValue }
     public var title: String {
         switch self {
-        case .ocr: "Text recognition (OCR)"
-        case .libraryImports: "Media library imports"
+        case .ocr: String(localized: "Text recognition (OCR)", bundle: .forelStrings, comment: "Forel Pro feature")
+        case .libraryImports: String(localized: "Media library imports", bundle: .forelStrings, comment: "Forel Pro feature")
         }
     }
     public var benefit: String {
         switch self {
-        case .ocr: "Organize scanned PDFs and images by the text they contain. Recognition runs locally on your Mac."
-        case .libraryImports: "Import matching files directly into Photos, Music, and TV."
+        case .ocr: String(localized: "Organize scanned PDFs and images by the text they contain. Recognition runs locally on your Mac.", bundle: .forelStrings, comment: "Forel Pro feature description")
+        case .libraryImports: String(localized: "Import matching files directly into Photos, Music, and TV.", bundle: .forelStrings, comment: "Forel Pro feature description")
         }
     }
 }
@@ -55,10 +55,10 @@ public enum FreePlanError: Error, LocalizedError, Equatable {
     case feature(ProFeature)
     public var errorDescription: String? {
         switch self {
-        case .folderLimit: "Forel Free supports 2 watched folders. Remove a folder or activate Pro to add another."
-        case .proFolder: "This folder is outside the Free allowance. Reorder folders or activate Pro to add rules."
-        case .monthlyFileLimit: "Forel Free has reached its limit of 300 processed files this month. Processing resumes next month, or activate Pro for unlimited files. Your remaining files stay in place."
-        case .feature(let feature): "\(feature.title) requires Forel Pro. This rule is kept but cannot run in Free."
+        case .folderLimit: String(localized: "Forel Free supports 2 watched folders. Remove a folder or activate Pro to add another.", bundle: .forelStrings, comment: "Forel Free limit")
+        case .proFolder: String(localized: "This folder is outside the Free allowance. Reorder folders or activate Pro to add rules.", bundle: .forelStrings, comment: "Forel Free limit")
+        case .monthlyFileLimit: String(localized: "Forel Free has reached its limit of 300 processed files this month. Processing resumes next month, or activate Pro for unlimited files. Your remaining files stay in place.", bundle: .forelStrings, comment: "Forel Free limit")
+        case .feature(let feature): String(localized: "\(feature.title) requires Forel Pro. This rule is kept but cannot run in Free.", bundle: .forelStrings, comment: "Forel Free limit")
         }
     }
 }

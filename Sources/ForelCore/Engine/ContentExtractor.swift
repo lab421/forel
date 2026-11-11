@@ -53,18 +53,18 @@ public enum ContentStrategy: String, Sendable {
     /// Human-readable label shown in the Dry Run details.
     public var label: String {
         switch self {
-        case .plainText: return "Plain text"
-        case .pdfText: return "PDF text"
-        case .pdfOCR: return "PDF OCR"
-        case .rtf: return "RTF"
-        case .officeDocument: return "Word document"
-        case .xlsx: return "Spreadsheet"
-        case .pptx: return "Presentation"
-        case .openDocument: return "OpenDocument"
-        case .iWork: return "iWork document"
-        case .spotlight: return "Spotlight"
-        case .imageOCR: return "Image OCR"
-        case .none: return "No readable content"
+        case .plainText: return String(localized: "Plain text", bundle: .forelStrings, comment: "How Forel read a file’s contents, shown in Dry Run")
+        case .pdfText: return String(localized: "PDF text", bundle: .forelStrings, comment: "How Forel read a file’s contents, shown in Dry Run")
+        case .pdfOCR: return String(localized: "PDF OCR", bundle: .forelStrings, comment: "How Forel read a file’s contents, shown in Dry Run")
+        case .rtf: return String(localized: "RTF", bundle: .forelStrings, comment: "How Forel read a file’s contents, shown in Dry Run")
+        case .officeDocument: return String(localized: "Word document", bundle: .forelStrings, comment: "How Forel read a file’s contents, shown in Dry Run")
+        case .xlsx: return String(localized: "Spreadsheet", bundle: .forelStrings, comment: "How Forel read a file’s contents, shown in Dry Run")
+        case .pptx: return String(localized: "Presentation", bundle: .forelStrings, comment: "How Forel read a file’s contents, shown in Dry Run")
+        case .openDocument: return String(localized: "OpenDocument", bundle: .forelStrings, comment: "How Forel read a file’s contents, shown in Dry Run")
+        case .iWork: return String(localized: "iWork document", bundle: .forelStrings, comment: "How Forel read a file’s contents, shown in Dry Run")
+        case .spotlight: return String(localized: "Spotlight", bundle: .forelStrings, comment: "How Forel read a file’s contents, shown in Dry Run")
+        case .imageOCR: return String(localized: "Image OCR", bundle: .forelStrings, comment: "How Forel read a file’s contents, shown in Dry Run")
+        case .none: return String(localized: "No readable content", bundle: .forelStrings, comment: "How Forel read a file’s contents, shown in Dry Run")
         }
     }
 }
@@ -141,14 +141,14 @@ public enum ContentExtractor {
         default:
             if imageExtensions.contains(ext) {
                 guard allowOCR else {
-                    return ContentExtraction(text: nil, strategy: .imageOCR, message: "Text recognition in images requires Forel Pro.")
+                    return ContentExtraction(text: nil, strategy: .imageOCR, message: String(localized: "Text recognition in images requires Forel Pro.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
                 }
                 return extractImageOCR(path: path, size: size)
             }
             if spotlightFallbackExtensions.contains(ext) {
                 // No in-process extractor; the evaluator may still try a
                 // Spotlight "contains" search. Report that so the Dry Run is honest.
-                return ContentExtraction(text: nil, strategy: .none, message: "Only Spotlight ‘contains’ matching is available for this format.")
+                return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Only Spotlight ‘contains’ matching is available for this format.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
             }
             // Final fallback: lots of files are plain text with an extension we
             // don't list (e.g. .ini, .conf, .toml) or no extension at all. Try
@@ -163,12 +163,12 @@ public enum ContentExtractor {
     /// on binary content that merely happened to be readable.
     private static func extractTextFallback(path: String, size: UInt64) -> ContentExtraction {
         if size > plainTextMaxBytes {
-            return ContentExtraction(text: nil, strategy: .none, message: "File exceeds the 100 MB text limit.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "File exceeds the 100 MB text limit.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
               !data.contains(0x00),
               let text = String(data: data, encoding: .utf8) else {
-            return ContentExtraction(text: nil, strategy: .none, message: "Unsupported file type.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Unsupported file type.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         return ContentExtraction(text: text, strategy: .plainText)
     }
@@ -234,7 +234,7 @@ public enum ContentExtractor {
 
     private static func extractPlainText(path: String, size: UInt64) -> ContentExtraction {
         if size > plainTextMaxBytes {
-            return ContentExtraction(text: nil, strategy: .none, message: "File exceeds the 100 MB text limit.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "File exceeds the 100 MB text limit.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         // UTF-8 first, then fall back to UTF-16 and ISO Latin 1 so files saved
         // with another encoding still match.
@@ -243,17 +243,17 @@ public enum ContentExtractor {
                 return ContentExtraction(text: text, strategy: .plainText)
             }
         }
-        return ContentExtraction(text: nil, strategy: .none, message: "Could not decode text.")
+        return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Could not decode text.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
     }
 
     // MARK: - PDF
 
     private static func extractPDF(path: String, size: UInt64, allowOCR: Bool) -> ContentExtraction {
         if size > pdfMaxBytes {
-            return ContentExtraction(text: nil, strategy: .none, message: "PDF exceeds the 100 MB limit.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "PDF exceeds the 100 MB limit.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         guard let doc = PDFDocument(url: URL(fileURLWithPath: path)) else {
-            return ContentExtraction(text: nil, strategy: .none, message: "Could not open PDF.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Could not open PDF.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         let text = pdfText(from: doc)
         if !text.isEmpty {
@@ -261,13 +261,13 @@ public enum ContentExtractor {
         }
         // No text layer — likely a scanned PDF. OCR the rendered pages.
         guard allowOCR else {
-            return ContentExtraction(text: nil, strategy: .pdfOCR, message: "Text recognition in scanned PDFs requires Forel Pro.")
+            return ContentExtraction(text: nil, strategy: .pdfOCR, message: String(localized: "Text recognition in scanned PDFs requires Forel Pro.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         let ocr = pdfOCRText(from: doc)
         if !ocr.isEmpty {
             return ContentExtraction(text: ocr, strategy: .pdfOCR)
         }
-        return ContentExtraction(text: nil, strategy: .none, message: "PDF has no readable text.")
+        return ContentExtraction(text: nil, strategy: .none, message: String(localized: "PDF has no readable text.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
     }
 
     /// Concatenates the text layer of a PDF document, up to the page limit.
@@ -320,15 +320,15 @@ public enum ContentExtractor {
 
     private static func extractAttributed(path: String, documentType: NSAttributedString.DocumentType, strategy: ContentStrategy) -> ContentExtraction {
         if fileSize(path) > defaultMaxBytes {
-            return ContentExtraction(text: nil, strategy: .none, message: "Document exceeds the 100 MB limit.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Document exceeds the 100 MB limit.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [.documentType: documentType]
         guard let attributed = attributedString(url: URL(fileURLWithPath: path), options: options) else {
-            return ContentExtraction(text: nil, strategy: .none, message: "Could not read document.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Could not read document.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         let text = attributed.string
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return ContentExtraction(text: nil, strategy: .none, message: "Document has no readable text.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Document has no readable text.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         return ContentExtraction(text: text, strategy: strategy)
     }
@@ -357,16 +357,16 @@ public enum ContentExtractor {
     /// per-sheet XML.
     private static func extractXLSX(path: String, size: UInt64) -> ContentExtraction {
         if size > defaultMaxBytes {
-            return ContentExtraction(text: nil, strategy: .none, message: "Spreadsheet exceeds the 100 MB limit.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Spreadsheet exceeds the 100 MB limit.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         guard let xml = zipText(path: path, matching: { member in
             member == "xl/sharedStrings.xml" || (member.hasPrefix("xl/worksheets/") && member.hasSuffix(".xml"))
         }) else {
-            return ContentExtraction(text: nil, strategy: .none, message: "Could not read spreadsheet.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Could not read spreadsheet.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         let text = strippedXMLText(xml)
         if text.isEmpty {
-            return ContentExtraction(text: nil, strategy: .none, message: "Spreadsheet has no readable text.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Spreadsheet has no readable text.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         return ContentExtraction(text: text, strategy: .xlsx)
     }
@@ -375,16 +375,16 @@ public enum ContentExtractor {
     /// `ppt/slides/slideN.xml`.
     private static func extractPPTX(path: String, size: UInt64) -> ContentExtraction {
         if size > defaultMaxBytes {
-            return ContentExtraction(text: nil, strategy: .none, message: "Presentation exceeds the 100 MB limit.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Presentation exceeds the 100 MB limit.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         guard let xml = zipText(path: path, matching: { member in
             member.hasPrefix("ppt/slides/slide") && member.hasSuffix(".xml")
         }) else {
-            return ContentExtraction(text: nil, strategy: .none, message: "Could not read presentation.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Could not read presentation.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         let text = strippedXMLText(xml)
         if text.isEmpty {
-            return ContentExtraction(text: nil, strategy: .none, message: "Presentation has no readable text.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Presentation has no readable text.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         return ContentExtraction(text: text, strategy: .pptx)
     }
@@ -395,14 +395,14 @@ public enum ContentExtractor {
     /// well-documented `content.xml` part. Read it and strip the markup.
     private static func extractOpenDocument(path: String, size: UInt64) -> ContentExtraction {
         if size > defaultMaxBytes {
-            return ContentExtraction(text: nil, strategy: .none, message: "Document exceeds the 100 MB limit.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Document exceeds the 100 MB limit.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         guard let xml = zipText(path: path, matching: { $0 == "content.xml" }) else {
-            return ContentExtraction(text: nil, strategy: .none, message: "Could not read document.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Could not read document.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         let text = strippedXMLText(xml)
         if text.isEmpty {
-            return ContentExtraction(text: nil, strategy: .none, message: "Document has no readable text.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Document has no readable text.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         return ContentExtraction(text: text, strategy: .openDocument)
     }
@@ -447,14 +447,14 @@ public enum ContentExtractor {
     /// preview, the evaluator can still fall back to Spotlight for `contains`.
     private static func extractIWork(path: String, size: UInt64) -> ContentExtraction {
         if size > defaultMaxBytes {
-            return ContentExtraction(text: nil, strategy: .none, message: "iWork document exceeds the 100 MB limit.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "iWork document exceeds the 100 MB limit.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         guard let pdfData = iWorkPreviewPDF(path: path), let doc = PDFDocument(data: pdfData) else {
-            return ContentExtraction(text: nil, strategy: .none, message: "iWork preview not available.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "iWork preview not available.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         let text = pdfText(from: doc)
         if text.isEmpty {
-            return ContentExtraction(text: nil, strategy: .none, message: "iWork preview has no readable text.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "iWork preview has no readable text.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         return ContentExtraction(text: text, strategy: .iWork)
     }
@@ -488,18 +488,18 @@ public enum ContentExtractor {
 
     private static func extractImageOCR(path: String, size: UInt64) -> ContentExtraction {
         if size > ocrImageMaxBytes {
-            return ContentExtraction(text: nil, strategy: .none, message: "Image exceeds the 25 MB OCR limit.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Image exceeds the 25 MB OCR limit.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         let url = URL(fileURLWithPath: path)
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-            return ContentExtraction(text: nil, strategy: .none, message: "Could not open image.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Could not open image.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         if cgImage.width > ocrMaxDimension || cgImage.height > ocrMaxDimension {
-            return ContentExtraction(text: nil, strategy: .none, message: "Image is too large for OCR.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "Image is too large for OCR.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         guard let text = recognizeText(in: cgImage) else {
-            return ContentExtraction(text: nil, strategy: .none, message: "No text found in image.")
+            return ContentExtraction(text: nil, strategy: .none, message: String(localized: "No text found in image.", bundle: .forelStrings, comment: "Why a file’s contents couldn’t be read, shown in Dry Run"))
         }
         return ContentExtraction(text: text, strategy: .imageOCR)
     }

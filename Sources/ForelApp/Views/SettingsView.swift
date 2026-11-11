@@ -36,6 +36,9 @@ struct SettingsView: View {
     @EnvironmentObject var license: ForelLicenseManager
     @EnvironmentObject var navigation: SettingsNavigation
     @State private var launchAtLogin = LoginItem.isEnabled
+    /// "" follows the Mac's language.
+    @State private var languageChoice = AppLanguage.choice ?? ""
+    @State private var nextLanguage = AppLanguage.next
 
     var body: some View {
         HStack(spacing: 0) {
@@ -102,6 +105,10 @@ struct SettingsView: View {
                 }
                 .padding(.vertical, 10)
                 .padding(.horizontal, 14)
+                if AppLanguage.available.count > 1 {
+                    Divider().overlay(ForelTheme.divider).padding(.leading, 14)
+                    languageRow
+                }
             }
 
             SectionLabel(title: "General")
@@ -134,7 +141,7 @@ struct SettingsView: View {
                     HStack {
                         Text("Keep history for").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
                         Spacer()
-                        Text("\(model.historyMaxDays) day\(model.historyMaxDays > 1 ? "s" : "")").font(.system(size: 12)).foregroundStyle(ForelTheme.secondaryText)
+                        Text("\(model.historyMaxDays) days").font(.system(size: 12)).foregroundStyle(ForelTheme.secondaryText)
                     }
                     Slider(value: historyMaxDaysDoubleBinding, in: 1...30, step: 1)
                         .tint(ForelTheme.accent)
@@ -163,8 +170,8 @@ struct SettingsView: View {
                 )
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
                 SettingsActionRow(
-                    title: "Current version",
-                    subtitle: versionSubtitle,
+                    title: Text("Current version"),
+                    subtitle: Text(versionSubtitle),
                     buttonTitle: "Check Now",
                     action: { updater.checkForUpdates() }
                 )
@@ -207,7 +214,7 @@ struct SettingsView: View {
         }
     }
 
-    private func aboutRow(title: String, value: String) -> some View {
+    private func aboutRow(title: LocalizedStringKey, value: String) -> some View {
         HStack {
             Text(title).font(.system(size: 13)).foregroundStyle(ForelTheme.primaryText)
             Spacer()
@@ -218,6 +225,73 @@ struct SettingsView: View {
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 14)
+    }
+
+    private var languageRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Language").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
+                    Text("Applies to Forel only, like System Settings > General > Language & Region > Applications.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(ForelTheme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Picker("Language", selection: languageBinding) {
+                    Text("Same as macOS").tag("")
+                    Divider()
+                    ForEach(AppLanguage.available, id: \.self) { code in
+                        Text(verbatim: AppLanguage.nativeName(code)).tag(code)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+            }
+            if nextLanguage != AppLanguage.current {
+                HStack(spacing: 8) {
+                    Text("Forel switches to \(AppLanguage.displayName(nextLanguage)) when it relaunches.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(ForelTheme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Relaunch Now", action: AppLanguage.relaunch)
+                        .controlSize(.small)
+                        .disabled(relaunchBlocker != nil)
+                        .help(relaunchBlocker ?? "")
+                }
+                if let relaunchBlocker {
+                    Text(relaunchBlocker)
+                        .font(.system(size: 11))
+                        .foregroundStyle(ForelTheme.secondaryText)
+                }
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+    }
+
+    private var languageBinding: Binding<String> {
+        Binding(
+            get: { languageChoice },
+            set: { code in
+                languageChoice = code
+                AppLanguage.choice = code.isEmpty ? nil : code
+                nextLanguage = AppLanguage.next
+            }
+        )
+    }
+
+    /// Why relaunching now would lose work, if it would.
+    private var relaunchBlocker: String? {
+        if model.editorHasUnsavedChanges {
+            return String(localized: "Save or discard the changes to the rule you're editing first.")
+        }
+        if model.isRunningNow || model.isPreviewing {
+            return String(localized: "Wait for Run Now or Dry Run to finish first.")
+        }
+        return nil
     }
 
     private var accentBinding: Binding<AccentPreset> {
@@ -261,7 +335,7 @@ struct SettingsView: View {
 
     private var versionSubtitle: String {
         let current = AppInfo.version
-        if updater.isChecking { return "\(current) — Checking…" }
+        if updater.isChecking { return String(localized: "\(current) — Checking…", comment: "Version number while checking for updates") }
         return current
     }
 }
@@ -271,7 +345,7 @@ enum SettingsCategory: CaseIterable, Identifiable {
 
     var id: Self { self }
 
-    var title: String {
+    var title: LocalizedStringKey {
         switch self {
         case .general: "General"
         case .permissions: "Permissions"

@@ -38,7 +38,7 @@ struct CopyRulesSheet: View {
                 Picker("Destination", selection: $destinationFolderID) {
                     Text("Choose a folder").tag("")
                     ForEach(destinations, id: \.id) { folder in
-                        Text(isAllowed(folder) ? folder.path : "\(folder.path) — Pro")
+                        Text(isAllowed(folder) ? folder.path : String(localized: "\(folder.path) — Pro", comment: "A folder that needs Forel Pro"))
                             .tag(folder.id)
                             .disabled(!isAllowed(folder))
                     }

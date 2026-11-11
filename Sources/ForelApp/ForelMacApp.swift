@@ -55,7 +55,7 @@ struct ForelMacApp: App {
                     var options: [NSApplication.AboutPanelOptionKey: Any] = [
                         .applicationName: AppInfo.name,
                         .applicationVersion: AppInfo.version,
-                        .version: "Build \(AppInfo.build)",
+                        .version: String(localized: "Build \(AppInfo.build)", comment: "About panel"),
                         .credits: Self.aboutCredits,
                     ]
 
@@ -85,7 +85,7 @@ struct ForelMacApp: App {
 
     private static var aboutCredits: NSAttributedString {
         let credits = NSMutableAttributedString(
-            string: "\nGitHub Repository",
+            string: "\n" + String(localized: "GitHub Repository"),
             attributes: [.link: AppInfo.repositoryURL]
         )
 

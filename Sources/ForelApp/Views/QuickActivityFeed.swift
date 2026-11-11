@@ -145,10 +145,10 @@ private struct QuickActivityRow: View {
     private var statusBadge: String? {
         switch entry.status {
         case .applied: return nil
-        case .undone: return "Undone"
-        case .failed: return "Failed"
-        case .skipped: return "Skipped"
-        case .needsConfirmation: return "Needs confirmation"
+        case .undone: return String(localized: "Undone", comment: "Activity status")
+        case .failed: return String(localized: "Failed", comment: "Activity status")
+        case .skipped: return String(localized: "Skipped", comment: "Activity status")
+        case .needsConfirmation: return String(localized: "Needs confirmation", comment: "Activity status")
         }
     }
 

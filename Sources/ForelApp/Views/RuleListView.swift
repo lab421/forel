@@ -72,7 +72,7 @@ struct RuleListView: View {
             }
             if !selectedRuleIDs.isEmpty {
                 HStack {
-                    Text("\(selectedRuleIDs.count) rule\(selectedRuleIDs.count == 1 ? "" : "s") selected")
+                    Text("\(selectedRuleIDs.count) rules selected")
                         .font(.caption)
                         .foregroundStyle(ForelTheme.secondaryText)
                     Button("Copy rules to folder…") { requestCopy(selectedRuleIDs) }
@@ -193,10 +193,10 @@ struct RuleListView: View {
 
     private var header: some View {
         ViewHeader(
-            title: selectedFolder.map { ($0.path as NSString).lastPathComponent } ?? "Rules",
+            title: selectedFolder.map { Text(verbatim: ($0.path as NSString).lastPathComponent) } ?? Text("Rules"),
             subtitle: model.selectedFolderId == nil
-                ? "Select a folder to manage its rules"
-                : "\(model.rules.count) rules · drag to reorder",
+                ? Text("Select a folder to manage its rules")
+                : Text("\(model.rules.count) rules · drag to reorder"),
             systemImage: selectedFolder == nil ? nil : "folder.fill"
         ) {
             Button {
@@ -217,7 +217,7 @@ struct RuleListView: View {
                     model.proUpgrade = .folders
                     return
                 }
-                model.editingRule = Rule(folderId: folderId, name: "New Rule")
+                model.editingRule = Rule(folderId: folderId, name: String(localized: "New Rule", comment: "Default name of a new rule"))
             } label: {
                 Label("New Rule", systemImage: "plus")
             }
@@ -325,7 +325,7 @@ struct RuleListView: View {
                         model.proUpgrade = .folders
                         return
                     }
-                    model.editingRule = Rule(folderId: folderId, name: "New Rule")
+                    model.editingRule = Rule(folderId: folderId, name: String(localized: "New Rule", comment: "Default name of a new rule"))
                 } label: {
                     Label("New Rule", systemImage: "plus")
                 }
@@ -399,7 +399,7 @@ private struct RuleCard: View {
                             if let stats = model.runStats(for: rule) {
                                 let totalRuns = stats.successCount + stats.failedCount
                                 if totalRuns > 0 {
-                                    Text("\(totalRuns) run\(totalRuns == 1 ? "" : "s") (30d)")
+                                    Text("\(totalRuns) runs (30d)")
                                         .font(.system(size: 10))
                                         .foregroundStyle(ForelTheme.secondaryText)
                                         .help("Last 30 days: \(stats.successCount) successful, \(stats.failedCount) failed")
@@ -475,15 +475,14 @@ private struct RuleCard: View {
 
     private var deleteTitle: String {
         let name = rule.name.trimmingCharacters(in: .whitespaces)
-        return name.isEmpty ? "Delete this rule?" : "Delete the rule “\(name)”?"
+        return name.isEmpty
+            ? String(localized: "Delete this rule?")
+            : String(localized: "Delete the rule “\(name)”?")
     }
 
     /// Says what goes and what stays, so the choice is informed.
     private var deleteMessage: String {
-        let conditions = "\(rule.conditions.count) condition\(rule.conditions.count == 1 ? "" : "s")"
-        let actions = "\(rule.actions.count) action\(rule.actions.count == 1 ? "" : "s")"
-        return "Its \(conditions) and \(actions) are deleted, and this can't be undone. "
-            + "Files it already processed stay where they are, and its past activity is kept."
+        String(localized: "Its \(rule.conditions.count) conditions and \(rule.actions.count) actions are deleted, and this can't be undone. Files it already processed stay where they are, and its past activity is kept.")
     }
 
     private func metaPill(icon: String, text: String) -> some View {
@@ -584,7 +583,7 @@ private struct RuleDetails: View {
         }
     }
 
-    private func detailSection(label: String, rows: [RuleDetailRow], emptyText: String) -> some View {
+    private func detailSection(label: LocalizedStringKey, rows: [RuleDetailRow], emptyText: LocalizedStringKey) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Text(label)
                 .font(.system(size: 10, weight: .bold))
@@ -614,7 +613,8 @@ private struct RuleDetails: View {
                 .foregroundStyle(ForelTheme.accent)
                 .frame(width: 14)
 
-            Text(row.badge.uppercased())
+            Text(row.badge)
+                .textCase(.uppercase)
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(ForelTheme.accent)
                 .lineLimit(1)
@@ -650,54 +650,56 @@ private struct RuleDetails: View {
     private func actionSummary(_ action: Action) -> (title: String, detail: String?) {
         switch action.kind {
         case .moveToFolder:
-            return ("to folder", action.params[ActionParam.destination]?.stringValue)
+            return (String(localized: "to folder", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), action.params[ActionParam.destination]?.stringValue)
         case .copyToFolder:
-            return ("to folder", action.params[ActionParam.destination]?.stringValue)
+            return (String(localized: "to folder", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), action.params[ActionParam.destination]?.stringValue)
         case .syncFolders:
-            return ("with folder", action.params[ActionParam.destination]?.stringValue)
+            return (String(localized: "with folder", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), action.params[ActionParam.destination]?.stringValue)
         case .rename:
-            return ("to \(action.params[ActionParam.pattern]?.stringValue ?? "")", action.params[ActionParam.cleanFileName]?.boolValue == true ? "clean file name" : nil)
+            let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
+            return (String(localized: "to \(pattern)", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), action.params[ActionParam.cleanFileName]?.boolValue == true ? String(localized: "clean file name", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)") : nil)
         case .moveToTrash:
-            return ("move to Trash", nil)
+            return (String(localized: "move to Trash", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), nil)
         case .delete:
-            return ("delete permanently", nil)
+            return (String(localized: "delete permanently", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), nil)
         case .addTag:
-            return ("add \(tagList(action))", nil)
+            return (String(localized: "add \(tagList(action))", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), nil)
         case .removeTag:
-            return ("remove \(tagList(action))", nil)
+            return (String(localized: "remove \(tagList(action))", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), nil)
         case .setColorLabel:
             let color = action.params[ActionParam.color]?.stringValue ?? ""
-            return (color.isEmpty ? "clear color label" : "set to \(color)", nil)
+            return (color.isEmpty ? String(localized: "clear color label", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)") : String(localized: "set to \(FinderTags.displayName(forColor: color))", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), nil)
         case .toggleLock:
-            return (action.params[ActionParam.locked]?.boolValue == true ? "lock" : "unlock", nil)
+            return (action.params[ActionParam.locked]?.boolValue == true ? String(localized: "lock", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)") : String(localized: "unlock", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), nil)
         case .toggleExtension:
-            return (action.params[ActionParam.extensionHidden]?.boolValue == true ? "hide extension" : "show extension", nil)
+            return (action.params[ActionParam.extensionHidden]?.boolValue == true ? String(localized: "hide extension", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)") : String(localized: "show extension", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), nil)
         case .runScript:
             let script = action.params[ActionParam.script]?.stringValue ?? ""
             let lines = script.split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
             let firstLine = lines.first.map(String.init) ?? ""
-            return (firstLine.isEmpty ? "run script" : firstLine, lines.count > 1 ? "\(lines.count) lines" : nil)
+            return (firstLine.isEmpty ? String(localized: "run script", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)") : firstLine, lines.count > 1 ? String(localized: "\(lines.count) lines", comment: "Length of a script") : nil)
         case .runShortcut:
             let name = action.params[ActionParam.shortcutName]?.stringValue ?? ""
-            return (name.isEmpty ? "run shortcut" : name, ActionExecutor.shortcutInputMode(action).label)
+            return (name.isEmpty ? String(localized: "run shortcut", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)") : name, ActionExecutor.shortcutInputMode(action).label)
         case .openApplication:
             let path = action.params[ActionParam.applicationPath]?.stringValue ?? ""
-            let appName = path.isEmpty ? "open application" : ((path as NSString).lastPathComponent as NSString).deletingPathExtension
-            let detail = ActionExecutor.passesFileToApplication(action) ? "with matched file" : nil
+            let appName = path.isEmpty ? String(localized: "open application", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)") : ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+            let detail = ActionExecutor.passesFileToApplication(action) ? String(localized: "with matched file", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)") : nil
             return (appName, detail)
         case .importToLibrary:
-            let library = LibraryType(rawValue: action.params[ActionParam.libraryType]?.stringValue ?? "")?.label ?? "Library"
+            let library = LibraryType(rawValue: action.params[ActionParam.libraryType]?.stringValue ?? "")
             let playlist = action.params[ActionParam.targetPlaylist]?.stringValue ?? ""
-            return ("import to \(library)", playlist.isEmpty ? nil : playlist)
+            let title = library.map { String(localized: "import to \($0.label)", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)") } ?? String(localized: "import to library", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)")
+            return (title, playlist.isEmpty ? nil : playlist)
         case .uncompress:
-            return ("uncompress ZIP", MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
+            return (String(localized: "uncompress ZIP", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
         case .compress:
             let name = action.params[ActionParam.archiveName]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let destination = action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             var details = [name.isEmpty ? "{name}.zip" : name]
-            if !destination.isEmpty { details.append("to \(destination)") }
-            if ActionExecutor.deletesSourceAfterCompression(action) { details.append("permanently delete source after success") }
-            return ("create ZIP", details.joined(separator: " · "))
+            if !destination.isEmpty { details.append(String(localized: "to \(destination)", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)")) }
+            if ActionExecutor.deletesSourceAfterCompression(action) { details.append(String(localized: "permanently delete source after success", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)")) }
+            return (String(localized: "create ZIP", comment: "Rule summary in the rule list, after the action name (as in “RENAME to …”)"), details.joined(separator: " · "))
         }
     }
 
@@ -708,7 +710,7 @@ private struct RuleDetails: View {
         if let tag = action.params["tag"]?.stringValue, !tag.isEmpty {
             return tag
         }
-        return "tag"
+        return String(localized: "tag", comment: "Rule summary for an Add or Remove Tag action without tags, as in “add tag”")
     }
 }
 
@@ -744,16 +746,16 @@ private struct PreviewSheet: View {
 
     private var subtitle: String {
         let matchText = result.reachedMatchLimit
-            ? "\(result.matches.count)+ matched"
-            : "\(result.matches.count) matched"
-        return "\(result.filesScanned) items scanned · \(matchText)"
+            ? String(localized: "\(result.matches.count)+ matched", comment: "Dry Run: more files matched than shown")
+            : String(localized: "\(result.matches.count) matched", comment: "Dry Run: number of matching files")
+        return String(localized: "\(result.filesScanned) items scanned · \(matchText)", comment: "Dry Run summary; %@ is the number matched")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ViewHeader(
-                title: "Preview (Dry Run)",
-                subtitle: subtitle
+                title: Text("Preview (Dry Run)"),
+                subtitle: Text(subtitle)
             )
 
             ScrollView {
@@ -890,12 +892,12 @@ private extension ConditionPreview {
 
 private extension ActionPreview {
     var statusLabel: String {
-        if warning != nil { return "Likely to fail" }
+        if warning != nil { return String(localized: "Likely to fail", comment: "Dry Run status of an action") }
         switch status {
-        case .wouldRun: return "Would run"
-        case .wouldSkip: return "Would skip"
-        case .blockedByConflict: return "Blocked by conflict"
-        case .needsConfirmation: return "Needs confirmation"
+        case .wouldRun: return String(localized: "Would run", comment: "Dry Run status of an action")
+        case .wouldSkip: return String(localized: "Would skip", comment: "Dry Run status of an action")
+        case .blockedByConflict: return String(localized: "Blocked by conflict", comment: "Dry Run status of an action")
+        case .needsConfirmation: return String(localized: "Needs confirmation", comment: "Dry Run status of an action")
         }
     }
 

@@ -18,21 +18,35 @@
 /// separately: a run whose actions all failed must not read as a success.
 public enum RunSummary {
     public static func message(for history: [HistoryEntry]) -> String {
-        let outcomes: [(HistoryStatus, String)] = [
-            (.applied, "applied"),
-            (.failed, "failed"),
-            (.skipped, "skipped"),
-            (.needsConfirmation, "awaiting confirmation"),
-        ]
+        let statuses: [HistoryStatus] = [.applied, .failed, .skipped, .needsConfirmation]
         var parts: [String] = []
-        for (status, label) in outcomes {
+        for status in statuses {
             let count = history.filter { $0.status == status }.count
             guard count > 0 else { continue }
             // Only the first part names what is being counted:
             // "2 actions applied, 1 failed".
-            parts.append(parts.isEmpty ? "\(count) action\(count == 1 ? "" : "s") \(label)" : "\(count) \(label)")
+            parts.append(parts.isEmpty ? firstPart(status, count) : laterPart(status, count))
         }
-        guard !parts.isEmpty else { return "Run complete — no matching files" }
-        return "Run complete — " + parts.joined(separator: ", ")
+        guard !parts.isEmpty else { return String(localized: "Run complete — no matching files", bundle: .forelStrings, comment: "Result of Run Now") }
+        return String(localized: "Run complete — \(parts.joined(separator: ", "))", bundle: .forelStrings, comment: "Result of Run Now; %@ lists the counts, as in “2 actions applied, 1 failed”")
+    }
+
+    private static func firstPart(_ status: HistoryStatus, _ count: Int) -> String {
+        switch status {
+        case .applied: String(localized: "\(count) actions applied", bundle: .forelStrings, comment: "Result of Run Now")
+        case .failed: String(localized: "\(count) actions failed", bundle: .forelStrings, comment: "Result of Run Now")
+        case .skipped: String(localized: "\(count) actions skipped", bundle: .forelStrings, comment: "Result of Run Now")
+        default: String(localized: "\(count) actions awaiting confirmation", bundle: .forelStrings, comment: "Result of Run Now")
+        }
+    }
+
+    /// Follows the first part, as in “2 actions applied, 1 failed”.
+    private static func laterPart(_ status: HistoryStatus, _ count: Int) -> String {
+        switch status {
+        case .applied: String(localized: "\(count) applied", bundle: .forelStrings, comment: "Result of Run Now, after “2 actions failed, ”")
+        case .failed: String(localized: "\(count) failed", bundle: .forelStrings, comment: "Result of Run Now, after “2 actions applied, ”")
+        case .skipped: String(localized: "\(count) skipped", bundle: .forelStrings, comment: "Result of Run Now, after “2 actions applied, ”")
+        default: String(localized: "\(count) awaiting confirmation", bundle: .forelStrings, comment: "Result of Run Now, after “2 actions applied, ”")
+        }
     }
 }

@@ -37,14 +37,14 @@ struct PermissionsSection: View {
             })
             Divider().overlay(ForelTheme.divider).padding(.leading, 14)
             AutomationPermissionRow(
-                appName: "Music",
+                appName: LibraryType.music.label,
                 status: musicStatus,
                 isChecking: isCheckingMusic,
                 onCheck: { check(app: "Music") }
             )
             Divider().overlay(ForelTheme.divider).padding(.leading, 14)
             AutomationPermissionRow(
-                appName: "TV",
+                appName: LibraryType.tv.label,
                 status: tvStatus,
                 isChecking: isCheckingTV,
                 onCheck: { check(app: "TV") }
@@ -171,7 +171,7 @@ private struct PermissionStatusBadge: View {
             .background(Capsule().fill(color.opacity(0.12)))
     }
 
-    private var label: String {
+    private var label: LocalizedStringKey {
         switch status {
         case .granted: return "Granted"
         case .denied: return "Denied"

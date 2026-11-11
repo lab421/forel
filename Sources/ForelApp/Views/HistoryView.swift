@@ -29,7 +29,7 @@ struct HistoryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ViewHeader(title: "Activity", subtitle: "\(model.historyTotalCount) recorded action\(model.historyTotalCount == 1 ? "" : "s")", systemImage: "clock.arrow.circlepath") {
+            ViewHeader(title: "Activity", subtitle: "\(model.historyTotalCount) recorded actions", systemImage: "clock.arrow.circlepath") {
                 Button {
                     model.detailRoute = .rules
                 } label: {
@@ -69,7 +69,7 @@ struct HistoryView: View {
                     ForEach(batches, id: \.id) { batch in
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                SectionLabel(title: relativeLabel(batch.entries.first?.createdAt))
+                                SectionLabel(verbatim: relativeLabel(batch.entries.first?.createdAt))
                                 Spacer()
                                 if undoableCount(batch.entries) > 0 {
                                     Button("Undo Batch (\(undoableCount(batch.entries)))") {
@@ -139,7 +139,7 @@ struct HistoryView: View {
 
     private func relativeLabel(_ iso: String?) -> String {
         guard let iso, let localized = HistoryTimestampFormatter.localized(iso) else {
-            return "Earlier"
+            return String(localized: "Earlier", comment: "Activity entries without a readable date")
         }
         return localized
     }
@@ -260,11 +260,11 @@ private struct HistoryRow: View {
 
     private var statusLabel: String {
         switch entry.status {
-        case .applied: return "Applied"
-        case .undone: return "Undone"
-        case .failed: return "Failed"
-        case .skipped: return "Skipped"
-        case .needsConfirmation: return "Needs confirmation"
+        case .applied: return String(localized: "Applied", comment: "Activity status")
+        case .undone: return String(localized: "Undone", comment: "Activity status")
+        case .failed: return String(localized: "Failed", comment: "Activity status")
+        case .skipped: return String(localized: "Skipped", comment: "Activity status")
+        case .needsConfirmation: return String(localized: "Needs confirmation", comment: "Activity status")
         }
     }
 
