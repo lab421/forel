@@ -1,0 +1,756 @@
+// Common
+"forel" = "Forel";
+"github_repository" = "GitHub-Repository";
+"watching" = "Überwachung";
+"watched_folders" = "Überwachte Ordner";
+"settings" = "Einstellungen";
+"activity" = "Aktivität";
+"activity_history" = "Aktivitätsverlauf";
+"pro" = "Pro";
+"reorder_folders_activate_pro" = "Sortiere die Ordner um oder aktiviere Pro, um diesen Ordner zu verwenden.";
+"show_in_finder" = "Im Finder anzeigen";
+"discover_pro" = "Pro entdecken";
+"save" = "Sichern";
+"error" = "Fehler";
+"rules" = "Regeln";
+"new_rule" = "Neue Regel";
+"cancel" = "Abbrechen";
+"lines_one" = "%@ Zeile";
+"lines_other" = "%@ Zeilen";
+"needs_confirmation" = "Bestätigung erforderlich";
+"enabled" = "Aktiviert";
+"choose" = "Auswählen …";
+"application" = "Programm";
+"add_tag" = "Tag hinzufügen";
+"locked" = "Geschützt";
+"extension" = "Erweiterung";
+"destination" = "Ziel";
+"tags" = "Tags";
+"music" = "Musik";
+"presentation" = "Präsentation";
+"move_to_trash" = "In den Papierkorb legen";
+"remove_tag" = "Tag entfernen";
+"run_script" = "Skript ausführen";
+"run_shortcut" = "Kurzbefehl ausführen";
+"open_application" = "Programm öffnen";
+"photos" = "Fotos";
+"skip_file_already_exists" = "Übersprungen – unter %@ ist bereits eine Datei vorhanden";
+"requires_true_false_value" = "%@ erfordert den Wert „wahr“ oder „falsch“";
+"preview_unavailable" = "Vorschau nicht verfügbar: %@";
+"no_activity_yet" = "Noch keine Aktivität";
+"undone" = "Widerrufen";
+"failed" = "Fehlgeschlagen";
+"skipped" = "Übersprungen";
+"paused_new_files_ignored" = "Pausiert – neue Dateien werden ignoriert";
+"watching_folders_rules_run" = "Ordner werden überwacht – Regeln werden automatisch ausgeführt";
+"quit" = "Beenden";
+"forel_pro" = "Forel Pro";
+"forel_free" = "Forel Free";
+"permissions" = "Berechtigungen";
+"and_more_one" = "%2$@ und %1$@ weitere";
+"and_more_other" = "%2$@ und %1$@ weitere";
+
+// Menus and windows
+"menu_about_forel" = "Über Forel";
+"menu_build" = "Build %@";
+
+// About
+"about_open_source_file_automation" = "Open-Source-Dateiautomatisierung für macOS";
+"about_development" = "Entwicklung";
+
+// Sidebar
+"sidebar_file_automation" = "Dateiautomatisierung";
+"sidebar_paused" = "Pausiert";
+"sidebar_new_files_are_ignored" = "Neue Dateien werden ignoriert";
+"sidebar_rules_run_automatically" = "Regeln werden automatisch ausgeführt";
+"sidebar_add_folder_watch" = "Einen zu überwachenden Ordner hinzufügen";
+"sidebar_change_path_of_folder" = "Ordnerpfad ändern …";
+"sidebar_remove" = "Entfernen";
+"sidebar_no_folders_yet" = "Noch keine Ordner";
+"sidebar_add_folder_start_automating" = "Füge einen Ordner hinzu, um mit der Automatisierung von Dateien zu beginnen.";
+"sidebar_add_folder" = "Ordner hinzufügen";
+
+// Main window
+"window_ok" = "OK";
+"window_discard_changes" = "Änderungen verwerfen";
+"window_keep_editing" = "Weiter bearbeiten";
+"window_save_changes_rule" = "Änderungen an dieser Regel sichern?";
+"window_save_changes_to_the_rule" = "Änderungen an der Regel „%@“ sichern?";
+"window_cant_saved_yet_keep" = "Sie kann noch nicht gesichert werden: %@ Bearbeite sie weiter, um das zu beheben, oder verwirf deine Änderungen.";
+"window_changes_rule_lost_if" = "Deine Änderungen an dieser Regel gehen verloren, wenn du sie nicht sicherst.";
+"window_hide_sidebar" = "Seitenleiste ausblenden";
+"window_show_sidebar" = "Seitenleiste einblenden";
+
+// Rule list and Dry Run
+"rule_list_rules_selected_one" = "%@ Regel ausgewählt";
+"rule_list_rules_selected_other" = "%@ Regeln ausgewählt";
+"rule_list_copy_rules_to_folder" = "Regeln in Ordner kopieren …";
+"rule_list_deselect_all" = "Auswahl aufheben";
+"rule_list_kept_pro_running" = "Für Pro reserviert – wird nicht ausgeführt";
+"rule_list_created_newer_version_forel" = "Mit einer neueren Version von Forel erstellt – wird nicht ausgeführt. Aktualisiere Forel, um sie auszuführen oder zu bearbeiten.";
+"rule_list_show_in_activity" = "In Aktivität anzeigen";
+"rule_list_dismiss" = "Ausblenden";
+"rule_list_select_folder_manage_rules" = "Wähle einen Ordner aus, um seine Regeln zu verwalten";
+"rule_list_rules_drag_to_reorder_one" = "%@ Regel · zum Sortieren ziehen";
+"rule_list_rules_drag_to_reorder_other" = "%@ Regeln · zum Sortieren ziehen";
+"rule_list_running" = "Wird ausgeführt …";
+"rule_list_run_now" = "Jetzt ausführen";
+"rule_list_scanning" = "Wird durchsucht …";
+"rule_list_preview_dry_run" = "Vorschau (Testlauf)";
+"rule_list_automatic_watching_is_paused" = "Die automatische Überwachung ist pausiert";
+"rule_list_rules_only_run_when" = "Regeln werden nur ausgeführt, wenn du „Jetzt ausführen“ wählst.";
+"rule_list_resume_watching" = "Überwachung fortsetzen";
+"rule_list_no_folder_selected" = "Kein Ordner ausgewählt";
+"rule_list_pick_folder_left_see" = "Wähle links einen Ordner, um seine Regeln zu sehen.";
+"rule_list_no_rules_yet" = "Noch keine Regeln";
+"rule_list_create_rule_automate_files" = "Erstelle eine Regel, um Dateien in diesem Ordner zu automatisieren.";
+"rule_list_reorder_folders_activate_pro" = "Sortiere die Ordner um oder aktiviere Pro, um in diesem Ordner Regeln hinzuzufügen.";
+"rule_list_runs_30d_one" = "%@ Ausführung (30 T.)";
+"rule_list_runs_30d_other" = "%@ Ausführungen (30 T.)";
+"rule_list_last_30_days_successful" = "Letzte 30 Tage: %@ erfolgreich, %@ fehlgeschlagen";
+"rule_list_delete_rule_menu" = "Diese Regel löschen …";
+"rule_list_delete_rule_help" = "Regel löschen";
+"rule_list_version_forel_cant_show" = "Diese Version von Forel kann die Details dieser Regel nicht anzeigen.";
+"rule_list_delete_rule" = "Regel löschen";
+"rule_list_delete_confirm_title" = "Diese Regel löschen?";
+"rule_list_delete_confirm_title_named" = "Regel „%@“ löschen?";
+"rule_list_delete_confirm_message" = "Die Regel wird mit %1$@ und %2$@ gelöscht. Dies kann nicht widerrufen werden. Bereits verarbeitete Dateien bleiben, wo sie sind, und ihre bisherige Aktivität bleibt erhalten.";
+"rule_list_conditions_count_one" = "%@ Bedingung";
+"rule_list_conditions_count_other" = "%@ Bedingungen";
+"rule_list_actions_count_one" = "%@ Aktion";
+"rule_list_actions_count_other" = "%@ Aktionen";
+"rule_list_if" = "WENN";
+"rule_list_matches_every_file_scope" = "Passt auf alle Dateien im Bereich.";
+"rule_list_do" = "DANN";
+"rule_list_no_actions_configured" = "Keine Aktionen konfiguriert.";
+"rule_list_to_folder" = "in Ordner";
+"rule_list_with_folder" = "mit Ordner";
+"rule_list_to" = "in %@";
+"rule_list_clean_file_name" = "bereinigter Dateiname";
+"rule_list_move_to_trash" = "in den Papierkorb legen";
+"rule_list_delete_permanently" = "endgültig löschen";
+"rule_list_add" = "%@ hinzufügen";
+"rule_list_remove" = "%@ entfernen";
+"rule_list_clear_color_label" = "Farbetikett entfernen";
+"rule_list_set_to" = "auf %@ setzen";
+"rule_list_lock" = "schützen";
+"rule_list_unlock" = "Schutz aufheben";
+"rule_list_hide_extension" = "Erweiterung ausblenden";
+"rule_list_show_extension" = "Erweiterung einblenden";
+"rule_list_run_script" = "Skript ausführen";
+"rule_list_run_shortcut" = "Kurzbefehl ausführen";
+"rule_list_open_application" = "Programm öffnen";
+"rule_list_with_matched_file" = "mit passender Datei";
+"rule_list_import_to" = "in %@ importieren";
+"rule_list_import_to_library" = "in Mediathek importieren";
+"rule_list_uncompress_zip" = "ZIP entpacken";
+"rule_list_permanently_delete_source_after" = "Quelle nach Erfolg endgültig löschen";
+"rule_list_create_zip" = "ZIP erstellen";
+"rule_list_tag" = "Tag";
+"rule_list_matched_at_least" = "%@+ Treffer";
+"rule_list_matched_count_one" = "%@ Treffer";
+"rule_list_matched_count_other" = "%@ Treffer";
+"rule_list_items_scanned_one" = "%@ Objekt durchsucht · %@";
+"rule_list_items_scanned_other" = "%@ Objekte durchsucht · %@";
+"rule_list_showing_first_matches_narrow" = "Die ersten %@ Treffer werden angezeigt. Schränke den Ordnerbereich oder die Bedingungen ein, um weniger Ergebnisse zu sehen.";
+"rule_list_actions_configured_rule" = "Für diese Regel sind keine Aktionen konfiguriert.";
+"rule_list_files_match_current_rules" = "Keine Datei passt auf die aktuellen Regeln.";
+"rule_list_close" = "Schließen";
+"rule_list_likely_to_fail" = "Schlägt wahrscheinlich fehl";
+"rule_list_would_run" = "Würde ausgeführt";
+"rule_list_would_skip" = "Würde übersprungen";
+"rule_list_blocked_by_conflict" = "Durch Konflikt blockiert";
+
+// Rule editor
+"rule_editor_edit_rule" = "Regel bearbeiten";
+"rule_editor_conditions_decide_which_files" = "Bedingungen legen fest, welche Dateien passen; Aktionen, was passiert";
+"rule_editor_basics" = "Grundlagen";
+"rule_editor_rule_name" = "Regelname";
+"rule_editor_match_all_conditions" = "Alle Bedingungen erfüllen";
+"rule_editor_match_any_condition" = "Eine Bedingung erfüllen";
+"rule_editor_conditions" = "Bedingungen";
+"rule_editor_conditions_rule_matches_every" = "Keine Bedingungen – diese Regel passt auf alle Dateien im Bereich.";
+"rule_editor_actions" = "Aktionen";
+"rule_editor_actions_yet_add_least" = "Noch keine Aktionen – füge mindestens eine hinzu, damit diese Regel etwas tut.";
+"rule_editor_rule_needs_name" = "Die Regel braucht einen Namen.";
+"rule_editor_matching_files" = "Passende Dateien";
+"rule_editor_hide_the_matching_files" = "Passende Dateien ausblenden";
+"rule_editor_show_files_rule_matches" = "Die Dateien anzeigen, auf die diese Regel gerade passt";
+"rule_editor_expanded" = "Ausgeklappt";
+"rule_editor_collapsed" = "Eingeklappt";
+"rule_editor_rule_uses_forel_pro" = "Diese Regel verwendet eine Forel Pro-Funktion und kann daher in Free nicht in der Vorschau angezeigt werden.";
+"rule_editor_nothing_folder_matches_right" = "In diesem Ordner passt gerade nichts. Passende Dateien werden verarbeitet, sobald sie eintreffen.";
+"rule_editor_nothing_matches_first_items_one" = "Im ersten Objekt dieses Ordners passt nichts.";
+"rule_editor_nothing_matches_first_items_other" = "In den ersten %@ Objekten dieses Ordners passt nichts.";
+"rule_editor_and_more_count_one" = "und %@ weitere …";
+"rule_editor_and_more_count_other" = "und %@ weitere …";
+"rule_editor_and_more" = "und weitere …";
+"rule_editor_only_rule_checked_use" = "Nur diese Regel wird geprüft. Verwende den Testlauf, um alle Regeln des Ordners zusammen in der Vorschau zu sehen.";
+"rule_editor_checking_items_folder" = "Objekte in diesem Ordner werden geprüft …";
+"rule_editor_copy_path" = "Pfad kopieren";
+"rule_editor_add_action_see_what" = "Füge eine Aktion hinzu, um zu sehen, was mit diesen Dateien passieren würde.";
+"rule_editor_complete_actions_above_see" = "Vervollständige die Aktionen oben, um zu sehen, was mit diesen Dateien passieren würde.";
+"rule_editor_items_match_one" = "%@ Objekt passt";
+"rule_editor_items_match_other" = "%@ Objekte passen";
+"rule_editor_at_least_items_match_one" = "Mindestens %@ Objekt passt";
+"rule_editor_at_least_items_match_other" = "Mindestens %@ Objekte passen";
+"rule_editor_items_checked_one" = "%@ Objekt geprüft";
+"rule_editor_items_checked_other" = "%@ Objekte geprüft";
+"rule_editor_first_items_checked_one" = "Erstes Objekt geprüft";
+"rule_editor_first_items_checked_other" = "Erste %@ Objekte geprüft";
+"rule_editor_scope" = "Bereich";
+"rule_editor_current_folder" = "Aktueller Ordner";
+"rule_editor_subfolders" = "Unterordner";
+"rule_editor_depth" = "Tiefe";
+"rule_editor_all_levels" = "Alle Ebenen";
+"rule_editor_all_levels_slow_execution" = "Alle Ebenen können die Ausführung in Ordnern mit vielen Dateien verlangsamen. Mit Vorsicht verwenden.";
+"rule_editor_all_subfolder_levels" = "Alle Unterordnerebenen";
+"rule_editor_subfolder_levels_one" = "%@ Unterordnerebene";
+"rule_editor_subfolder_levels_other" = "%@ Unterordnerebenen";
+"rule_editor_document_text_included_free" = "Dokumenttext ist in Free enthalten. Bilder und gescannte PDFs erfordern die OCR von Pro.";
+"rule_editor_unlock_ocr" = "OCR freischalten";
+"rule_editor_value" = "Wert";
+"rule_editor_archive_matches_compressed_formats" = "Archiv umfasst komprimierte Formate wie ZIP, TAR, GZ, 7Z, RAR, XZ, ZST, TGZ, TBZ und CAB.";
+"rule_editor_invalid_regular_expression" = "Ungültiger regulärer Ausdruck";
+"rule_editor_regex_pattern" = "Regulärer Ausdruck";
+"rule_editor_hours" = "Stunden";
+"rule_editor_days" = "Tagen";
+"rule_editor_weeks" = "Wochen";
+"rule_editor_months" = "Monaten";
+"rule_editor_years" = "Jahren";
+"rule_editor_bytes" = "Byte";
+"rule_editor_kb" = "KB";
+"rule_editor_mb" = "MB";
+"rule_editor_gb" = "GB";
+"rule_editor_app_name" = "App-Name";
+"rule_editor_unlock" = "%@ freischalten";
+"rule_editor_action_options" = "Aktionsoptionen";
+"rule_editor_destination_folder" = "Zielordner";
+"rule_editor_add_kind_extension_year" = "Füge {kind}, {extension}, {year}, {month}, {day}, {hour}, {minute} oder {quarter} hinzu, um in Ordner zu sortieren, z. B. …/Sortiert/{kind}/{year}";
+"rule_editor_tag" = "Tag";
+"rule_editor_state" = "Status";
+"rule_editor_unlocked" = "Nicht geschützt";
+"rule_editor_hidden" = "Ausgeblendet";
+"rule_editor_visible" = "Eingeblendet";
+"rule_editor_runs_once_per_matching" = "Wird einmal pro passender Datei ausgeführt. Verwende \"$FOREL_FILE\" für ihren vollständigen Pfad. Der Testlauf führt keine Skripte aus; Änderungen durch Skripte können nicht widerrufen werden.";
+"rule_editor_library" = "Mediathek:";
+"rule_editor_playlist" = "Playlist:";
+"rule_editor_album" = "Album:";
+"rule_editor_zip_archives_only" = "Nur ZIP-Archive";
+"rule_editor_no_parameters" = "Keine Parameter";
+"rule_editor_options" = "Optionen";
+"rule_editor_options_action" = "Keine Optionen für diese Aktion.";
+"rule_editor_pass_matched_file_app" = "Passende Datei an die App übergeben";
+"rule_editor_next_source_default" = "Neben der Quelle (Standard)";
+"rule_editor_supports_kind_extension_year" = "Unterstützt {kind}, {extension}, {year}, {month}, {day}, {hour}, {minute} und {quarter}.";
+"rule_editor_use_source_folder" = "Quellordner verwenden";
+"rule_editor_leave_empty_save_next" = "Leer lassen, um neben der Quelle zu sichern. Vorhandene ZIPs bleiben erhalten; neue Archive werden nummeriert.";
+"rule_editor_delete_source_after_compression" = "Quelle nach dem Komprimieren löschen";
+"rule_editor_after_zip_created_successfully" = "Nachdem das ZIP erstellt wurde, werden die Originaldatei bzw. der Originalordner samt Inhalt endgültig gelöscht. Dies kann nicht widerrufen werden. Nachfolgende Aktionen gelten für das ZIP.";
+"rule_editor_if_file_already_exists" = "Wenn bereits eine Datei existiert";
+"rule_editor_input" = "Eingabe";
+"rule_editor_deletes" = "Löschungen";
+"rule_editor_when_file_deleted_watched" = "Wenn eine Datei aus dem überwachten Ordner gelöscht wird, wird auch ihre Kopie am Ziel endgültig gelöscht. Dies kann nicht widerrufen werden.";
+"rule_editor_clean_file_name" = "Dateinamen bereinigen";
+"rule_editor_loading_shortcuts" = "Kurzbefehle werden geladen …";
+"rule_editor_shortcut_name" = "Name des Kurzbefehls";
+"rule_editor_refresh_shortcuts" = "Kurzbefehle aktualisieren";
+"rule_editor_none" = "Keine";
+"rule_editor_untitled" = "Ohne Titel";
+"rule_editor_source_name" = "Quellname";
+"rule_editor_current_date" = "Aktuelles Datum";
+"rule_editor_timestamp" = "Zeitstempel";
+"rule_editor_archive_name_e_g" = "Archivname, z. B. {name}-{timestamp}.zip";
+"rule_editor_archive_name" = "Archivname";
+"rule_editor_insert" = "%@ einfügen";
+"rule_editor_empty_uses_name_zip" = "Leer bedeutet {name}.zip. Die Erweiterung .zip wird automatisch ergänzt; wähle ein Ziel unter „Optionen“.";
+"rule_editor_preview" = "Vorschau: %@";
+"rule_editor_token_name" = "Name";
+"rule_editor_token_extension" = "Erweiterung";
+"rule_editor_token_date_modified" = "Änderungsdatum";
+"rule_editor_token_date_created" = "Erstellungsdatum";
+"rule_editor_token_current_date" = "aktuelles Datum";
+"rule_editor_token_size" = "Größe";
+"rule_editor_pattern_e_g_name" = "Muster, z. B. {name}-{current_date}.{extension}";
+"rule_editor_pattern_contains_which_allowed" = "⚠️ Das Muster enthält „/“, was in Dateinamen nicht erlaubt ist";
+"rule_editor_pattern_resolves_which_valid" = "⚠️ Das Muster ergibt „%@“, was kein gültiger Dateiname ist";
+"rule_editor_pattern_resolves_filename_longer" = "⚠️ Das Muster ergibt einen Dateinamen mit mehr als 255 Zeichen";
+"rule_editor_pattern_resolves_trailing_space" = "⚠️ Das Muster ergibt „%@“ – ein abschließender „.“ oder ein Leerzeichen wird nicht unterstützt";
+"rule_editor_rule_created_newer_version" = "Diese Regel wurde mit einer neueren Version von Forel erstellt. Aktualisiere Forel, um sie zu bearbeiten, zu kopieren oder auszuführen.";
+
+// Script editor
+"script_bash_script_matched_files" = "Bash-Skript – der Pfad der passenden Datei steht in $FOREL_FILE";
+"script_drag_resize_editor" = "Ziehen, um die Größe des Editors zu ändern";
+"script_resize_script_editor" = "Größe des Skripteditors ändern";
+"script_insert_forel_file" = "$FOREL_FILE einfügen";
+"script_insert_quoted_path_matched" = "Den Pfad der passenden Datei in Anführungszeichen an der Cursorposition einfügen";
+"script_open_larger_editor" = "In einem größeren Editor öffnen";
+"script_title" = "Skript";
+"script_runs_once_per_matching" = "Wird einmal pro passender Datei ausgeführt, mit ihrem Pfad in $FOREL_FILE";
+"script_done" = "Fertig";
+"script_syntax_error" = "Syntaxfehler";
+
+// Rule conditions
+"condition_name" = "Name";
+"condition_comment" = "Kommentar";
+"condition_kind" = "Art";
+"condition_size" = "Größe";
+"condition_color_label" = "Farbetikett";
+"condition_contents" = "Inhalt";
+"condition_date_created" = "Erstellt am";
+"condition_date_modified" = "Geändert am";
+"condition_date_added" = "Hinzugefügt am";
+"condition_date_last_opened" = "Zuletzt geöffnet am";
+"condition_downloaded_from_website" = "Von Website geladen";
+"condition_downloaded_with_app" = "Mit App geladen";
+"condition_raw_where_from_metadata" = "Rohe Woher-Metadaten";
+"condition_metadata" = "Metadaten";
+
+// Rule condition help
+"condition_help_matches_locked_checkbox_finders" = "Passt auf das Feld „Geschützt“ im Finder-Fenster „Informationen“, unabhängig von Lese- und Schreibrechten.";
+"condition_help_matches_finder_comment_shown" = "Passt auf den Finder-Kommentar, der unter „Informationen“ angezeigt wird. Dateien ohne Kommentar werden wie mit leerem Kommentar behandelt.";
+"condition_help_uses_last_opened_date" = "Verwendet das von macOS erfasste Datum des letzten Öffnens, nicht den letzten Dateisystemzugriff. Objekte ohne dieses Datum passen nicht.";
+"condition_help_matches_finder_tags_shown" = "Passt auf die Finder-Tags, die unter „Informationen“ angezeigt werden, nicht auf andere Metadaten der Datei.";
+"condition_help_matches_only_http_https" = "Passt nur auf http- und https-Adressen aus den Download-Metadaten der Datei. Für andere Quellen wie blob:-Adressen verwende „Rohe Woher-Metadaten“.";
+"condition_help_matches_app_macos_recorded" = "Passt auf die App, die laut macOS die Datei geladen hat, etwa Safari oder Firefox. Die Verfügbarkeit hängt von dieser App ab.";
+"condition_help_matches_every_value_files" = "Passt auf jeden Wert der Download-Metadaten der Datei, wie der Finder sie unter „Informationen“ bei „Woher“ anzeigt. Die Verfügbarkeit hängt von der App ab, die die Datei erstellt hat.";
+"condition_help_matches_text_plain_files" = "Passt auf Text aus Textdateien, PDFs, Word-Dokumenten und Bildern per OCR, sofern verfügbar.";
+
+// Condition operators
+"operator_true" = "wahr";
+"operator_false" = "falsch";
+"operator_is" = "ist";
+"operator_is_not" = "ist nicht";
+"operator_contains" = "enthält";
+"operator_does_not_contain" = "enthält nicht";
+"operator_starts_with" = "beginnt mit";
+"operator_ends_with" = "endet mit";
+"operator_matches_regex" = "passt auf regulären Ausdruck";
+"operator_greater_than" = "größer als";
+"operator_less_than" = "kleiner als";
+"operator_is_before" = "ist vor";
+"operator_is_after" = "ist nach";
+"operator_is_not_in_the_last" = "liegt nicht in den letzten";
+"operator_is_within_the_last" = "liegt in den letzten";
+
+// File kinds
+"kind_image" = "Bild";
+"kind_movie" = "Film";
+"kind_pdf" = "PDF";
+"kind_text" = "Text";
+"kind_document" = "Dokument";
+"kind_archive" = "Archiv";
+"kind_disk_image" = "Image";
+"kind_folder" = "Ordner";
+
+// Rule actions
+"action_move_to_folder" = "In Ordner bewegen";
+"action_copy_to_folder" = "In Ordner kopieren";
+"action_sync_folders" = "Ordner synchronisieren";
+"action_rename" = "Umbenennen";
+"action_delete" = "Löschen";
+"action_set_color_label" = "Farbetikett festlegen";
+"action_toggle_lock" = "Schützen/Freigeben";
+"action_toggle_extension" = "Erweiterung ein-/ausblenden";
+"action_import_to_library" = "In Mediathek importieren";
+"action_compress" = "Komprimieren";
+"action_uncompress" = "Entpacken";
+
+// Action picker sections
+"action_section_finder" = "Finder";
+"action_section_automation" = "Automatisierung";
+"action_section_disposal" = "Entsorgung";
+"action_section_library" = "Mediathek";
+
+// Finder color labels
+"color_no_label" = "Kein Etikett";
+"color_gray" = "Grau";
+"color_green" = "Grün";
+"color_purple" = "Lila";
+"color_blue" = "Blau";
+"color_yellow" = "Gelb";
+"color_red" = "Rot";
+"color_orange" = "Orange";
+
+// Music, Photos and TV
+"library_tv" = "TV";
+
+// Import to Music, Photos or TV
+"import_to_failed" = "In %@ importieren – %@";
+"import_skip_file_already_exists" = "Übersprungen – die Datei ist bereits in %@ vorhanden";
+"import_access_denied_grant_access" = "Zugriff verweigert. Erlaube den Zugriff unter „Systemeinstellungen“ > „Datenschutz & Sicherheit“ > „Fotos“.";
+"import_access_restricted_parental_controls" = "Zugriff durch die Kindersicherung eingeschränkt.";
+"import_cannot_determine_access_status" = "Zugriffsstatus kann nicht ermittelt werden.";
+"import_automation_access_granted_allow" = "Automationszugriff nicht erteilt. Erlaube Forel unter „Systemeinstellungen“ > „Datenschutz & Sicherheit“ > „Automation“, Musik zu steuern.";
+"import_automation_access_granted_allow_forel" = "Automationszugriff nicht erteilt. Erlaube Forel unter „Systemeinstellungen“ > „Datenschutz & Sicherheit“ > „Automation“, TV zu steuern.";
+"import_to_replacing" = "In %@ importieren (ersetzt die vorhandene Datei)";
+"import_to" = "In %@ importieren";
+
+// Planned actions (Dry Run and Activity)
+"action_plan_rename_the_file" = "Datei umbenennen";
+"action_plan_replace_existing_file" = "Vorhandene Datei ersetzen";
+"action_plan_skip_the_file" = "Datei überspringen";
+"action_plan_matched_file" = "Passende Datei";
+"action_plan_no_input" = "Keine Eingabe";
+"action_plan_isnt_connected_connect_disk" = "„%@“ ist nicht verbunden. Verbinde das Laufwerk oder die Netzwerkfreigabe oder wähle den Zielordner erneut.";
+"action_plan_already_in_destination" = "Bereits am Ziel";
+"action_plan_rename_to" = "Umbenennen in %@";
+"action_plan_delete_permanently" = "Endgültig löschen";
+"action_plan_add_tag_quoted" = "Tag „%@“ hinzufügen";
+"action_plan_add_tag" = "Tag hinzufügen: %@";
+"action_plan_add_tags" = "Tags hinzufügen: %@";
+"action_plan_remove_tag_quoted" = "Tag „%@“ entfernen";
+"action_plan_remove_tag" = "Tag entfernen: %@";
+"action_plan_remove_tags" = "Tags entfernen: %@";
+"action_plan_lock_file" = "Datei schützen";
+"action_plan_unlock_file" = "Dateischutz aufheben";
+"action_plan_hide_extension" = "Erweiterung ausblenden";
+"action_plan_show_extension" = "Erweiterung einblenden";
+"action_plan_clear_color_label" = "Farbetikett entfernen";
+"action_plan_set_color_label_to" = "Farbetikett auf %@ setzen";
+"action_plan_run_script" = "Skript ausführen: %@";
+"action_plan_open_with_file" = "%@ mit Datei öffnen";
+"action_plan_open" = "%@ öffnen";
+"action_plan_uncompress_replacing_existing_file" = "Entpacken nach %@ (ersetzt die vorhandene Datei)";
+"action_plan_uncompress_renamed_avoid_existing" = "Entpacken nach %@ (umbenannt, um eine vorhandene Datei zu vermeiden)";
+"action_plan_uncompress_to" = "Entpacken nach %@";
+"action_plan_compress_to" = "Komprimieren nach %@";
+"action_plan_compress_renamed_avoid_existing" = "Komprimieren nach %@ (umbenannt, um ein vorhandenes Archiv zu vermeiden)";
+"action_plan_compress_permanently_delete_source" = "Komprimieren nach %@; Quelle nach Erfolg endgültig löschen";
+"action_plan_compress_renamed_avoid_existing_archive" = "Komprimieren nach %@ (umbenannt, um ein vorhandenes Archiv zu vermeiden); Quelle nach Erfolg endgültig löschen";
+"action_plan_original_file_folder_all" = "Die Originaldatei bzw. der Originalordner samt Inhalt wird nach dem Erstellen des ZIP endgültig gelöscht. Dies kann nicht widerrufen werden. Nachfolgende Aktionen gelten für das ZIP.";
+"action_plan_run_shortcut" = "Kurzbefehl ausführen: %@";
+"action_plan_run_shortcut_input" = "Kurzbefehl ausführen: %@ ohne Eingabe";
+"action_plan_move_renamed_avoid_existing" = "Bewegen nach %@ (umbenannt, um eine vorhandene Datei zu vermeiden)";
+"action_plan_move_replacing_existing_file" = "Bewegen nach %@ (ersetzt die vorhandene Datei)";
+"action_plan_move_to" = "Bewegen nach %@";
+"action_plan_copy_renamed_avoid_existing" = "Kopieren nach %@ (umbenannt, um eine vorhandene Datei zu vermeiden)";
+"action_plan_copy_replacing_existing_file" = "Kopieren nach %@ (ersetzt die vorhandene Datei)";
+"action_plan_copy_to" = "Kopieren nach %@";
+"action_plan_destination_folder_cant_reached" = "Auf den Zielordner kann gerade nicht zugegriffen oder geschrieben werden. Prüfe, ob das Laufwerk oder die Netzwerkfreigabe verbunden ist und Forel darauf zugreifen darf.";
+
+// Action errors
+"action_error_cannot_read_locked_state" = "Der Schutzstatus dieses Objekts kann nicht gelesen werden.";
+"action_error_cannot_read_extension_visibility" = "Die Sichtbarkeit der Erweiterung dieses Objekts kann nicht gelesen werden.";
+"action_error_cannot_change_locked_state" = "Der Schutzstatus kann auf diesem Volume nicht geändert werden.";
+"action_error_cannot_change_extension_visibility" = "Die Sichtbarkeit der Erweiterung kann auf diesem Volume nicht geändert werden.";
+"action_error_requires_param" = "%@ erfordert den Parameter „%@“";
+"action_error_could_uncompress_zip_archive" = "Das ZIP-Archiv konnte nicht entpackt werden: %@";
+"action_error_could_create_zip_archive" = "Das ZIP-Archiv konnte nicht erstellt werden. Die Quelle wurde behalten. %@";
+"action_error_zip_created_but_source" = "ZIP unter %@ erstellt, aber die Quelle konnte nicht gelöscht werden: %@";
+"action_error_archive_destination_must_absolute" = "Das Archivziel muss ein absoluter Ordnerpfad sein oder mit ~/ beginnen.";
+"action_error_choose_archive_destination_outside" = "Wähle ein Archivziel außerhalb des Quellordners. Ein ZIP darin würde sich selbst enthalten und könnte mit der Quelle gelöscht werden.";
+"action_error_archive_name_must_filename" = "Der Archivname muss ein Dateiname ohne „/“ oder Nullzeichen sein und darf nicht mit einem Punkt oder Leerzeichen enden.";
+"action_error_archive_name_too_long" = "Der Archivname ist zu lang (maximal 255 Byte einschließlich .zip).";
+"action_error_script_timed_out_after" = "Zeitüberschreitung des Skripts nach %@ s";
+"action_error_script_exited_with_status" = "Das Skript wurde mit Status %@ beendet";
+"action_error_open_application_requires_param" = "„Programm öffnen“ erfordert den Parameter „%@“";
+"action_error_application_not_found_at" = "Programm nicht gefunden unter %@";
+"action_error_import_library_requires_library" = "„In Mediathek importieren“ erfordert den Parameter „library_type“";
+"action_error_file_format_supported_music" = "Dateiformat wird von Musik nicht unterstützt – erfordert eine Audiodatei (MP3, AAC, WAV, AIFF, ALAC usw.)";
+"action_error_file_format_supported_photos" = "Dateiformat wird von Fotos nicht unterstützt – erfordert ein Bild oder Video (JPEG, PNG, TIFF, HEIC, RAW, MP4, MOV usw.)";
+"action_error_file_format_supported_tv" = "Dateiformat wird von TV nicht unterstützt – erfordert eine Videodatei (MP4, MOV, M4V usw.)";
+"action_error_applescript_failed" = "AppleScript fehlgeschlagen: %@";
+"action_error_cannot_restore_file_already" = "%@ kann nicht wiederhergestellt werden: Dort ist bereits eine Datei vorhanden";
+"action_error_action_cannot_undone" = "Diese Aktion kann nicht widerrufen werden";
+"action_error_only_zip_archives_uncompressed" = "Derzeit können nur ZIP-Archive entpackt werden.";
+"action_error_zip_archive_is_empty" = "Das ZIP-Archiv ist leer.";
+"action_error_could_read_zip_archive" = "Das ZIP-Archiv konnte nicht gelesen werden: %@";
+"action_error_zip_archive_contains_invalid" = "Das ZIP-Archiv enthält einen ungültigen Eintragspfad.";
+"action_error_rename_pattern_produced_empty" = "Das Umbenennungsmuster ergab einen leeren Dateinamen";
+"action_error_home_not_set" = "HOME ist nicht gesetzt";
+"action_error_rename_pattern_produced_invalid" = "Das Umbenennungsmuster ergab einen ungültigen Dateinamen (enthält „/“)";
+"action_error_rename_pattern_produced_invalid_filename" = "Das Umbenennungsmuster ergab einen ungültigen Dateinamen („.“ und „..“ sind nicht erlaubt)";
+"action_error_rename_pattern_produced_filename" = "Das Umbenennungsmuster ergab einen Dateinamen mit mehr als 255 Zeichen";
+"action_error_rename_pattern_produced_filename_ending" = "Das Umbenennungsmuster ergab einen Dateinamen, der mit „.“ oder einem Leerzeichen endet – von macOS nicht unterstützt";
+"action_error_runshortcut_requires_param" = "„Kurzbefehl ausführen“ erfordert den Parameter „%@“";
+"action_error_shortcut_timed_out" = "Zeitüberschreitung des Kurzbefehls";
+"action_error_shortcut_exited_with_status" = "Der Kurzbefehl wurde mit Status %@ beendet";
+
+// Reading file contents
+"content_read_plain_text" = "Reiner Text";
+"content_read_pdf_text" = "PDF-Text";
+"content_read_pdf_ocr" = "PDF-OCR";
+"content_read_rtf" = "RTF";
+"content_read_word_document" = "Word-Dokument";
+"content_read_spreadsheet" = "Tabelle";
+"content_read_opendocument" = "OpenDocument";
+"content_read_iwork_document" = "iWork-Dokument";
+"content_read_spotlight" = "Spotlight";
+"content_read_image_ocr" = "Bild-OCR";
+"content_read_no_readable_content" = "Kein lesbarer Inhalt";
+
+// Errors reading file contents
+"content_error_text_recognition_images_requires" = "Die Texterkennung in Bildern erfordert Forel Pro.";
+"content_error_only_spotlight_contains_matching" = "Für dieses Format ist nur der Spotlight-Abgleich „enthält“ verfügbar.";
+"content_error_file_exceeds_100_mb" = "Die Datei überschreitet die Textgrenze von 100 MB.";
+"content_error_unsupported_file_type" = "Nicht unterstützter Dateityp.";
+"content_error_could_not_decode_text" = "Der Text konnte nicht dekodiert werden.";
+"content_error_pdf_exceeds_100_mb" = "Das PDF überschreitet die Grenze von 100 MB.";
+"content_error_could_not_open_pdf" = "Das PDF konnte nicht geöffnet werden.";
+"content_error_text_recognition_scanned_pdfs" = "Die Texterkennung in gescannten PDFs erfordert Forel Pro.";
+"content_error_pdf_readable_text" = "Das PDF enthält keinen lesbaren Text.";
+"content_error_document_exceeds_100_mb" = "Das Dokument überschreitet die Grenze von 100 MB.";
+"content_error_could_not_read_document" = "Das Dokument konnte nicht gelesen werden.";
+"content_error_document_readable_text" = "Das Dokument enthält keinen lesbaren Text.";
+"content_error_spreadsheet_exceeds_100_mb" = "Die Tabelle überschreitet die Grenze von 100 MB.";
+"content_error_could_not_read_spreadsheet" = "Die Tabelle konnte nicht gelesen werden.";
+"content_error_spreadsheet_readable_text" = "Die Tabelle enthält keinen lesbaren Text.";
+"content_error_presentation_exceeds_100_mb" = "Die Präsentation überschreitet die Grenze von 100 MB.";
+"content_error_could_not_read_presentation" = "Die Präsentation konnte nicht gelesen werden.";
+"content_error_presentation_readable_text" = "Die Präsentation enthält keinen lesbaren Text.";
+"content_error_iwork_exceeds_100_mb" = "Das iWork-Dokument überschreitet die Grenze von 100 MB.";
+"content_error_iwork_preview_not_available" = "iWork-Vorschau nicht verfügbar.";
+"content_error_iwork_preview_readable_text" = "Die iWork-Vorschau enthält keinen lesbaren Text.";
+"content_error_image_exceeds_25_mb" = "Das Bild überschreitet die OCR-Grenze von 25 MB.";
+"content_error_could_not_open_image" = "Das Bild konnte nicht geöffnet werden.";
+"content_error_image_too_large_ocr" = "Das Bild ist zu groß für OCR.";
+"content_error_text_found_image" = "Im Bild wurde kein Text gefunden.";
+
+// Sync Folders
+"sync_keep_counterpart" = "Gegenstück behalten";
+"sync_move_counterpart_to_trash" = "Gegenstück in den Papierkorb legen";
+"sync_delete_counterpart_permanently" = "Gegenstück endgültig löschen";
+"sync_already_synced" = "Bereits synchronisiert";
+"sync_synced_with_its_package" = "Mit seinem Paket synchronisiert";
+"sync_folder_at" = "Ordner synchronisieren unter %@";
+"sync_create_synced_folder_at" = "Synchronisierten Ordner erstellen unter %@";
+"sync_to_updating" = "Synchronisieren nach %@, vorhandene Datei wird aktualisiert";
+"sync_to" = "Synchronisieren nach %@";
+"sync_sync_folders_only_sync" = "„Ordner synchronisieren“ kann nur Dateien im überwachten Ordner synchronisieren";
+"sync_sync_destination_contains_symbolic" = "Das Synchronisierungsziel enthält einen symbolischen Link in einem übergeordneten Ordner. Es wurde keine Datei geändert.";
+"sync_choose_absolute_destination_folder" = "Wähle einen absoluten Zielordner für „Ordner synchronisieren“.";
+"sync_sync_path_contains_broken" = "Der Synchronisierungspfad enthält einen defekten symbolischen Link. Wähle einen erreichbaren Zielordner.";
+"sync_delete_permanently_removed_watched" = "Endgültig löschen, aus dem überwachten Ordner entfernt";
+"sync_move_trash_removed_watched" = "In den Papierkorb legen, aus dem überwachten Ordner entfernt";
+"sync_removed_watched_folder_so" = "Aus dem überwachten Ordner entfernt, daher wurde die Kopie endgültig gelöscht.";
+"sync_removed_watched_folder_so_copy" = "Aus dem überwachten Ordner entfernt, daher wurde die Kopie in den Papierkorb gelegt.";
+"sync_cannot_check_whether_still" = "Es kann nicht geprüft werden, ob %@ noch existiert: %@ Die Bereinigung der Synchronisierung wurde gestoppt.";
+
+// Rule problems
+"rule_problem_locked_requires_true_false" = "„Geschützt“ erfordert „wahr“ oder „falsch“";
+"rule_problem_condition_value_cannot_empty" = "Der Bedingungswert darf nicht leer sein";
+"rule_problem_regex_pattern_is_invalid" = "Der reguläre Ausdruck ist ungültig";
+"rule_problem_destination_path_cannot_empty" = "Der Zielpfad darf nicht leer sein";
+"rule_problem_rename_pattern_cannot_empty" = "Das Umbenennungsmuster darf nicht leer sein";
+"rule_problem_least_one_tag_required" = "Mindestens ein Tag ist erforderlich";
+"rule_problem_application_cannot_be_empty" = "Das Programm darf nicht leer sein";
+
+// Copy rules
+"copy_rules_title_one" = "Regel kopieren";
+"copy_rules_title_other" = "%@ Regeln kopieren";
+"copy_rules_choose_another_watched_folder" = "Wähle einen anderen überwachten Ordner";
+"copy_rules_add_another_watched_folder" = "Füge einen weiteren überwachten Ordner hinzu, um Regeln dorthin zu kopieren.";
+"copy_rules_choose_a_folder" = "Ordner auswählen";
+"copy_rules_pro" = "%@ — Pro";
+"copy_rules_reorder_watched_folders_activate" = "Sortiere deine überwachten Ordner um oder aktiviere Pro, um diese Ziele zu verwenden.";
+"copy_rules_copies_independent_keep_their" = "Kopien sind unabhängig und behalten ihre Bedingungen, Aktionen und ihren Aktivierungsstatus. Die Ziele der Aktionen bleiben unverändert.";
+"copy_rules_copy" = "Kopieren";
+"copy_rules_select_least_one_rule" = "Wähle mindestens eine Regel zum Kopieren aus.";
+"copy_rules_choose_different_watched_folder" = "Wähle einen anderen überwachten Ordner für die Kopien.";
+"copy_rules_folder_been_removed_choose" = "Ein Ordner wurde entfernt. Wähle einen anderen überwachten Ordner.";
+"copy_rules_some_selected_rules_longer" = "Einige ausgewählte Regeln existieren nicht mehr. Wähle die Regeln erneut aus.";
+
+// Run Now results
+"run_summary_run_complete_matching_files" = "Ausführung abgeschlossen – keine passenden Dateien";
+"run_summary_run_complete" = "Ausführung abgeschlossen – %@";
+"run_summary_actions_applied_one" = "%@ Aktion angewendet";
+"run_summary_actions_applied_other" = "%@ Aktionen angewendet";
+"run_summary_actions_failed_one" = "%@ Aktion fehlgeschlagen";
+"run_summary_actions_failed_other" = "%@ Aktionen fehlgeschlagen";
+"run_summary_actions_skipped_one" = "%@ Aktion übersprungen";
+"run_summary_actions_skipped_other" = "%@ Aktionen übersprungen";
+"run_summary_actions_awaiting_confirmation_one" = "%@ Aktion wartet auf Bestätigung";
+"run_summary_actions_awaiting_confirmation_other" = "%@ Aktionen warten auf Bestätigung";
+"run_summary_applied_one" = "%@ angewendet";
+"run_summary_applied_other" = "%@ angewendet";
+"run_summary_failed_one" = "%@ fehlgeschlagen";
+"run_summary_failed_other" = "%@ fehlgeschlagen";
+"run_summary_skipped_one" = "%@ übersprungen";
+"run_summary_skipped_other" = "%@ übersprungen";
+"run_summary_awaiting_confirmation_one" = "%@ wartet auf Bestätigung";
+"run_summary_awaiting_confirmation_other" = "%@ warten auf Bestätigung";
+
+// Rule engine
+"engine_skipped_because_action_change" = "Übersprungen, da die Aktion diese Datei nicht ändern würde.";
+"engine_file_already_exists_destination" = "Am Ziel ist bereits eine Datei vorhanden.";
+
+// Activity
+"activity_recorded_actions_one" = "%@ aufgezeichnete Aktion";
+"activity_recorded_actions_other" = "%@ aufgezeichnete Aktionen";
+"activity_back_to_rules" = "Zurück zu den Regeln";
+"activity_directory" = "Ordner";
+"activity_all_directories" = "Alle Ordner";
+"activity_undo_batch" = "Stapel widerrufen (%@)";
+"activity_clear_history" = "Verlauf löschen";
+"activity_actions_performed_rules_appear" = "Die von deinen Regeln ausgeführten Aktionen werden hier angezeigt.";
+"activity_earlier" = "Früher";
+"activity_undo" = "Widerrufen";
+"activity_applied" = "Angewendet";
+
+// Undo
+"undo_action_cannot_undone" = "Diese Aktion kann nicht widerrufen werden.";
+"undo_action_currently_applied" = "Diese Aktion ist derzeit nicht angewendet.";
+"undo_file_forel_moved_longer" = "Die von Forel bewegte Datei existiert nicht mehr unter %@.";
+"undo_file_already_exists_original" = "Am ursprünglichen Ort ist bereits eine Datei vorhanden.";
+"undo_copy_forel_created_longer" = "Die von Forel erstellte Kopie existiert nicht mehr.";
+"undo_file_longer_exists_expected" = "Die Datei existiert nicht mehr am erwarteten Ort.";
+"undo_rule_immediately_reprocess_file" = "Die Regel „%@“ würde diese Datei sofort nach dem Wiederherstellen erneut verarbeiten.";
+"undo_file_location_longer_same" = "Die Datei an diesem Ort ist nicht mehr die, die Forel bewegt hat.";
+
+// Quick panel
+"quick_panel_overview" = "Übersicht";
+"quick_panel_folders" = "Ordner";
+"quick_panel_history" = "Verlauf";
+"quick_panel_recent_activity" = "Letzte Aktivität";
+"quick_panel_open_forel" = "Forel öffnen";
+"quick_panel_free" = "Free";
+"quick_panel_manage_your_pro_license" = "Deine Pro-Lizenz verwalten";
+"quick_panel_discover_forel_pro" = "Forel Pro entdecken";
+
+// Settings
+"settings_appearance" = "Erscheinungsbild";
+"settings_accent_color" = "Akzentfarbe";
+"settings_general" = "Allgemein";
+"settings_automatic_watching" = "Automatische Überwachung";
+"settings_start_at_login" = "Bei der Anmeldung starten";
+"settings_open_forel_automatically_when" = "Forel bei der Anmeldung automatisch öffnen";
+"settings_show_dock_icon" = "Symbol im Dock anzeigen";
+"settings_keep_forel_visible_dock" = "Forel im Dock anzeigen, solange es läuft";
+"settings_watcher_notifications" = "Überwachungsmitteilungen";
+"settings_notify_when_automatic_rules" = "Benachrichtigen, wenn automatische Regeln Dateien verarbeiten";
+"settings_keep_history_for" = "Verlauf behalten für";
+"settings_days_one" = "%@ Tag";
+"settings_days_other" = "%@ Tage";
+"settings_updates" = "Updates";
+"settings_automatic_updates" = "Automatische Updates";
+"settings_check_new_versions_background" = "Im Hintergrund nach neuen Versionen suchen";
+"settings_current_version" = "Aktuelle Version";
+"settings_check_now" = "Jetzt prüfen";
+"settings_about" = "Über";
+"settings_version" = "Version";
+"settings_build" = "Build";
+"settings_copyright" = "Copyright";
+"settings_lab421_forel" = "lab421/forel";
+"settings_language" = "Sprache";
+"settings_applies_forel_only_like" = "Gilt nur für Forel, wie „Systemeinstellungen“ > „Allgemein“ > „Sprache & Region“ > „Apps“.";
+"settings_same_as_macos" = "Wie macOS";
+"settings_forel_switches_when_relaunches" = "Forel wechselt beim nächsten Start zu %@.";
+"settings_relaunch_now" = "Jetzt neu starten";
+"settings_save_discard_changes_rule" = "Sichere oder verwirf zuerst die Änderungen an der Regel, die du bearbeitest.";
+"settings_wait_run_now_dry" = "Warte zuerst, bis die Ausführung oder der Testlauf beendet ist.";
+"settings_checking" = "%@ – Wird geprüft …";
+"settings_license" = "Lizenz";
+
+// Permissions
+"permissions_needed_import_library_action" = "Wird von der Aktion „In Mediathek importieren“ für Importe von Fotos oder Videos benötigt.";
+"permissions_request_access" = "Zugriff anfordern";
+"permissions_open_settings" = "Einstellungen öffnen";
+"permissions_automation" = "Automation für %@";
+"permissions_needed_import_library_action_when" = "Wird von der Aktion „In Mediathek importieren“ für Importe in %@ benötigt.";
+"permissions_check_again" = "Erneut prüfen";
+"permissions_talks_verify_automation_access" = "Kommuniziert mit %@, um den Automationszugriff zu prüfen – startet die App, falls sie noch nicht läuft.";
+"permissions_check_access" = "Zugriff prüfen";
+"permissions_granted" = "Erlaubt";
+"permissions_denied" = "Abgelehnt";
+"permissions_restricted" = "Eingeschränkt";
+"permissions_not_checked" = "Nicht geprüft";
+
+// Disconnected disks
+"volume_isnt_connected" = "„%@“ ist nicht verbunden";
+"volume_disks_shares_arent_connected_one" = "%@ Laufwerk oder Netzwerkfreigabe ist nicht verbunden";
+"volume_disks_shares_arent_connected_other" = "%@ Laufwerke oder Netzwerkfreigaben sind nicht verbunden";
+"volume_files_couldnt_moved_copied_one" = "%@ Datei konnte nicht bewegt oder kopiert werden. Regeln: %@.";
+"volume_files_couldnt_moved_copied_other" = "%@ Dateien konnten nicht bewegt oder kopiert werden. Regeln: %@.";
+"volume_forel_try_again_when" = "Forel versucht es erneut, sobald es verbunden ist, wenn die Überwachung noch aktiv ist.";
+"volume_forel_try_again_when_theyre" = "Forel versucht es erneut, sobald sie verbunden sind, wenn die Überwachung noch aktiv ist.";
+"volume_connect_then_use_run" = "Verbinde es und verwende dann „Jetzt ausführen“.";
+"volume_connect_them_then_use" = "Verbinde sie und verwende dann „Jetzt ausführen“.";
+
+// Notifications and alerts
+"app_move_forel_applications_first" = "Bewege Forel zuerst in den Programme-Ordner";
+"app_forel_running_installer_disk" = "Forel wird vom Installations-Image ausgeführt. Ziehe Forel in deinen Programme-Ordner und öffne es von dort.";
+"app_folder_kept_pro_free" = "Dieser Ordner ist für Pro reserviert. Free unterstützt die ersten 2 überwachten Ordner; sortiere die Ordner um oder aktiviere Pro, um ihn zu verwenden.";
+"app_could_process_file" = "Diese Datei konnte nicht verarbeitet werden";
+"app_folder_already_watched" = "Ordner wird bereits überwacht";
+"app_already_watched_folders" = "„%@“ ist bereits einer deiner überwachten Ordner.";
+"app_folder_is_busy" = "Ordner ist beschäftigt";
+"app_wait_current_run_now" = "Warte, bis die laufende Ausführung oder der Testlauf beendet ist, bevor du diesen überwachten Ordner änderst.";
+"app_forel_still_processing_file" = "Forel verarbeitet noch ein Dateiereignis in diesem überwachten Ordner. Versuche es erneut, sobald es fertig ist.";
+"app_run_complete_enabled_rules" = "Ausführung abgeschlossen – keine aktivierten Regeln";
+"app_run_paused_monthly_free" = "Ausführung pausiert – monatliches Free-Limit erreicht. Die übrigen Dateien bleiben, wo sie sind.";
+"app_could_complete_run_now" = "„Jetzt ausführen“ konnte nicht abgeschlossen werden";
+"app_cant_undo_this_action" = "Diese Aktion kann nicht widerrufen werden";
+"app_collide_another_file_being" = "%@: würde mit einer anderen Datei kollidieren, die in diesem Stapel wiederhergestellt wird.";
+"app_label_value" = "%@: %@";
+"app_some_actions_could_undone" = "Einige Aktionen konnten nicht widerrufen werden:\n%@";
+"app_forel_applied_actions_one" = "Forel hat %@ Aktion angewendet";
+"app_forel_applied_actions_other" = "Forel hat %@ Aktionen angewendet";
+"app_no_rules" = "Keine Regeln";
+"app_files_processed_rules_one" = "%@ Datei verarbeitet. Regeln: %@.";
+"app_files_processed_rules_other" = "%@ Dateien verarbeitet. Regeln: %@.";
+
+// Shared controls
+"component_active" = "AKTIV";
+"component_paused" = "PAUSIERT";
+"component_update_available" = "Update verfügbar";
+"component_new_version_available" = "Neue Version verfügbar";
+"component_version" = "Version %@";
+"component_installing" = "Wird installiert …";
+"component_download" = "Laden";
+"component_on" = "Ein";
+"component_off" = "Aus";
+"component_choose" = "Auswählen";
+
+// Forel Free
+"free_plan_text_recognition_ocr" = "Texterkennung (OCR)";
+"free_plan_media_library_imports" = "Importe in Mediatheken";
+"free_plan_organize_scanned_pdfs_images" = "Ordne gescannte PDFs und Bilder nach dem Text, den sie enthalten. Die Erkennung läuft lokal auf deinem Mac.";
+"free_plan_import_matching_files_directly" = "Importiere passende Dateien direkt in Fotos, Musik und TV.";
+"free_plan_two_folders_limit" = "Forel Free unterstützt 2 überwachte Ordner. Entferne einen Ordner oder aktiviere Pro, um einen weiteren hinzuzufügen.";
+"free_plan_folder_outside_free_allowance" = "Dieser Ordner liegt außerhalb des Free-Kontingents. Sortiere die Ordner um oder aktiviere Pro, um Regeln hinzuzufügen.";
+"free_plan_forel_free_reached_limit" = "Forel Free hat das Limit von 300 verarbeiteten Dateien in diesem Monat erreicht. Die Verarbeitung wird nächsten Monat fortgesetzt, oder aktiviere Pro für unbegrenzt viele Dateien. Deine übrigen Dateien bleiben, wo sie sind.";
+"free_plan_requires_forel_pro_rule" = "%@ erfordert Forel Pro. Diese Regel bleibt erhalten, kann aber in Free nicht ausgeführt werden.";
+
+// Monthly usage
+"usage_files_this_month" = "%@/%@ Dateien diesen Monat";
+"usage_renews_dry_run_count" = "Erneuert sich am %@. Testläufe zählen nicht. Entdecke Pro für unbegrenzte Verarbeitung.";
+
+// Forel Pro
+"pro_automate_more_folders" = "Mehr Ordner automatisieren";
+"pro_keep_processing_with_pro" = "Mit Pro weiter verarbeiten";
+"pro_free_includes_2_watched" = "Free umfasst 2 überwachte Ordner. Mit Pro organisierst du Projekte, Rechnungen und Downloads mit unbegrenzt vielen Ordnern.";
+"pro_free_includes_300_processed" = "Free umfasst 300 verarbeitete Dateien pro Kalendermonat, geteilt über alle Ordner. Aktiviere Pro für unbegrenzte Verarbeitung oder mach nächsten Monat weiter. Der Testlauf bleibt verfügbar und deine übrigen Dateien bleiben, wo sie sind.";
+"pro_free_stays_free_pro" = "Free bleibt kostenlos. Pro ist eine kostenpflichtige Lizenz ohne Testphase.";
+"pro_continue_in_free" = "Mit Free fortfahren";
+"pro_activate_a_license" = "Eine Lizenz aktivieren";
+"pro_view_pricing_buy_pro" = "Preise ansehen und Pro kaufen";
+"pro_unlimited_watched_folders" = "Unbegrenzt viele überwachte Ordner";
+"pro_unlimited_files_processed" = "Unbegrenzt viele verarbeitete Dateien";
+"pro_ocr_images_scanned_pdfs" = "OCR für Bilder und gescannte PDFs";
+"pro_photos_music_tv_imports" = "Importe in Fotos, Musik und TV";
+
+// License
+"license_status" = "Lizenzstatus";
+"license_licensed_device" = "Lizenziertes Gerät";
+"license_deactivate" = "Deaktivieren";
+"license_monthly_usage" = "Monatliche Nutzung";
+"license_automate_more_with_pro" = "Mehr automatisieren mit Pro";
+"license_activate_license" = "Lizenz aktivieren";
+"license_key" = "Lizenzschlüssel";
+"license_buy_forel_pro" = "Forel Pro kaufen";
+"license_activate" = "Aktivieren";
+"license_are_you_sure" = "Bist du sicher?";
+"license_unlimited_folders_files_ocr" = "Unbegrenzt viele Ordner und Dateien, mit OCR und Medienimporten.";
+"license_free_forever_2_watched" = "Für immer kostenlos: 2 überwachte Ordner und 300 verarbeitete Dateien pro Monat, mit unbegrenzten Regeln und Aktionen. Keine Testphase.";
+
+// License errors
+"license_error_activate_pro_license_again" = "Aktiviere deine Pro-Lizenz erneut in den Lizenzeinstellungen, um den Zugriff auf ihren gespeicherten Schlüsselbundeintrag zu erlauben.";
+"license_error_keychain_error" = "Schlüsselbundfehler %@.";
+"license_error_could_read_saved_license" = "Deine gespeicherte Lizenz konnte nicht gelesen werden: %@";
+"license_error_enter_license_key_activate" = "Gib einen Lizenzschlüssel ein, um Forel Pro zu aktivieren.";
+"license_error_server_did_return_valid" = "Der Server hat keine gültige Forel Pro-Lizenz zurückgegeben.";
+"license_error_could_activate_forel_pro" = "Forel Pro konnte nicht aktiviert werden: %@";
+"license_error_license_longer_valid_forel" = "Deine Lizenz ist nicht mehr gültig. Forel bleibt im Free-Modus verfügbar.";
+"license_error_could_verify_license_valid" = "Deine Lizenz konnte nicht überprüft werden. Eine gültige gespeicherte Lizenz funktioniert weiterhin offline.";
+"license_error_could_finish_deactivating_license" = "Die Deaktivierung deiner Lizenz konnte nicht abgeschlossen werden: %@";

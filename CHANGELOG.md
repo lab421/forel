@@ -3,6 +3,14 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Forel is now available in French, Spanish, and German. It follows the language of your Mac, or the one you choose in Settings > General > Language, applied after a relaunch.
+
+### Fixed
+- The rule list and the Dry Run preview now say "1 rule" and "1 item scanned" instead of "1 rules" and "1 items scanned".
+
 ## [1.2.0] - 2026-11-09
 
 ### Added

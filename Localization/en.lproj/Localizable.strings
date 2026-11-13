@@ -1,0 +1,756 @@
+// Common
+"forel" = "Forel";
+"github_repository" = "GitHub Repository";
+"watching" = "Watching";
+"watched_folders" = "Watched Folders";
+"settings" = "Settings";
+"activity" = "Activity";
+"activity_history" = "Activity history";
+"pro" = "Pro";
+"reorder_folders_activate_pro" = "Reorder folders or activate Pro to use this folder.";
+"show_in_finder" = "Show in Finder";
+"discover_pro" = "Discover Pro";
+"save" = "Save";
+"error" = "Error";
+"rules" = "Rules";
+"new_rule" = "New Rule";
+"cancel" = "Cancel";
+"lines_one" = "%@ line";
+"lines_other" = "%@ lines";
+"needs_confirmation" = "Needs confirmation";
+"enabled" = "Enabled";
+"choose" = "Choose…";
+"application" = "Application";
+"add_tag" = "Add tag";
+"locked" = "Locked";
+"extension" = "Extension";
+"destination" = "Destination";
+"tags" = "Tags";
+"music" = "Music";
+"presentation" = "Presentation";
+"move_to_trash" = "Move to Trash";
+"remove_tag" = "Remove tag";
+"run_script" = "Run script";
+"run_shortcut" = "Run shortcut";
+"open_application" = "Open application";
+"photos" = "Photos";
+"skip_file_already_exists" = "Skip — a file already exists at %@";
+"requires_true_false_value" = "%@ requires a true or false value";
+"preview_unavailable" = "Preview unavailable: %@";
+"no_activity_yet" = "No activity yet";
+"undone" = "Undone";
+"failed" = "Failed";
+"skipped" = "Skipped";
+"paused_new_files_ignored" = "Paused — new files are ignored";
+"watching_folders_rules_run" = "Watching folders — rules run automatically";
+"quit" = "Quit";
+"forel_pro" = "Forel Pro";
+"forel_free" = "Forel Free";
+"permissions" = "Permissions";
+"and_more_one" = "%2$@ and %1$@ more";
+"and_more_other" = "%2$@ and %1$@ more";
+
+// Menus and windows
+"menu_about_forel" = "About Forel";
+"menu_build" = "Build %@";
+
+// About
+"about_open_source_file_automation" = "Open-source file automation for macOS";
+"about_development" = "Development";
+
+// Sidebar
+"sidebar_file_automation" = "File automation";
+"sidebar_paused" = "Paused";
+"sidebar_new_files_are_ignored" = "New files are ignored";
+"sidebar_rules_run_automatically" = "Rules run automatically";
+"sidebar_add_folder_watch" = "Add a folder to watch";
+"sidebar_change_path_of_folder" = "Change path of folder…";
+"sidebar_remove" = "Remove";
+"sidebar_no_folders_yet" = "No folders yet";
+"sidebar_add_folder_start_automating" = "Add a folder to start automating files.";
+"sidebar_add_folder" = "Add Folder";
+
+// Main window
+"window_ok" = "OK";
+"window_discard_changes" = "Discard Changes";
+"window_keep_editing" = "Keep Editing";
+"window_save_changes_rule" = "Save changes to this rule?";
+"window_save_changes_to_the_rule" = "Save changes to the rule “%@”?";
+"window_cant_saved_yet_keep" = "It can't be saved yet: %@ Keep editing to fix it, or discard your changes.";
+"window_changes_rule_lost_if" = "Your changes to this rule are lost if you don't save them.";
+"window_hide_sidebar" = "Hide Sidebar";
+"window_show_sidebar" = "Show Sidebar";
+
+// Rule list and Dry Run
+"rule_list_rules_selected_one" = "%@ rule selected";
+"rule_list_rules_selected_other" = "%@ rules selected";
+"rule_list_copy_rules_to_folder" = "Copy rules to folder…";
+"rule_list_deselect_all" = "Deselect all";
+"rule_list_kept_pro_running" = "Kept for Pro — not running";
+"rule_list_created_newer_version_forel" = "Created with a newer version of Forel — not running. Update Forel to run or edit it.";
+"rule_list_show_in_activity" = "Show in Activity";
+"rule_list_dismiss" = "Dismiss";
+"rule_list_select_folder_manage_rules" = "Select a folder to manage its rules";
+"rule_list_rules_drag_to_reorder_one" = "%@ rule · drag to reorder";
+"rule_list_rules_drag_to_reorder_other" = "%@ rules · drag to reorder";
+"rule_list_running" = "Running…";
+"rule_list_run_now" = "Run Now";
+"rule_list_scanning" = "Scanning…";
+"rule_list_preview_dry_run" = "Preview (Dry Run)";
+"rule_list_automatic_watching_is_paused" = "Automatic watching is paused";
+"rule_list_rules_only_run_when" = "Rules only run when you choose Run Now.";
+"rule_list_resume_watching" = "Resume Watching";
+"rule_list_no_folder_selected" = "No folder selected";
+"rule_list_pick_folder_left_see" = "Pick a folder on the left to see its rules.";
+"rule_list_no_rules_yet" = "No rules yet";
+"rule_list_create_rule_automate_files" = "Create a rule to automate files in this folder.";
+"rule_list_reorder_folders_activate_pro" = "Reorder folders or activate Pro to add rules in this folder.";
+"rule_list_runs_30d_one" = "%@ run (30d)";
+"rule_list_runs_30d_other" = "%@ runs (30d)";
+"rule_list_last_30_days_successful" = "Last 30 days: %@ successful, %@ failed";
+"rule_list_delete_rule_menu" = "Delete this rule…";
+"rule_list_delete_rule_help" = "Delete rule";
+"rule_list_version_forel_cant_show" = "This version of Forel can't show this rule's details.";
+"rule_list_delete_rule" = "Delete Rule";
+"rule_list_delete_confirm_title" = "Delete this rule?";
+"rule_list_delete_confirm_title_named" = "Delete the rule “%@”?";
+"rule_list_delete_confirm_message" = "Its %1$@ and %2$@ are deleted, and this can't be undone. Files it already processed stay where they are, and its past activity is kept.";
+"rule_list_conditions_count_one" = "%@ condition";
+"rule_list_conditions_count_other" = "%@ conditions";
+"rule_list_actions_count_one" = "%@ action";
+"rule_list_actions_count_other" = "%@ actions";
+"rule_list_if" = "IF";
+"rule_list_matches_every_file_scope" = "Matches every file in scope.";
+"rule_list_do" = "DO";
+"rule_list_no_actions_configured" = "No actions configured.";
+"rule_list_to_folder" = "to folder";
+"rule_list_with_folder" = "with folder";
+"rule_list_to" = "to %@";
+"rule_list_clean_file_name" = "clean file name";
+"rule_list_move_to_trash" = "move to Trash";
+"rule_list_delete_permanently" = "delete permanently";
+"rule_list_add" = "add %@";
+"rule_list_remove" = "remove %@";
+"rule_list_clear_color_label" = "clear color label";
+"rule_list_set_to" = "set to %@";
+"rule_list_lock" = "lock";
+"rule_list_unlock" = "unlock";
+"rule_list_hide_extension" = "hide extension";
+"rule_list_show_extension" = "show extension";
+"rule_list_run_script" = "run script";
+"rule_list_run_shortcut" = "run shortcut";
+"rule_list_open_application" = "open application";
+"rule_list_with_matched_file" = "with matched file";
+"rule_list_import_to" = "import to %@";
+"rule_list_import_to_library" = "import to library";
+"rule_list_uncompress_zip" = "uncompress ZIP";
+"rule_list_permanently_delete_source_after" = "permanently delete source after success";
+"rule_list_create_zip" = "create ZIP";
+"rule_list_tag" = "tag";
+"rule_list_matched_at_least" = "%@+ matched";
+"rule_list_matched_count_one" = "%@ matched";
+"rule_list_matched_count_other" = "%@ matched";
+"rule_list_items_scanned_one" = "%@ item scanned · %@";
+"rule_list_items_scanned_other" = "%@ items scanned · %@";
+"rule_list_showing_first_matches_narrow" = "Showing the first %@ matches. Narrow the folder scope or conditions to see fewer results.";
+"rule_list_actions_configured_rule" = "No actions configured for this rule.";
+"rule_list_files_match_current_rules" = "No files match the current rules.";
+"rule_list_close" = "Close";
+"rule_list_likely_to_fail" = "Likely to fail";
+"rule_list_would_run" = "Would run";
+"rule_list_would_skip" = "Would skip";
+"rule_list_blocked_by_conflict" = "Blocked by conflict";
+
+// Rule editor
+"rule_editor_edit_rule" = "Edit Rule";
+"rule_editor_conditions_decide_which_files" = "Conditions decide which files match; actions decide what happens";
+"rule_editor_basics" = "Basics";
+"rule_editor_rule_name" = "Rule name";
+"rule_editor_match_all_conditions" = "Match all conditions";
+"rule_editor_match_any_condition" = "Match any condition";
+"rule_editor_conditions" = "Conditions";
+"rule_editor_conditions_rule_matches_every" = "No conditions — this rule matches every file in scope.";
+"rule_editor_actions" = "Actions";
+"rule_editor_actions_yet_add_least" = "No actions yet — add at least one to make this rule do something.";
+"rule_editor_rule_needs_name" = "The rule needs a name.";
+"rule_editor_matching_files" = "Matching Files";
+"rule_editor_hide_the_matching_files" = "Hide the matching files";
+"rule_editor_show_files_rule_matches" = "Show the files this rule matches right now";
+"rule_editor_expanded" = "Expanded";
+"rule_editor_collapsed" = "Collapsed";
+"rule_editor_rule_uses_forel_pro" = "This rule uses a Forel Pro feature, so it can't be previewed on the Free plan.";
+"rule_editor_nothing_folder_matches_right" = "Nothing in this folder matches right now. Matching files are processed when they arrive.";
+"rule_editor_nothing_matches_first_items_one" = "Nothing matches in the first %@ items of this folder.";
+"rule_editor_nothing_matches_first_items_other" = "Nothing matches in the first %@ items of this folder.";
+"rule_editor_and_more_count_one" = "and %@ more…";
+"rule_editor_and_more_count_other" = "and %@ more…";
+"rule_editor_and_more" = "and more…";
+"rule_editor_only_rule_checked_use" = "Only this rule is checked. Use Dry Run to preview all of the folder's rules together.";
+"rule_editor_checking_items_folder" = "Checking the items in this folder…";
+"rule_editor_copy_path" = "Copy Path";
+"rule_editor_add_action_see_what" = "Add an action to see what would happen to these files.";
+"rule_editor_complete_actions_above_see" = "Complete the actions above to see what would happen to these files.";
+"rule_editor_items_match_one" = "%@ item matches";
+"rule_editor_items_match_other" = "%@ items match";
+"rule_editor_at_least_items_match_one" = "At least %@ item matches";
+"rule_editor_at_least_items_match_other" = "At least %@ items match";
+"rule_editor_items_checked_one" = "%@ item checked";
+"rule_editor_items_checked_other" = "%@ items checked";
+"rule_editor_first_items_checked_one" = "First %@ item checked";
+"rule_editor_first_items_checked_other" = "First %@ items checked";
+"rule_editor_scope" = "Scope";
+"rule_editor_current_folder" = "Current folder";
+"rule_editor_subfolders" = "Subfolders";
+"rule_editor_depth" = "Depth";
+"rule_editor_all_levels" = "All levels";
+"rule_editor_all_levels_slow_execution" = "All levels can slow execution in folders with many files. Use with caution.";
+"rule_editor_all_subfolder_levels" = "All subfolder levels";
+"rule_editor_subfolder_levels_one" = "%@ subfolder level";
+"rule_editor_subfolder_levels_other" = "%@ subfolder levels";
+"rule_editor_document_text_included_free" = "Document text is included in Free. Images and scanned PDFs require Pro OCR.";
+"rule_editor_unlock_ocr" = "Unlock OCR";
+"rule_editor_value" = "Value";
+"rule_editor_archive_matches_compressed_formats" = "Archive matches compressed formats such as ZIP, TAR, GZ, 7Z, RAR, XZ, ZST, TGZ, TBZ, and CAB.";
+"rule_editor_invalid_regular_expression" = "Invalid regular expression";
+"rule_editor_regex_pattern" = "Regex pattern";
+"rule_editor_hours" = "hours";
+"rule_editor_days" = "days";
+"rule_editor_weeks" = "weeks";
+"rule_editor_months" = "months";
+"rule_editor_years" = "years";
+"rule_editor_bytes" = "bytes";
+"rule_editor_kb" = "KB";
+"rule_editor_mb" = "MB";
+"rule_editor_gb" = "GB";
+"rule_editor_app_name" = "App name";
+"rule_editor_unlock" = "Unlock %@";
+"rule_editor_action_options" = "Action options";
+"rule_editor_destination_folder" = "Destination folder";
+"rule_editor_add_kind_extension_year" = "Add {kind}, {extension}, {year}, {month}, {day}, {hour}, {minute}, or {quarter} to sort into folders, e.g. …/Sorted/{kind}/{year}";
+"rule_editor_tag" = "Tag";
+"rule_editor_state" = "State";
+"rule_editor_unlocked" = "Unlocked";
+"rule_editor_hidden" = "Hidden";
+"rule_editor_visible" = "Visible";
+"rule_editor_runs_once_per_matching" = "Runs once per matching file. Use \"$FOREL_FILE\" for its full path. Dry Run does not execute scripts; script changes cannot be undone.";
+"rule_editor_library" = "Library:";
+"rule_editor_playlist" = "Playlist:";
+"rule_editor_album" = "Album:";
+"rule_editor_zip_archives_only" = "ZIP archives only";
+"rule_editor_no_parameters" = "No parameters";
+"rule_editor_options" = "Options";
+"rule_editor_options_action" = "No options for this action.";
+"rule_editor_pass_matched_file_app" = "Pass matched file to app";
+"rule_editor_next_source_default" = "Next to the source (default)";
+"rule_editor_supports_kind_extension_year" = "Supports {kind}, {extension}, {year}, {month}, {day}, {hour}, {minute}, and {quarter}.";
+"rule_editor_use_source_folder" = "Use source folder";
+"rule_editor_leave_empty_save_next" = "Leave empty to save next to the source. Existing ZIPs are kept; new archives are numbered.";
+"rule_editor_delete_source_after_compression" = "Delete source after compression";
+"rule_editor_after_zip_created_successfully" = "After the ZIP is created successfully, the original file or folder and all its contents are permanently deleted. This cannot be undone. Following actions apply to the ZIP.";
+"rule_editor_if_file_already_exists" = "If a file already exists";
+"rule_editor_input" = "Input";
+"rule_editor_deletes" = "Deletes";
+"rule_editor_when_file_deleted_watched" = "When a file is deleted from the watched folder, its copy in the destination is permanently deleted too. This cannot be undone.";
+"rule_editor_clean_file_name" = "Clean file name";
+"rule_editor_loading_shortcuts" = "Loading shortcuts...";
+"rule_editor_shortcut_name" = "Shortcut name";
+"rule_editor_refresh_shortcuts" = "Refresh shortcuts";
+"rule_editor_none" = "None";
+"rule_editor_untitled" = "Untitled";
+"rule_editor_source_name" = "Source name";
+"rule_editor_current_date" = "Current date";
+"rule_editor_timestamp" = "Timestamp";
+"rule_editor_archive_name_e_g" = "Archive name, e.g. {name}-{timestamp}.zip";
+"rule_editor_archive_name" = "Archive name";
+"rule_editor_insert" = "Insert %@";
+"rule_editor_empty_uses_name_zip" = "Empty uses {name}.zip. The .zip extension is added automatically; choose a destination in Options.";
+"rule_editor_preview" = "Preview: %@";
+"rule_editor_token_name" = "name";
+"rule_editor_token_extension" = "extension";
+"rule_editor_token_date_modified" = "date modified";
+"rule_editor_token_date_created" = "date created";
+"rule_editor_token_current_date" = "current date";
+"rule_editor_token_size" = "size";
+"rule_editor_pattern_e_g_name" = "Pattern, e.g. {name}-{current_date}.{extension}";
+"rule_editor_pattern_contains_which_allowed" = "⚠️ Pattern contains '/' which is not allowed in filenames";
+"rule_editor_pattern_resolves_which_valid" = "⚠️ Pattern resolves to '%@' which is not a valid filename";
+"rule_editor_pattern_resolves_filename_longer" = "⚠️ Pattern resolves to a filename longer than 255 characters";
+"rule_editor_pattern_resolves_trailing_space" = "⚠️ Pattern resolves to '%@' — trailing '.' or space is not supported";
+"rule_editor_rule_created_newer_version" = "This rule was created with a newer version of Forel. Update Forel to edit, copy, or run it.";
+
+// Script editor
+"script_bash_script_matched_files" = "Bash script — the matched file's path is in $FOREL_FILE";
+"script_drag_resize_editor" = "Drag to resize the editor";
+"script_resize_script_editor" = "Resize script editor";
+"script_insert_forel_file" = "Insert $FOREL_FILE";
+"script_insert_quoted_path_matched" = "Insert the quoted path of the matched file at the cursor";
+"script_open_larger_editor" = "Open in a larger editor";
+"script_title" = "Script";
+"script_runs_once_per_matching" = "Runs once per matching file, with its path in $FOREL_FILE";
+"script_done" = "Done";
+"script_syntax_error" = "Syntax error";
+
+// Rule conditions
+"condition_name" = "Name";
+"condition_comment" = "Comment";
+"condition_kind" = "Kind";
+"condition_size" = "Size";
+"condition_color_label" = "Color label";
+"condition_contents" = "Contents";
+"condition_date_created" = "Date created";
+"condition_date_modified" = "Date modified";
+"condition_date_added" = "Date added";
+"condition_date_last_opened" = "Date last opened";
+"condition_downloaded_from_website" = "Downloaded from website";
+"condition_downloaded_with_app" = "Downloaded with app";
+"condition_raw_where_from_metadata" = "Raw where-from metadata";
+"condition_metadata" = "Metadata";
+
+// Rule condition help
+"condition_help_matches_locked_checkbox_finders" = "Matches the Locked checkbox in Finder's Get Info window, independently of read and write permissions.";
+"condition_help_matches_finder_comment_shown" = "Matches the Finder comment shown in Get Info. Files without a comment are treated as having an empty comment.";
+"condition_help_uses_last_opened_date" = "Uses the last-opened date recorded by macOS, not the last filesystem access. Items without this date do not match.";
+"condition_help_matches_finder_tags_shown" = "Matches the Finder tags shown in Get Info, not other file metadata.";
+"condition_help_matches_only_http_https" = "Matches only http and https addresses from the file's download metadata. For other sources, such as blob: addresses, use Raw where-from metadata.";
+"condition_help_matches_app_macos_recorded" = "Matches the app that macOS recorded as having downloaded the file, such as Safari or Firefox. Availability depends on that app.";
+"condition_help_matches_every_value_files" = "Matches every value of the file's download metadata, as Finder shows it in Get Info under Where from. Availability depends on the app that created the file.";
+"condition_help_matches_text_plain_files" = "Matches text from plain files, PDFs, Word documents, and images via OCR when available.";
+
+// Condition operators
+"operator_true" = "true";
+"operator_false" = "false";
+"operator_is" = "is";
+"operator_is_not" = "is not";
+"operator_contains" = "contains";
+"operator_does_not_contain" = "does not contain";
+"operator_starts_with" = "starts with";
+"operator_ends_with" = "ends with";
+"operator_matches_regex" = "matches regex";
+"operator_greater_than" = "greater than";
+"operator_less_than" = "less than";
+"operator_is_before" = "is before";
+"operator_is_after" = "is after";
+"operator_is_not_in_the_last" = "is not in the last";
+"operator_is_within_the_last" = "is within the last";
+
+// File kinds
+"kind_image" = "Image";
+"kind_movie" = "Movie";
+"kind_pdf" = "PDF";
+"kind_text" = "Text";
+"kind_document" = "Document";
+"kind_archive" = "Archive";
+"kind_disk_image" = "Disk Image";
+"kind_folder" = "Folder";
+
+// Rule actions
+"action_move_to_folder" = "Move to folder";
+"action_copy_to_folder" = "Copy to folder";
+"action_sync_folders" = "Sync folders";
+"action_rename" = "Rename";
+"action_delete" = "Delete";
+"action_set_color_label" = "Set color label";
+"action_toggle_lock" = "Toggle lock";
+"action_toggle_extension" = "Toggle extension";
+"action_import_to_library" = "Import to library";
+"action_compress" = "Compress";
+"action_uncompress" = "Uncompress";
+
+// Action picker sections
+"action_section_finder" = "Finder";
+"action_section_automation" = "Automation";
+"action_section_disposal" = "Disposal";
+"action_section_library" = "Library";
+
+// Finder color labels
+"color_no_label" = "No label";
+"color_gray" = "Gray";
+"color_green" = "Green";
+"color_purple" = "Purple";
+"color_blue" = "Blue";
+"color_yellow" = "Yellow";
+"color_red" = "Red";
+"color_orange" = "Orange";
+
+// Music, Photos and TV
+"library_tv" = "TV";
+
+// Import to Music, Photos or TV
+"import_to_failed" = "Import to %@ — %@";
+"import_skip_file_already_exists" = "Skip — file already exists in %@";
+"import_access_denied_grant_access" = "access denied. Grant access in System Settings > Privacy & Security > Photos.";
+"import_access_restricted_parental_controls" = "access restricted by parental controls.";
+"import_cannot_determine_access_status" = "cannot determine access status.";
+"import_automation_access_granted_allow" = "automation access not granted. Allow Forel to control Music in System Settings > Privacy & Security > Automation.";
+"import_automation_access_granted_allow_forel" = "automation access not granted. Allow Forel to control TV in System Settings > Privacy & Security > Automation.";
+"import_to_replacing" = "Import to %@ (replacing existing file)";
+"import_to" = "Import to %@";
+
+// Planned actions (Dry Run and Activity)
+"action_plan_rename_the_file" = "Rename the file";
+"action_plan_replace_existing_file" = "Replace existing file";
+"action_plan_skip_the_file" = "Skip the file";
+"action_plan_matched_file" = "Matched file";
+"action_plan_no_input" = "No input";
+"action_plan_isnt_connected_connect_disk" = "“%@” isn't connected. Connect the disk or network share, or choose the destination folder again.";
+"action_plan_already_in_destination" = "Already in destination";
+"action_plan_rename_to" = "Rename to %@";
+"action_plan_delete_permanently" = "Delete permanently";
+"action_plan_add_tag_quoted" = "Add tag '%@'";
+"action_plan_add_tag" = "Add tag: %@";
+"action_plan_add_tags" = "Add tags: %@";
+"action_plan_remove_tag_quoted" = "Remove tag '%@'";
+"action_plan_remove_tag" = "Remove tag: %@";
+"action_plan_remove_tags" = "Remove tags: %@";
+"action_plan_lock_file" = "Lock file";
+"action_plan_unlock_file" = "Unlock file";
+"action_plan_hide_extension" = "Hide extension";
+"action_plan_show_extension" = "Show extension";
+"action_plan_clear_color_label" = "Clear color label";
+"action_plan_set_color_label_to" = "Set color label to %@";
+"action_plan_run_script" = "Run script: %@";
+"action_plan_open_with_file" = "Open %@ with file";
+"action_plan_open" = "Open %@";
+"action_plan_uncompress_replacing_existing_file" = "Uncompress to %@ (replacing existing file)";
+"action_plan_uncompress_renamed_avoid_existing" = "Uncompress to %@ (renamed to avoid an existing file)";
+"action_plan_uncompress_to" = "Uncompress to %@";
+"action_plan_compress_to" = "Compress to %@";
+"action_plan_compress_renamed_avoid_existing" = "Compress to %@ (renamed to avoid an existing archive)";
+"action_plan_compress_permanently_delete_source" = "Compress to %@; permanently delete source after success";
+"action_plan_compress_renamed_avoid_existing_archive" = "Compress to %@ (renamed to avoid an existing archive); permanently delete source after success";
+"action_plan_original_file_folder_all" = "The original file or folder and all its contents will be permanently deleted after the ZIP is created. This cannot be undone. Following actions apply to the ZIP.";
+"action_plan_run_shortcut" = "Run shortcut: %@";
+"action_plan_run_shortcut_input" = "Run shortcut: %@ with no input";
+"action_plan_move_renamed_avoid_existing" = "Move to %@ (renamed to avoid an existing file)";
+"action_plan_move_replacing_existing_file" = "Move to %@ (replacing existing file)";
+"action_plan_move_to" = "Move to %@";
+"action_plan_copy_renamed_avoid_existing" = "Copy to %@ (renamed to avoid an existing file)";
+"action_plan_copy_replacing_existing_file" = "Copy to %@ (replacing existing file)";
+"action_plan_copy_to" = "Copy to %@";
+"action_plan_destination_folder_cant_reached" = "The destination folder can't be reached or written to right now. Check that the disk or network share is connected and that Forel is allowed to access it.";
+
+// Action errors
+"action_error_cannot_read_locked_state" = "Cannot read the locked state for this item.";
+"action_error_cannot_read_extension_visibility" = "Cannot read extension visibility for this item.";
+"action_error_cannot_change_locked_state" = "Cannot change the locked state on this volume.";
+"action_error_cannot_change_extension_visibility" = "Cannot change extension visibility on this volume.";
+"action_error_requires_param" = "%@ requires '%@' param";
+"action_error_could_uncompress_zip_archive" = "Could not uncompress ZIP archive: %@";
+"action_error_could_create_zip_archive" = "Could not create ZIP archive. The source was kept. %@";
+"action_error_zip_created_but_source" = "ZIP created at %@, but the source could not be deleted: %@";
+"action_error_archive_destination_must_absolute" = "Archive destination must be an absolute folder path or start with ~/.";
+"action_error_choose_archive_destination_outside" = "Choose an archive destination outside the source folder. A ZIP inside it would include itself and could be deleted with the source.";
+"action_error_archive_name_must_filename" = "Archive name must be a filename, without '/' or null characters, and cannot end with a dot or space.";
+"action_error_archive_name_too_long" = "Archive name is too long (maximum 255 bytes including .zip).";
+"action_error_script_timed_out_after" = "script timed out after %@s";
+"action_error_script_exited_with_status" = "script exited with status %@";
+"action_error_open_application_requires_param" = "Open Application requires '%@' param";
+"action_error_application_not_found_at" = "Application not found at %@";
+"action_error_import_library_requires_library" = "Import to Library requires a 'library_type' parameter";
+"action_error_file_format_supported_music" = "File format not supported by Music — requires an audio file (MP3, AAC, WAV, AIFF, ALAC, etc.)";
+"action_error_file_format_supported_photos" = "File format not supported by Photos — requires an image or video file (JPEG, PNG, TIFF, HEIC, RAW, MP4, MOV, etc.)";
+"action_error_file_format_supported_tv" = "File format not supported by TV — requires a video file (MP4, MOV, M4V, etc.)";
+"action_error_applescript_failed" = "AppleScript failed: %@";
+"action_error_cannot_restore_file_already" = "cannot restore %@: a file already exists there";
+"action_error_action_cannot_undone" = "this action cannot be undone";
+"action_error_only_zip_archives_uncompressed" = "Only ZIP archives can be uncompressed right now.";
+"action_error_zip_archive_is_empty" = "ZIP archive is empty.";
+"action_error_could_read_zip_archive" = "Could not read ZIP archive: %@";
+"action_error_zip_archive_contains_invalid" = "ZIP archive contains an invalid entry path.";
+"action_error_rename_pattern_produced_empty" = "rename pattern produced empty filename";
+"action_error_home_not_set" = "HOME not set";
+"action_error_rename_pattern_produced_invalid" = "rename pattern produced an invalid filename (contains '/')";
+"action_error_rename_pattern_produced_invalid_filename" = "rename pattern produced an invalid filename ('.' and '..' are not allowed)";
+"action_error_rename_pattern_produced_filename" = "rename pattern produced a filename longer than 255 characters";
+"action_error_rename_pattern_produced_filename_ending" = "rename pattern produced a filename ending with '.' or space — not supported by macOS";
+"action_error_runshortcut_requires_param" = "RunShortcut requires '%@' param";
+"action_error_shortcut_timed_out" = "shortcut timed out";
+"action_error_shortcut_exited_with_status" = "shortcut exited with status %@";
+
+// Reading file contents
+"content_read_plain_text" = "Plain text";
+"content_read_pdf_text" = "PDF text";
+"content_read_pdf_ocr" = "PDF OCR";
+"content_read_rtf" = "RTF";
+"content_read_word_document" = "Word document";
+"content_read_spreadsheet" = "Spreadsheet";
+"content_read_opendocument" = "OpenDocument";
+"content_read_iwork_document" = "iWork document";
+"content_read_spotlight" = "Spotlight";
+"content_read_image_ocr" = "Image OCR";
+"content_read_no_readable_content" = "No readable content";
+
+// Errors reading file contents
+"content_error_text_recognition_images_requires" = "Text recognition in images requires Forel Pro.";
+"content_error_only_spotlight_contains_matching" = "Only Spotlight ‘contains’ matching is available for this format.";
+"content_error_file_exceeds_100_mb" = "File exceeds the 100 MB text limit.";
+"content_error_unsupported_file_type" = "Unsupported file type.";
+"content_error_could_not_decode_text" = "Could not decode text.";
+"content_error_pdf_exceeds_100_mb" = "PDF exceeds the 100 MB limit.";
+"content_error_could_not_open_pdf" = "Could not open PDF.";
+"content_error_text_recognition_scanned_pdfs" = "Text recognition in scanned PDFs requires Forel Pro.";
+"content_error_pdf_readable_text" = "PDF has no readable text.";
+"content_error_document_exceeds_100_mb" = "Document exceeds the 100 MB limit.";
+"content_error_could_not_read_document" = "Could not read document.";
+"content_error_document_readable_text" = "Document has no readable text.";
+"content_error_spreadsheet_exceeds_100_mb" = "Spreadsheet exceeds the 100 MB limit.";
+"content_error_could_not_read_spreadsheet" = "Could not read spreadsheet.";
+"content_error_spreadsheet_readable_text" = "Spreadsheet has no readable text.";
+"content_error_presentation_exceeds_100_mb" = "Presentation exceeds the 100 MB limit.";
+"content_error_could_not_read_presentation" = "Could not read presentation.";
+"content_error_presentation_readable_text" = "Presentation has no readable text.";
+"content_error_iwork_exceeds_100_mb" = "iWork document exceeds the 100 MB limit.";
+"content_error_iwork_preview_not_available" = "iWork preview not available.";
+"content_error_iwork_preview_readable_text" = "iWork preview has no readable text.";
+"content_error_image_exceeds_25_mb" = "Image exceeds the 25 MB OCR limit.";
+"content_error_could_not_open_image" = "Could not open image.";
+"content_error_image_too_large_ocr" = "Image is too large for OCR.";
+"content_error_text_found_image" = "No text found in image.";
+
+// Sync Folders
+"sync_keep_counterpart" = "Keep counterpart";
+"sync_move_counterpart_to_trash" = "Move counterpart to Trash";
+"sync_delete_counterpart_permanently" = "Delete counterpart permanently";
+"sync_already_synced" = "Already synced";
+"sync_synced_with_its_package" = "Synced with its package";
+"sync_folder_at" = "Sync folder at %@";
+"sync_create_synced_folder_at" = "Create synced folder at %@";
+"sync_to_updating" = "Sync to %@, updating existing file";
+"sync_to" = "Sync to %@";
+"sync_sync_folders_only_sync" = "Sync folders can only sync files inside the watched folder";
+"sync_sync_destination_contains_symbolic" = "The sync destination contains a symbolic link in a parent folder. No file was changed.";
+"sync_choose_absolute_destination_folder" = "Choose an absolute destination folder for Sync Folders.";
+"sync_sync_path_contains_broken" = "The sync path contains a broken symbolic link. Choose a reachable destination folder.";
+"sync_delete_permanently_removed_watched" = "Delete permanently, removed from the watched folder";
+"sync_move_trash_removed_watched" = "Move to Trash, removed from the watched folder";
+"sync_removed_watched_folder_so" = "Removed from the watched folder, so its copy was deleted permanently.";
+"sync_removed_watched_folder_so_copy" = "Removed from the watched folder, so its copy was moved to the Trash.";
+"sync_cannot_check_whether_still" = "Cannot check whether %@ still exists: %@ Sync cleanup was stopped.";
+
+// Rule problems
+"rule_problem_locked_requires_true_false" = "Locked requires true or false";
+"rule_problem_condition_value_cannot_empty" = "Condition value cannot be empty";
+"rule_problem_regex_pattern_is_invalid" = "Regex pattern is invalid";
+"rule_problem_destination_path_cannot_empty" = "Destination path cannot be empty";
+"rule_problem_rename_pattern_cannot_empty" = "Rename pattern cannot be empty";
+"rule_problem_least_one_tag_required" = "At least one tag is required";
+"rule_problem_application_cannot_be_empty" = "Application cannot be empty";
+
+// Copy rules
+"copy_rules_title_one" = "Copy Rule";
+"copy_rules_title_other" = "Copy %@ Rules";
+"copy_rules_choose_another_watched_folder" = "Choose another watched folder";
+"copy_rules_add_another_watched_folder" = "Add another watched folder to copy rules to it.";
+"copy_rules_choose_a_folder" = "Choose a folder";
+"copy_rules_pro" = "%@ — Pro";
+"copy_rules_reorder_watched_folders_activate" = "Reorder your watched folders or activate Pro to use these destinations.";
+"copy_rules_copies_independent_keep_their" = "Copies are independent and keep their conditions, actions, and enabled state. Action destinations stay unchanged.";
+"copy_rules_copy" = "Copy";
+"copy_rules_select_least_one_rule" = "Select at least one rule to copy.";
+"copy_rules_choose_different_watched_folder" = "Choose a different watched folder for the copies.";
+"copy_rules_folder_been_removed_choose" = "A folder has been removed. Choose another watched folder.";
+"copy_rules_some_selected_rules_longer" = "Some selected rules no longer exist. Select the rules again.";
+
+// Run Now results
+"run_summary_run_complete_matching_files" = "Run complete — no matching files";
+"run_summary_run_complete" = "Run complete — %@";
+"run_summary_actions_applied_one" = "%@ action applied";
+"run_summary_actions_applied_other" = "%@ actions applied";
+"run_summary_actions_failed_one" = "%@ action failed";
+"run_summary_actions_failed_other" = "%@ actions failed";
+"run_summary_actions_skipped_one" = "%@ action skipped";
+"run_summary_actions_skipped_other" = "%@ actions skipped";
+"run_summary_actions_awaiting_confirmation_one" = "%@ action awaiting confirmation";
+"run_summary_actions_awaiting_confirmation_other" = "%@ actions awaiting confirmation";
+"run_summary_applied_one" = "%@ applied";
+"run_summary_applied_other" = "%@ applied";
+"run_summary_failed_one" = "%@ failed";
+"run_summary_failed_other" = "%@ failed";
+"run_summary_skipped_one" = "%@ skipped";
+"run_summary_skipped_other" = "%@ skipped";
+"run_summary_awaiting_confirmation_one" = "%@ awaiting confirmation";
+"run_summary_awaiting_confirmation_other" = "%@ awaiting confirmation";
+
+// Rule engine
+"engine_skipped_because_action_change" = "Skipped because the action would not change this file.";
+"engine_file_already_exists_destination" = "A file already exists at the destination.";
+
+// Activity
+"activity_recorded_actions_one" = "%@ recorded action";
+"activity_recorded_actions_other" = "%@ recorded actions";
+"activity_back_to_rules" = "Back to rules";
+"activity_directory" = "Directory";
+"activity_all_directories" = "All directories";
+"activity_undo_batch" = "Undo Batch (%@)";
+"activity_clear_history" = "Clear History";
+"activity_actions_performed_rules_appear" = "Actions performed by your rules will appear here.";
+"activity_earlier" = "Earlier";
+"activity_undo" = "Undo";
+"activity_applied" = "Applied";
+
+// Undo
+"undo_action_cannot_undone" = "This action cannot be undone.";
+"undo_action_currently_applied" = "This action is not currently applied.";
+"undo_file_forel_moved_longer" = "The file Forel moved no longer exists at %@.";
+"undo_file_already_exists_original" = "A file already exists at the original location.";
+"undo_copy_forel_created_longer" = "The copy Forel created no longer exists.";
+"undo_file_longer_exists_expected" = "The file no longer exists at its expected location.";
+"undo_rule_immediately_reprocess_file" = "The rule \"%@\" would immediately reprocess this file once it's restored.";
+"undo_file_location_longer_same" = "The file at this location is no longer the same file Forel moved.";
+
+// Quick panel
+"quick_panel_overview" = "Overview";
+"quick_panel_folders" = "Folders";
+"quick_panel_history" = "History";
+"quick_panel_recent_activity" = "Recent Activity";
+"quick_panel_open_forel" = "Open Forel";
+"quick_panel_free" = "Free";
+"quick_panel_manage_your_pro_license" = "Manage your Pro license";
+"quick_panel_discover_forel_pro" = "Discover Forel Pro";
+
+// Settings
+"settings_appearance" = "Appearance";
+"settings_accent_color" = "Accent color";
+"settings_general" = "General";
+"settings_automatic_watching" = "Automatic watching";
+"settings_start_at_login" = "Start at login";
+"settings_open_forel_automatically_when" = "Open Forel automatically when you log in";
+"settings_show_dock_icon" = "Show Dock icon";
+"settings_keep_forel_visible_dock" = "Keep Forel visible in the Dock while it runs";
+"settings_watcher_notifications" = "Watcher notifications";
+"settings_notify_when_automatic_rules" = "Notify when automatic rules process files";
+"settings_keep_history_for" = "Keep history for";
+"settings_days_one" = "%@ day";
+"settings_days_other" = "%@ days";
+"settings_updates" = "Updates";
+"settings_automatic_updates" = "Automatic updates";
+"settings_check_new_versions_background" = "Check for new versions in the background";
+"settings_current_version" = "Current version";
+"settings_check_now" = "Check Now";
+"settings_about" = "About";
+"settings_version" = "Version";
+"settings_build" = "Build";
+"settings_copyright" = "Copyright";
+"settings_lab421_forel" = "lab421/forel";
+"settings_language" = "Language";
+"settings_applies_forel_only_like" = "Applies to Forel only, like System Settings > General > Language & Region > Applications.";
+"settings_same_as_macos" = "Same as macOS";
+"settings_forel_switches_when_relaunches" = "Forel switches to %@ when it relaunches.";
+"settings_relaunch_now" = "Relaunch Now";
+"settings_save_discard_changes_rule" = "Save or discard the changes to the rule you're editing first.";
+"settings_wait_run_now_dry" = "Wait for Run Now or Dry Run to finish first.";
+"settings_checking" = "%@ — Checking…";
+"settings_license" = "License";
+
+// Permissions
+"permissions_needed_import_library_action" = "Needed by the Import to Library action when importing photos or videos.";
+"permissions_request_access" = "Request Access";
+"permissions_open_settings" = "Open Settings";
+"permissions_automation" = "%@ automation";
+"permissions_needed_import_library_action_when" = "Needed by the Import to Library action when importing into %@.";
+"permissions_check_again" = "Check Again";
+"permissions_talks_verify_automation_access" = "Talks to %@ to verify automation access — launches it if it isn't already running.";
+"permissions_check_access" = "Check Access";
+"permissions_granted" = "Granted";
+"permissions_denied" = "Denied";
+"permissions_restricted" = "Restricted";
+"permissions_not_checked" = "Not checked";
+
+// Disconnected disks
+"volume_isnt_connected" = "“%@” isn't connected";
+"volume_disks_shares_arent_connected_one" = "%@ disks or shares aren't connected";
+"volume_disks_shares_arent_connected_other" = "%@ disks or shares aren't connected";
+"volume_files_couldnt_moved_copied_one" = "%@ file couldn't be moved or copied. Rules: %@.";
+"volume_files_couldnt_moved_copied_other" = "%@ files couldn't be moved or copied. Rules: %@.";
+"volume_forel_try_again_when" = "Forel will try again when it's connected, if watching is still on.";
+"volume_forel_try_again_when_theyre" = "Forel will try again when they're connected, if watching is still on.";
+"volume_connect_then_use_run" = "Connect it, then use Run Now.";
+"volume_connect_them_then_use" = "Connect them, then use Run Now.";
+
+// Notifications and alerts
+"app_move_forel_applications_first" = "Move Forel to Applications first";
+"app_forel_running_installer_disk" = "Forel is running from the installer disk image. Drag Forel into your Applications folder, then open it from there.";
+"app_folder_kept_pro_free" = "This folder is kept for Pro. Free supports the first 2 watched folders; reorder folders or activate Pro to use it.";
+"app_could_process_file" = "Could not process this file";
+"app_folder_already_watched" = "Folder already watched";
+"app_already_watched_folders" = "\"%@\" is already in your watched folders.";
+"app_folder_is_busy" = "Folder is busy";
+"app_wait_current_run_now" = "Wait for the current Run Now or Dry Run to finish before changing this watched folder.";
+"app_forel_still_processing_file" = "Forel is still processing a file event in this watched folder. Try again once it finishes.";
+"app_run_complete_enabled_rules" = "Run complete — no enabled rules";
+"app_run_paused_monthly_free" = "Run paused — monthly Free limit reached. Remaining files stay in place.";
+"app_could_complete_run_now" = "Could not complete Run Now";
+"app_cant_undo_this_action" = "Can't undo this action";
+"app_collide_another_file_being" = "%@: would collide with another file being restored in this batch.";
+"app_label_value" = "%@: %@";
+"app_some_actions_could_undone" = "Some actions could not be undone:\n%@";
+"app_forel_applied_actions_one" = "Forel applied %@ action";
+"app_forel_applied_actions_other" = "Forel applied %@ actions";
+"app_no_rules" = "No rules";
+"app_files_processed_rules_one" = "%@ file processed. Rules: %@.";
+"app_files_processed_rules_other" = "%@ files processed. Rules: %@.";
+
+// Shared controls
+"component_active" = "ACTIVE";
+"component_paused" = "PAUSED";
+"component_update_available" = "Update available";
+"component_new_version_available" = "New version available";
+"component_version" = "Version %@";
+"component_installing" = "Installing…";
+"component_download" = "Download";
+"component_on" = "On";
+"component_off" = "Off";
+"component_choose" = "Choose";
+
+// Forel Free
+"free_plan_text_recognition_ocr" = "Text recognition (OCR)";
+"free_plan_media_library_imports" = "Media library imports";
+"free_plan_organize_scanned_pdfs_images" = "Organize scanned PDFs and images by the text they contain. Recognition runs locally on your Mac.";
+"free_plan_import_matching_files_directly" = "Import matching files directly into Photos, Music, and TV.";
+"free_plan_two_folders_limit" = "Forel Free supports 2 watched folders. Remove a folder or activate Pro to add another.";
+"free_plan_folder_outside_free_allowance" = "This folder is outside the Free allowance. Reorder folders or activate Pro to add rules.";
+"free_plan_forel_free_reached_limit" = "Forel Free has reached its limit of 300 processed files this month. Processing resumes next month, or activate Pro for unlimited files. Your remaining files stay in place.";
+"free_plan_requires_forel_pro_rule" = "%@ requires Forel Pro. This rule is kept but cannot run in Free.";
+
+// Monthly usage
+"usage_files_this_month" = "%@/%@ files this month";
+"usage_renews_dry_run_count" = "Renews %@. Dry Run does not count. Discover Pro for unlimited processing.";
+
+// Forel Pro
+"pro_automate_more_folders" = "Automate more folders";
+"pro_keep_processing_with_pro" = "Keep processing with Pro";
+"pro_free_includes_2_watched" = "Free includes 2 watched folders. With Pro, organize your projects, invoices, and downloads with unlimited folders.";
+"pro_free_includes_300_processed" = "Free includes 300 processed files per calendar month, shared across all folders. Activate Pro for unlimited processing, or resume next month. Dry Run remains available and your remaining files stay in place.";
+"pro_free_stays_free_pro" = "Free stays free. Pro is a paid license, with no trial.";
+"pro_continue_in_free" = "Continue in Free";
+"pro_activate_a_license" = "Activate a license";
+"pro_view_pricing_buy_pro" = "View pricing & buy Pro";
+"pro_unlimited_watched_folders" = "Unlimited watched folders";
+"pro_unlimited_files_processed" = "Unlimited files processed";
+"pro_ocr_images_scanned_pdfs" = "OCR for images and scanned PDFs";
+"pro_photos_music_tv_imports" = "Photos, Music, and TV imports";
+
+// License
+"license_status" = "License Status";
+"license_licensed_device" = "Licensed Device";
+"license_deactivate" = "Deactivate";
+"license_monthly_usage" = "Monthly usage";
+"license_automate_more_with_pro" = "Automate more with Pro";
+"license_activate_license" = "Activate License";
+"license_key" = "License Key";
+"license_buy_forel_pro" = "Buy Forel Pro";
+"license_activate" = "Activate";
+"license_are_you_sure" = "Are you sure ?";
+"license_unlimited_folders_files_ocr" = "Unlimited folders and files, with OCR and media imports.";
+"license_free_forever_2_watched" = "Free forever: 2 watched folders and 300 processed files per month, with unlimited rules and actions. No trial.";
+
+// License errors
+"license_error_activate_pro_license_again" = "Activate your Pro license again in License settings to allow access to its saved Keychain record.";
+"license_error_keychain_error" = "Keychain error %@.";
+"license_error_could_read_saved_license" = "Could not read your saved license: %@";
+"license_error_enter_license_key_activate" = "Enter a license key to activate Forel Pro.";
+"license_error_server_did_return_valid" = "The server did not return a valid Forel Pro license.";
+"license_error_could_activate_forel_pro" = "Could not activate Forel Pro: %@";
+"license_error_license_longer_valid_forel" = "Your license is no longer valid. Forel remains available in Free mode.";
+"license_error_could_verify_license_valid" = "Could not verify your license. A valid saved license still works offline.";
+"license_error_could_finish_deactivating_license" = "Could not finish deactivating your license: %@";

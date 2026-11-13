@@ -5,10 +5,10 @@ public enum RuleCopyError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .noSelection: "Select at least one rule to copy."
-        case .sameFolder: "Choose a different watched folder for the copies."
-        case .missingFolder: "A folder has been removed. Choose another watched folder."
-        case .missingRules: "Some selected rules no longer exist. Select the rules again."
+        case .noSelection: L10n.string("copy_rules_select_least_one_rule")
+        case .sameFolder: L10n.string("copy_rules_choose_different_watched_folder")
+        case .missingFolder: L10n.string("copy_rules_folder_been_removed_choose")
+        case .missingRules: L10n.string("copy_rules_some_selected_rules_longer")
         }
     }
 }

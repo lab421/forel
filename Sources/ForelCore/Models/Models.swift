@@ -154,9 +154,9 @@ public enum LibraryType: String, CaseIterable, Codable, Equatable, Sendable {
 
     public var label: String {
         switch self {
-        case .music: return "Music"
-        case .photos: return "Photos"
-        case .tv: return "TV"
+        case .music: return L10n.string("music")
+        case .photos: return L10n.string("photos")
+        case .tv: return L10n.string("library_tv")
         }
     }
 
@@ -234,7 +234,7 @@ public struct Rule: Codable, Equatable, Sendable {
 public struct UnsupportedRuleError: Error, LocalizedError {
     public init() {}
     public var errorDescription: String? {
-        "This rule was created with a newer version of Forel. Update Forel to edit, copy, or run it."
+        L10n.string("rule_editor_rule_created_newer_version")
     }
 }
 

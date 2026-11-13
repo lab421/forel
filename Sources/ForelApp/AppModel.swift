@@ -51,7 +51,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var hasMoreHistory = false
     @Published private(set) var isLoadingHistory = false
     @Published var paused: Bool = false
-    @Published var alertTitle: String = "Error"
+    @Published var alertTitle: String = L10n.string("error")
     @Published var errorMessage: String?
     @Published var detailRoute: DetailRoute = .rules
     /// The rule being edited in the main window, until it is saved or the
@@ -96,7 +96,7 @@ final class AppModel: ObservableObject {
     }
     var planNotice: String? {
         guard !isPro, selectedFolderId != nil else { return nil }
-        if !selectedFolderIsAllowed { return "This folder is kept for Pro. Free supports the first 2 watched folders; reorder folders or activate Pro to use it." }
+        if !selectedFolderIsAllowed { return L10n.string("app_folder_kept_pro_free") }
         if monthlyFileUsage?.isExhausted == true {
             return FreePlanError.monthlyFileLimit.localizedDescription
         }
@@ -156,7 +156,7 @@ final class AppModel: ObservableObject {
             Task { @MainActor in self?.bumpWatcherHistoryRevision() }
         }
         self.coordinator.onProcessingError = { [weak self] message in
-            Task { @MainActor in self?.showNotice(title: "Could not process this file", message: message) }
+            Task { @MainActor in self?.showNotice(title: L10n.string("app_could_process_file"), message: message) }
         }
         // Default to paused (watching off) on a fresh install — a brand-new
         // user hasn't set up any rules yet, and starting to watch folders
@@ -488,8 +488,8 @@ final class AppModel: ObservableObject {
             detailRoute = .rules
             reloadRules()
             showNotice(
-                title: "Folder already watched",
-                message: "\"\((existingFolder.path as NSString).lastPathComponent)\" is already in your watched folders."
+                title: L10n.string("app_folder_already_watched"),
+                message: L10n.string("app_already_watched_folders", (existingFolder.path as NSString).lastPathComponent)
             )
             return
         }
@@ -520,15 +520,15 @@ final class AppModel: ObservableObject {
     func updateFolderPath(_ folder: WatchedFolder, path: String) {
         guard !isRunningNow && !isPreviewing else {
             showNotice(
-                title: "Folder is busy",
-                message: "Wait for the current Run Now or Dry Run to finish before changing this watched folder."
+                title: L10n.string("app_folder_is_busy"),
+                message: L10n.string("app_wait_current_run_now")
             )
             return
         }
         guard !coordinator.isProcessing(in: folder.path) else {
             showNotice(
-                title: "Folder is busy",
-                message: "Forel is still processing a file event in this watched folder. Try again once it finishes."
+                title: L10n.string("app_folder_is_busy"),
+                message: L10n.string("app_forel_still_processing_file")
             )
             return
         }
@@ -544,8 +544,8 @@ final class AppModel: ObservableObject {
             detailRoute = .rules
             reloadRules()
             showNotice(
-                title: "Folder already watched",
-                message: "\"\((existingFolder.path as NSString).lastPathComponent)\" is already in your watched folders."
+                title: L10n.string("app_folder_already_watched"),
+                message: L10n.string("app_already_watched_folders", (existingFolder.path as NSString).lastPathComponent)
             )
             return
         }
@@ -688,7 +688,7 @@ final class AppModel: ObservableObject {
         guard let folder = folders.first(where: { $0.id == selectedFolderId }) else { return }
         let folderRules = executionRules(for: folder)
         guard !folderRules.isEmpty else {
-            showRunNowMessage(RunNowMessage(text: "Run complete — no enabled rules", hasFailures: false, folderId: folder.id))
+            showRunNowMessage(RunNowMessage(text: L10n.string("app_run_complete_enabled_rules"), hasFailures: false, folderId: folder.id))
             return
         }
         isRunningNow = true
@@ -729,13 +729,13 @@ final class AppModel: ObservableObject {
             reloadHistory()
             showRunNowMessage(RunNowMessage(
                 text: result.limitReached
-                    ? "Run paused — monthly Free limit reached. Remaining files stay in place."
+                    ? L10n.string("app_run_paused_monthly_free")
                     : RunSummary.message(for: allHistory),
                 hasFailures: result.limitReached || result.error != nil || allHistory.contains { $0.status == .failed },
                 folderId: folder.id
             ))
             if result.limitReached { proUpgrade = .monthlyFiles }
-            if let error = result.error { showNotice(title: "Could not complete Run Now", message: error) }
+            if let error = result.error { showNotice(title: L10n.string("app_could_complete_run_now"), message: error) }
         }
     }
 
@@ -847,7 +847,7 @@ final class AppModel: ObservableObject {
         let context = activeRules(coveringRestorePath: entry.originalPath)
         switch UndoChecker.evaluate(entry, activeRules: context.rules, watchedRoot: context.watchedRoot, isPro: isPro) {
         case .unsafe(let reason):
-            showNotice(title: "Can't undo this action", message: reason)
+            showNotice(title: L10n.string("app_cant_undo_this_action"), message: reason)
         case .safe:
             do {
                 try ActionExecutor.revert(Undo.fromJSON(entry.undo))
@@ -873,25 +873,25 @@ final class AppModel: ObservableObject {
         var failures: [String] = []
         for entry in reversible.reversed() {
             if colliding.contains(entry.id) {
-                failures.append("\((entry.originalPath as NSString).lastPathComponent): would collide with another file being restored in this batch.")
+                failures.append(L10n.string("app_collide_another_file_being", (entry.originalPath as NSString).lastPathComponent))
                 continue
             }
             let context = activeRules(coveringRestorePath: entry.originalPath)
             switch UndoChecker.evaluate(entry, activeRules: context.rules, watchedRoot: context.watchedRoot, isPro: isPro) {
             case .unsafe(let reason):
-                failures.append("\((entry.originalPath as NSString).lastPathComponent): \(reason)")
+                failures.append(L10n.string("app_label_value", (entry.originalPath as NSString).lastPathComponent, reason))
             case .safe:
                 do {
                     try ActionExecutor.revert(Undo.fromJSON(entry.undo))
                     try db.withLock { db in try db.markHistoryUndone(entry.id) }
                 } catch {
-                    failures.append("\((entry.originalPath as NSString).lastPathComponent): \(error)")
+                    failures.append(L10n.string("app_label_value", (entry.originalPath as NSString).lastPathComponent, String(describing: error)))
                 }
             }
         }
 
         if !failures.isEmpty {
-            showError("Some actions could not be undone:\n" + failures.joined(separator: "\n"))
+            showError(L10n.string("app_some_actions_could_undone", failures.joined(separator: "\n")))
         }
         reloadHistory()
     }
@@ -913,7 +913,7 @@ final class AppModel: ObservableObject {
     }
 
     private func showError(_ message: String) {
-        alertTitle = "Error"
+        alertTitle = L10n.string("error")
         errorMessage = message
     }
 }
@@ -934,9 +934,7 @@ private struct PendingWatcherNotification {
     mutating func makeNotification() -> (title: String, body: String)? {
         guard actionCount > 0 else { return nil }
 
-        let actionLabel = actionCount == 1 ? "action" : "actions"
-        let fileLabel = fileCount == 1 ? "file" : "files"
-        let title = "Forel applied \(actionCount) \(actionLabel)"
+        let title = L10n.plural("app_forel_applied_actions", actionCount)
 
         let ruleNames = ruleCounts
             .sorted { lhs, rhs in
@@ -947,15 +945,16 @@ private struct PendingWatcherNotification {
         let remainingRuleCount = max(0, ruleNames.count - visibleRules.count)
         let rulesText: String
         if visibleRules.isEmpty {
-            rulesText = "No rules"
+            rulesText = L10n.string("app_no_rules")
+        } else if remainingRuleCount > 0 {
+            rulesText = L10n.plural("and_more", remainingRuleCount, visibleRules.joined(separator: ", "))
         } else {
             rulesText = visibleRules.joined(separator: ", ")
-                + (remainingRuleCount > 0 ? " and \(remainingRuleCount) more" : "")
         }
 
         return (
             title,
-            "\(fileCount) \(fileLabel) processed. Rules: \(rulesText)."
+            L10n.plural("app_files_processed_rules", fileCount, rulesText)
         )
     }
 }

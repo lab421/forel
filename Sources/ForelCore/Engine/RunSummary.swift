@@ -18,21 +18,35 @@
 /// separately: a run whose actions all failed must not read as a success.
 public enum RunSummary {
     public static func message(for history: [HistoryEntry]) -> String {
-        let outcomes: [(HistoryStatus, String)] = [
-            (.applied, "applied"),
-            (.failed, "failed"),
-            (.skipped, "skipped"),
-            (.needsConfirmation, "awaiting confirmation"),
-        ]
+        let statuses: [HistoryStatus] = [.applied, .failed, .skipped, .needsConfirmation]
         var parts: [String] = []
-        for (status, label) in outcomes {
+        for status in statuses {
             let count = history.filter { $0.status == status }.count
             guard count > 0 else { continue }
             // Only the first part names what is being counted:
             // "2 actions applied, 1 failed".
-            parts.append(parts.isEmpty ? "\(count) action\(count == 1 ? "" : "s") \(label)" : "\(count) \(label)")
+            parts.append(parts.isEmpty ? firstPart(status, count) : laterPart(status, count))
         }
-        guard !parts.isEmpty else { return "Run complete — no matching files" }
-        return "Run complete — " + parts.joined(separator: ", ")
+        guard !parts.isEmpty else { return L10n.string("run_summary_run_complete_matching_files") }
+        return L10n.string("run_summary_run_complete", parts.joined(separator: ", "))
+    }
+
+    private static func firstPart(_ status: HistoryStatus, _ count: Int) -> String {
+        switch status {
+        case .applied: L10n.plural("run_summary_actions_applied", count)
+        case .failed: L10n.plural("run_summary_actions_failed", count)
+        case .skipped: L10n.plural("run_summary_actions_skipped", count)
+        default: L10n.plural("run_summary_actions_awaiting_confirmation", count)
+        }
+    }
+
+    /// Follows the first part, as in “2 actions applied, 1 failed”.
+    private static func laterPart(_ status: HistoryStatus, _ count: Int) -> String {
+        switch status {
+        case .applied: L10n.plural("run_summary_applied", count)
+        case .failed: L10n.plural("run_summary_failed", count)
+        case .skipped: L10n.plural("run_summary_skipped", count)
+        default: L10n.plural("run_summary_awaiting_confirmation", count)
+        }
     }
 }

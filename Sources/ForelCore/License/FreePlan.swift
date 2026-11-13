@@ -5,14 +5,14 @@ public enum ProFeature: String, CaseIterable, Identifiable, Sendable {
     public var id: String { rawValue }
     public var title: String {
         switch self {
-        case .ocr: "Text recognition (OCR)"
-        case .libraryImports: "Media library imports"
+        case .ocr: L10n.string("free_plan_text_recognition_ocr")
+        case .libraryImports: L10n.string("free_plan_media_library_imports")
         }
     }
     public var benefit: String {
         switch self {
-        case .ocr: "Organize scanned PDFs and images by the text they contain. Recognition runs locally on your Mac."
-        case .libraryImports: "Import matching files directly into Photos, Music, and TV."
+        case .ocr: L10n.string("free_plan_organize_scanned_pdfs_images")
+        case .libraryImports: L10n.string("free_plan_import_matching_files_directly")
         }
     }
 }
@@ -55,10 +55,10 @@ public enum FreePlanError: Error, LocalizedError, Equatable {
     case feature(ProFeature)
     public var errorDescription: String? {
         switch self {
-        case .folderLimit: "Forel Free supports 2 watched folders. Remove a folder or activate Pro to add another."
-        case .proFolder: "This folder is outside the Free allowance. Reorder folders or activate Pro to add rules."
-        case .monthlyFileLimit: "Forel Free has reached its limit of 300 processed files this month. Processing resumes next month, or activate Pro for unlimited files. Your remaining files stay in place."
-        case .feature(let feature): "\(feature.title) requires Forel Pro. This rule is kept but cannot run in Free."
+        case .folderLimit: L10n.string("free_plan_two_folders_limit")
+        case .proFolder: L10n.string("free_plan_folder_outside_free_allowance")
+        case .monthlyFileLimit: L10n.string("free_plan_forel_free_reached_limit")
+        case .feature(let feature): L10n.string("free_plan_requires_forel_pro_rule", feature.title)
         }
     }
 }

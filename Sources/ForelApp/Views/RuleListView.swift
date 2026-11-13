@@ -58,7 +58,7 @@ struct RuleListView: View {
                     .foregroundStyle(ForelTheme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     Spacer()
-                    Button("Discover Pro") {
+                    Button(L10n.string("discover_pro")) {
                         model.proUpgrade = model.selectedFolderIsAllowed ? .monthlyFiles : .folders
                     }
                         .buttonStyle(.link)
@@ -72,12 +72,12 @@ struct RuleListView: View {
             }
             if !selectedRuleIDs.isEmpty {
                 HStack {
-                    Text("\(selectedRuleIDs.count) rule\(selectedRuleIDs.count == 1 ? "" : "s") selected")
+                    Text(L10n.plural("rule_list_rules_selected", selectedRuleIDs.count))
                         .font(.caption)
                         .foregroundStyle(ForelTheme.secondaryText)
-                    Button("Copy rules to folder…") { requestCopy(selectedRuleIDs) }
+                    Button(L10n.string("rule_list_copy_rules_to_folder")) { requestCopy(selectedRuleIDs) }
                         .buttonStyle(SecondaryButtonStyle())
-                    Button("Deselect all") { selectedRuleIDs.removeAll() }
+                    Button(L10n.string("rule_list_deselect_all")) { selectedRuleIDs.removeAll() }
                         .buttonStyle(SecondaryButtonStyle())
                     Spacer()
                 }
@@ -99,7 +99,7 @@ struct RuleListView: View {
                     ForEach(Array(model.rules.enumerated()), id: \.element.id) { index, rule in
                         VStack(alignment: .leading, spacing: 4) {
                             if !model.selectedFolderIsAllowed || (!model.isPro && FreePlan.requiredFeature(for: rule) != nil) {
-                                Button("Kept for Pro — not running") {
+                                Button(L10n.string("rule_list_kept_pro_running")) {
                                     if let feature = FreePlan.requiredFeature(for: rule) {
                                         model.proUpgrade = .feature(feature)
                                     } else {
@@ -111,7 +111,7 @@ struct RuleListView: View {
                                     .foregroundStyle(ForelTheme.secondaryText)
                             }
                             if !rule.isSupported {
-                                Label("Created with a newer version of Forel — not running. Update Forel to run or edit it.", systemImage: "exclamationmark.triangle")
+                                Label(L10n.string("rule_list_created_newer_version_forel"), systemImage: "exclamationmark.triangle")
                                     .font(.caption)
                                     .foregroundStyle(ForelTheme.secondaryText)
                             }
@@ -137,7 +137,7 @@ struct RuleListView: View {
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.never)
                 .contextMenu(forSelectionType: String.self) { ids in
-                    Button("Copy rules to folder…") { requestCopy(ids) }
+                    Button(L10n.string("rule_list_copy_rules_to_folder")) { requestCopy(ids) }
                         .disabled(ids.isEmpty)
                 }
             }
@@ -170,7 +170,7 @@ struct RuleListView: View {
                     model.dismissRunNowMessage()
                     model.showActivity(forFolder: message.folderId)
                 } label: {
-                    Text("Show in Activity").underline()
+                    Text(L10n.string("rule_list_show_in_activity")).underline()
                 }
                 .buttonStyle(.plain)
                 .padding(.leading, 4)
@@ -181,7 +181,7 @@ struct RuleListView: View {
                         .font(.system(size: 10, weight: .semibold))
                 }
                 .buttonStyle(.plain)
-                .help("Dismiss")
+                .help(L10n.string("rule_list_dismiss"))
             }
         }
         .font(.system(size: 12, weight: .medium))
@@ -193,10 +193,10 @@ struct RuleListView: View {
 
     private var header: some View {
         ViewHeader(
-            title: selectedFolder.map { ($0.path as NSString).lastPathComponent } ?? "Rules",
+            title: selectedFolder.map { ($0.path as NSString).lastPathComponent } ?? L10n.string("rules"),
             subtitle: model.selectedFolderId == nil
-                ? "Select a folder to manage its rules"
-                : "\(model.rules.count) rules · drag to reorder",
+                ? L10n.string("rule_list_select_folder_manage_rules")
+                : L10n.plural("rule_list_rules_drag_to_reorder", model.rules.count),
             systemImage: selectedFolder == nil ? nil : "folder.fill"
         ) {
             Button {
@@ -205,7 +205,7 @@ struct RuleListView: View {
                 Image(systemName: "clock.arrow.circlepath")
             }
             .buttonStyle(IconButtonStyle())
-            .help("Activity history")
+            .help(L10n.string("activity_history"))
         }
     }
 
@@ -217,9 +217,9 @@ struct RuleListView: View {
                     model.proUpgrade = .folders
                     return
                 }
-                model.editingRule = Rule(folderId: folderId, name: "New Rule")
+                model.editingRule = Rule(folderId: folderId, name: L10n.string("new_rule"))
             } label: {
-                Label("New Rule", systemImage: "plus")
+                Label(L10n.string("new_rule"), systemImage: "plus")
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!model.canAddRule)
@@ -231,10 +231,10 @@ struct RuleListView: View {
                 if model.isRunningNow {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.small)
-                        Text("Running…")
+                        Text(L10n.string("rule_list_running"))
                     }
                 } else {
-                    Label("Run Now", systemImage: "play.fill")
+                    Label(L10n.string("rule_list_run_now"), systemImage: "play.fill")
                 }
             }
             .buttonStyle(SecondaryButtonStyle())
@@ -247,10 +247,10 @@ struct RuleListView: View {
                 if model.isPreviewing {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.small)
-                        Text("Scanning…")
+                        Text(L10n.string("rule_list_scanning"))
                     }
                 } else {
-                    Label("Preview (Dry Run)", systemImage: "eye")
+                    Label(L10n.string("rule_list_preview_dry_run"), systemImage: "eye")
                 }
             }
             .buttonStyle(SecondaryButtonStyle())
@@ -268,17 +268,17 @@ struct RuleListView: View {
                 .foregroundStyle(.orange)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text("Automatic watching is paused")
+                Text(L10n.string("rule_list_automatic_watching_is_paused"))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(ForelTheme.primaryText)
-                Text("Rules only run when you choose Run Now.")
+                Text(L10n.string("rule_list_rules_only_run_when"))
                     .font(.system(size: 10))
                     .foregroundStyle(ForelTheme.secondaryText)
             }
 
             Spacer(minLength: 8)
 
-            Button("Resume Watching", action: model.togglePaused)
+            Button(L10n.string("rule_list_resume_watching"), action: model.togglePaused)
                 .buttonStyle(SecondaryButtonStyle())
         }
         .padding(.vertical, 9)
@@ -299,10 +299,10 @@ struct RuleListView: View {
                 Image(systemName: "sidebar.left")
                     .font(.system(size: 28))
                     .foregroundStyle(ForelTheme.secondaryText)
-                Text("No folder selected")
+                Text(L10n.string("rule_list_no_folder_selected"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(ForelTheme.primaryText)
-                Text("Pick a folder on the left to see its rules.")
+                Text(L10n.string("rule_list_pick_folder_left_see"))
                     .font(.system(size: 11))
                     .foregroundStyle(ForelTheme.secondaryText)
                     .multilineTextAlignment(.center)
@@ -310,12 +310,12 @@ struct RuleListView: View {
                 Image(systemName: "list.bullet.rectangle")
                     .font(.system(size: 28))
                     .foregroundStyle(ForelTheme.secondaryText)
-                Text("No rules yet")
+                Text(L10n.string("rule_list_no_rules_yet"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(ForelTheme.primaryText)
                 Text(model.canAddRule
-                     ? "Create a rule to automate files in this folder."
-                     : "Reorder folders or activate Pro to add rules in this folder.")
+                     ? L10n.string("rule_list_create_rule_automate_files")
+                     : L10n.string("rule_list_reorder_folders_activate_pro"))
                     .font(.system(size: 11))
                     .foregroundStyle(ForelTheme.secondaryText)
                     .multilineTextAlignment(.center)
@@ -325,9 +325,9 @@ struct RuleListView: View {
                         model.proUpgrade = .folders
                         return
                     }
-                    model.editingRule = Rule(folderId: folderId, name: "New Rule")
+                    model.editingRule = Rule(folderId: folderId, name: L10n.string("new_rule"))
                 } label: {
-                    Label("New Rule", systemImage: "plus")
+                    Label(L10n.string("new_rule"), systemImage: "plus")
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.top, 8)
@@ -369,7 +369,7 @@ private struct RuleCard: View {
 
                         ZStack {
                             Circle().fill(ForelTheme.accent.opacity(0.16))
-                            Text("\(order)")
+                            Text(verbatim: "\(order)")
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(ForelTheme.accent)
                         }
@@ -399,10 +399,10 @@ private struct RuleCard: View {
                             if let stats = model.runStats(for: rule) {
                                 let totalRuns = stats.successCount + stats.failedCount
                                 if totalRuns > 0 {
-                                    Text("\(totalRuns) run\(totalRuns == 1 ? "" : "s") (30d)")
+                                    Text(L10n.plural("rule_list_runs_30d", totalRuns))
                                         .font(.system(size: 10))
                                         .foregroundStyle(ForelTheme.secondaryText)
-                                        .help("Last 30 days: \(stats.successCount) successful, \(stats.failedCount) failed")
+                                        .help(L10n.string("rule_list_last_30_days_successful", stats.successCount, stats.failedCount))
                                 }
                             }
                         }
@@ -431,8 +431,8 @@ private struct RuleCard: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(IconButtonStyle(role: .destructive))
-                .help("Delete this rule…")
-                .accessibilityLabel("Delete rule")
+                .help(L10n.string("rule_list_delete_rule_menu"))
+                .accessibilityLabel(L10n.string("rule_list_delete_rule_help"))
             }
             .padding(.vertical, 10)
             .padding(.horizontal, 12)
@@ -447,7 +447,7 @@ private struct RuleCard: View {
                     } else {
                         // This version would show its guess for what it
                         // doesn't know, which would be wrong.
-                        Text("This version of Forel can't show this rule's details.")
+                        Text(L10n.string("rule_list_version_forel_cant_show"))
                             .font(.system(size: 12))
                             .foregroundStyle(ForelTheme.secondaryText)
                     }
@@ -466,8 +466,8 @@ private struct RuleCard: View {
         )
         .opacity(rule.enabled && rule.isSupported && model.selectedFolderIsAllowed ? 1 : 0.6)
         .confirmationDialog(deleteTitle, isPresented: $confirmsDelete) {
-            Button("Delete Rule", role: .destructive) { model.deleteRule(rule) }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.string("rule_list_delete_rule"), role: .destructive) { model.deleteRule(rule) }
+            Button(L10n.string("cancel"), role: .cancel) {}
         } message: {
             Text(deleteMessage)
         }
@@ -475,15 +475,18 @@ private struct RuleCard: View {
 
     private var deleteTitle: String {
         let name = rule.name.trimmingCharacters(in: .whitespaces)
-        return name.isEmpty ? "Delete this rule?" : "Delete the rule “\(name)”?"
+        return name.isEmpty
+            ? L10n.string("rule_list_delete_confirm_title")
+            : L10n.string("rule_list_delete_confirm_title_named", name)
     }
 
     /// Says what goes and what stays, so the choice is informed.
     private var deleteMessage: String {
-        let conditions = "\(rule.conditions.count) condition\(rule.conditions.count == 1 ? "" : "s")"
-        let actions = "\(rule.actions.count) action\(rule.actions.count == 1 ? "" : "s")"
-        return "Its \(conditions) and \(actions) are deleted, and this can't be undone. "
-            + "Files it already processed stay where they are, and its past activity is kept."
+        L10n.string(
+            "rule_list_delete_confirm_message",
+            L10n.plural("rule_list_conditions_count", rule.conditions.count),
+            L10n.plural("rule_list_actions_count", rule.actions.count)
+        )
     }
 
     private func metaPill(icon: String, text: String) -> some View {
@@ -547,15 +550,15 @@ private struct RuleDetails: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             detailSection(
-                label: "IF",
+                label: L10n.string("rule_list_if"),
                 rows: conditionRows,
-                emptyText: "Matches every file in scope."
+                emptyText: L10n.string("rule_list_matches_every_file_scope")
             )
 
             detailSection(
-                label: "DO",
+                label: L10n.string("rule_list_do"),
                 rows: actionRows,
-                emptyText: "No actions configured."
+                emptyText: L10n.string("rule_list_no_actions_configured")
             )
         }
         .textSelection(.enabled)
@@ -614,7 +617,8 @@ private struct RuleDetails: View {
                 .foregroundStyle(ForelTheme.accent)
                 .frame(width: 14)
 
-            Text(row.badge.uppercased())
+            Text(row.badge)
+                .textCase(.uppercase)
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(ForelTheme.accent)
                 .lineLimit(1)
@@ -650,54 +654,56 @@ private struct RuleDetails: View {
     private func actionSummary(_ action: Action) -> (title: String, detail: String?) {
         switch action.kind {
         case .moveToFolder:
-            return ("to folder", action.params[ActionParam.destination]?.stringValue)
+            return (L10n.string("rule_list_to_folder"), action.params[ActionParam.destination]?.stringValue)
         case .copyToFolder:
-            return ("to folder", action.params[ActionParam.destination]?.stringValue)
+            return (L10n.string("rule_list_to_folder"), action.params[ActionParam.destination]?.stringValue)
         case .syncFolders:
-            return ("with folder", action.params[ActionParam.destination]?.stringValue)
+            return (L10n.string("rule_list_with_folder"), action.params[ActionParam.destination]?.stringValue)
         case .rename:
-            return ("to \(action.params[ActionParam.pattern]?.stringValue ?? "")", action.params[ActionParam.cleanFileName]?.boolValue == true ? "clean file name" : nil)
+            let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
+            return (L10n.string("rule_list_to", pattern), action.params[ActionParam.cleanFileName]?.boolValue == true ? L10n.string("rule_list_clean_file_name") : nil)
         case .moveToTrash:
-            return ("move to Trash", nil)
+            return (L10n.string("rule_list_move_to_trash"), nil)
         case .delete:
-            return ("delete permanently", nil)
+            return (L10n.string("rule_list_delete_permanently"), nil)
         case .addTag:
-            return ("add \(tagList(action))", nil)
+            return (L10n.string("rule_list_add", tagList(action)), nil)
         case .removeTag:
-            return ("remove \(tagList(action))", nil)
+            return (L10n.string("rule_list_remove", tagList(action)), nil)
         case .setColorLabel:
             let color = action.params[ActionParam.color]?.stringValue ?? ""
-            return (color.isEmpty ? "clear color label" : "set to \(color)", nil)
+            return (color.isEmpty ? L10n.string("rule_list_clear_color_label") : L10n.string("rule_list_set_to", FinderTags.displayName(forColor: color)), nil)
         case .toggleLock:
-            return (action.params[ActionParam.locked]?.boolValue == true ? "lock" : "unlock", nil)
+            return (action.params[ActionParam.locked]?.boolValue == true ? L10n.string("rule_list_lock") : L10n.string("rule_list_unlock"), nil)
         case .toggleExtension:
-            return (action.params[ActionParam.extensionHidden]?.boolValue == true ? "hide extension" : "show extension", nil)
+            return (action.params[ActionParam.extensionHidden]?.boolValue == true ? L10n.string("rule_list_hide_extension") : L10n.string("rule_list_show_extension"), nil)
         case .runScript:
             let script = action.params[ActionParam.script]?.stringValue ?? ""
             let lines = script.split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
             let firstLine = lines.first.map(String.init) ?? ""
-            return (firstLine.isEmpty ? "run script" : firstLine, lines.count > 1 ? "\(lines.count) lines" : nil)
+            return (firstLine.isEmpty ? L10n.string("rule_list_run_script") : firstLine, lines.count > 1 ? L10n.plural("lines", lines.count) : nil)
         case .runShortcut:
             let name = action.params[ActionParam.shortcutName]?.stringValue ?? ""
-            return (name.isEmpty ? "run shortcut" : name, ActionExecutor.shortcutInputMode(action).label)
+            return (name.isEmpty ? L10n.string("rule_list_run_shortcut") : name, ActionExecutor.shortcutInputMode(action).label)
         case .openApplication:
             let path = action.params[ActionParam.applicationPath]?.stringValue ?? ""
-            let appName = path.isEmpty ? "open application" : ((path as NSString).lastPathComponent as NSString).deletingPathExtension
-            let detail = ActionExecutor.passesFileToApplication(action) ? "with matched file" : nil
+            let appName = path.isEmpty ? L10n.string("rule_list_open_application") : ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+            let detail = ActionExecutor.passesFileToApplication(action) ? L10n.string("rule_list_with_matched_file") : nil
             return (appName, detail)
         case .importToLibrary:
-            let library = LibraryType(rawValue: action.params[ActionParam.libraryType]?.stringValue ?? "")?.label ?? "Library"
+            let library = LibraryType(rawValue: action.params[ActionParam.libraryType]?.stringValue ?? "")
             let playlist = action.params[ActionParam.targetPlaylist]?.stringValue ?? ""
-            return ("import to \(library)", playlist.isEmpty ? nil : playlist)
+            let title = library.map { L10n.string("rule_list_import_to", $0.label) } ?? L10n.string("rule_list_import_to_library")
+            return (title, playlist.isEmpty ? nil : playlist)
         case .uncompress:
-            return ("uncompress ZIP", MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
+            return (L10n.string("rule_list_uncompress_zip"), MoveConflictResolution(rawValue: action.params[ActionParam.onConflict]?.stringValue ?? "")?.label)
         case .compress:
             let name = action.params[ActionParam.archiveName]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let destination = action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             var details = [name.isEmpty ? "{name}.zip" : name]
-            if !destination.isEmpty { details.append("to \(destination)") }
-            if ActionExecutor.deletesSourceAfterCompression(action) { details.append("permanently delete source after success") }
-            return ("create ZIP", details.joined(separator: " · "))
+            if !destination.isEmpty { details.append(L10n.string("rule_list_to", destination)) }
+            if ActionExecutor.deletesSourceAfterCompression(action) { details.append(L10n.string("rule_list_permanently_delete_source_after")) }
+            return (L10n.string("rule_list_create_zip"), details.joined(separator: " · "))
         }
     }
 
@@ -708,7 +714,7 @@ private struct RuleDetails: View {
         if let tag = action.params["tag"]?.stringValue, !tag.isEmpty {
             return tag
         }
-        return "tag"
+        return L10n.string("rule_list_tag")
     }
 }
 
@@ -744,15 +750,15 @@ private struct PreviewSheet: View {
 
     private var subtitle: String {
         let matchText = result.reachedMatchLimit
-            ? "\(result.matches.count)+ matched"
-            : "\(result.matches.count) matched"
-        return "\(result.filesScanned) items scanned · \(matchText)"
+            ? L10n.string("rule_list_matched_at_least", result.matches.count)
+            : L10n.plural("rule_list_matched_count", result.matches.count)
+        return L10n.plural("rule_list_items_scanned", result.filesScanned, matchText)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ViewHeader(
-                title: "Preview (Dry Run)",
+                title: L10n.string("rule_list_preview_dry_run"),
                 subtitle: subtitle
             )
 
@@ -763,7 +769,7 @@ private struct PreviewSheet: View {
                             Image(systemName: "list.bullet.rectangle")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(ForelTheme.accent)
-                            Text("Showing the first \(matchLimit) matches. Narrow the folder scope or conditions to see fewer results.")
+                            Text(L10n.string("rule_list_showing_first_matches_narrow", matchLimit))
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(ForelTheme.secondaryText)
                         }
@@ -813,7 +819,7 @@ private struct PreviewSheet: View {
                                         Image(systemName: "info.circle")
                                             .font(.system(size: 9))
                                             .foregroundStyle(ForelTheme.secondaryText)
-                                        Text("No actions configured for this rule.")
+                                        Text(L10n.string("rule_list_actions_configured_rule"))
                                             .font(.system(size: 11))
                                             .foregroundStyle(ForelTheme.secondaryText)
                                     }
@@ -836,7 +842,7 @@ private struct PreviewSheet: View {
                                                     .background(Capsule().fill(action.statusColor.opacity(0.12)))
                                             }
                                             if let targetPath = action.targetPath {
-                                                Text("\((action.sourcePath as NSString).lastPathComponent) -> \((targetPath as NSString).lastPathComponent)")
+                                                Text(verbatim: "\((action.sourcePath as NSString).lastPathComponent) -> \((targetPath as NSString).lastPathComponent)")
                                                     .font(.system(size: 10))
                                                     .foregroundStyle(ForelTheme.secondaryText)
                                             }
@@ -860,7 +866,7 @@ private struct PreviewSheet: View {
                     }
 
                     if result.matches.isEmpty {
-                        Text("No files match the current rules.")
+                        Text(L10n.string("rule_list_files_match_current_rules"))
                             .font(.system(size: 12))
                             .foregroundStyle(ForelTheme.secondaryText)
                             .frame(maxWidth: .infinity)
@@ -873,7 +879,7 @@ private struct PreviewSheet: View {
 
             HStack {
                 Spacer()
-                Button("Close", action: onClose).buttonStyle(SecondaryButtonStyle())
+                Button(L10n.string("rule_list_close"), action: onClose).buttonStyle(SecondaryButtonStyle())
             }
         }
         .padding(16)
@@ -890,12 +896,12 @@ private extension ConditionPreview {
 
 private extension ActionPreview {
     var statusLabel: String {
-        if warning != nil { return "Likely to fail" }
+        if warning != nil { return L10n.string("rule_list_likely_to_fail") }
         switch status {
-        case .wouldRun: return "Would run"
-        case .wouldSkip: return "Would skip"
-        case .blockedByConflict: return "Blocked by conflict"
-        case .needsConfirmation: return "Needs confirmation"
+        case .wouldRun: return L10n.string("rule_list_would_run")
+        case .wouldSkip: return L10n.string("rule_list_would_skip")
+        case .blockedByConflict: return L10n.string("rule_list_blocked_by_conflict")
+        case .needsConfirmation: return L10n.string("needs_confirmation")
         }
     }
 

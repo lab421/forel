@@ -104,9 +104,9 @@ public final class ForelKeychainLicenseStore: LicenseSecureStoring {
 
         var errorDescription: String? {
             if status == errSecInteractionNotAllowed || status == errSecAuthFailed || status == errSecUserCanceled {
-                return "Activate your Pro license again in License settings to allow access to its saved Keychain record."
+                return L10n.string("license_error_activate_pro_license_again")
             }
-            return SecCopyErrorMessageString(status, nil) as String? ?? "Keychain error \(status)."
+            return SecCopyErrorMessageString(status, nil) as String? ?? L10n.string("license_error_keychain_error", Int(status))
         }
     }
 }

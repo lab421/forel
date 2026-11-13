@@ -1,0 +1,4 @@
+/* The privacy texts macOS shows when Forel asks for access. Keep the English in sync with write_info_plist in build.sh. */
+
+"NSAppleEventsUsageDescription" = "Forel verwendet Automation, um im Rahmen automatisierter Regeln Dateien zu den Mediatheken von Musik und TV hinzuzufügen.";
+"NSPhotoLibraryUsageDescription" = "Forel kann im Rahmen automatisierter Regeln Bilder und Videos in deine Fotos-Mediathek importieren.";

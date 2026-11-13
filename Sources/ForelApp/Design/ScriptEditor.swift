@@ -24,7 +24,7 @@ import ForelCore
 /// edge (and remembered), and it can open in a larger window.
 struct ScriptEditor: View {
     @Binding var script: String
-    var placeholder = "Bash script — the matched file's path is in $FOREL_FILE"
+    var placeholder: String = L10n.string("script_bash_script_matched_files")
     @AppStorage("scriptEditorHeight") private var height: Double = 150
     @StateObject private var controller = ScriptEditorController()
     @State private var syntaxError: String?
@@ -89,15 +89,15 @@ struct ScriptEditor: View {
                 }
                 .onEnded { _ in dragStartHeight = nil }
         )
-        .help("Drag to resize the editor")
-        .accessibilityLabel("Resize script editor")
+        .help(L10n.string("script_drag_resize_editor"))
+        .accessibilityLabel(L10n.string("script_resize_script_editor"))
     }
 
     private var footer: some View {
         HStack(spacing: 8) {
-            Button("Insert $FOREL_FILE") { controller.insert("\"$FOREL_FILE\"") }
+            Button(L10n.string("script_insert_forel_file")) { controller.insert("\"$FOREL_FILE\"") }
                 .buttonStyle(SecondaryButtonStyle())
-                .help("Insert the quoted path of the matched file at the cursor")
+                .help(L10n.string("script_insert_quoted_path_matched"))
             SyntaxStatus(error: syntaxError)
             Spacer(minLength: 8)
             Text(lineCountLabel)
@@ -109,14 +109,14 @@ struct ScriptEditor: View {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
             }
             .buttonStyle(IconButtonStyle())
-            .help("Open in a larger editor")
-            .accessibilityLabel("Open in a larger editor")
+            .help(L10n.string("script_open_larger_editor"))
+            .accessibilityLabel(L10n.string("script_open_larger_editor"))
         }
     }
 
     private var lineCountLabel: String {
         let lines = script.isEmpty ? 0 : script.split(separator: "\n", omittingEmptySubsequences: false).count
-        return "\(lines) line\(lines == 1 ? "" : "s")"
+        return L10n.plural("lines", lines)
     }
 
     private func checkSyntax() async {
@@ -155,17 +155,17 @@ private struct LargeScriptEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ViewHeader(title: "Script", subtitle: "Runs once per matching file, with its path in $FOREL_FILE", systemImage: "terminal")
+            ViewHeader(title: L10n.string("script_title"), subtitle: L10n.string("script_runs_once_per_matching"), systemImage: "terminal")
             CodeTextView(text: $script, controller: controller)
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
             HStack(spacing: 8) {
-                Button("Insert $FOREL_FILE") { controller.insert("\"$FOREL_FILE\"") }
+                Button(L10n.string("script_insert_forel_file")) { controller.insert("\"$FOREL_FILE\"") }
                     .buttonStyle(SecondaryButtonStyle())
                 SyntaxStatus(error: syntaxError)
                 Spacer()
-                Button("Done") { dismiss() }
+                Button(L10n.string("script_done")) { dismiss() }
                     .buttonStyle(PrimaryButtonStyle())
                     .keyboardShortcut(.defaultAction)
             }
@@ -238,7 +238,7 @@ struct CodeTextView: NSViewRepresentable {
         textView.isAutomaticLinkDetectionEnabled = false
         textView.isAutomaticDataDetectionEnabled = false
         textView.smartInsertDeleteEnabled = false
-        textView.setAccessibilityLabel("Script")
+        textView.setAccessibilityLabel(L10n.string("script_title"))
         textView.delegate = context.coordinator
         textView.string = text
         ScriptHighlighter.highlight(textView)

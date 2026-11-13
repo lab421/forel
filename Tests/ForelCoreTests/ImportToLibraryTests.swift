@@ -54,9 +54,9 @@ import Photos
         #expect(!ActionExecutor.canImportToLibrary(image, libraryType: .tv))
     }
 
-    @Test func formatDescriptionIsNonEmptyForEveryLibrary() {
+    @Test func unsupportedFormatMessageNamesEveryLibrary() {
         for type in LibraryType.allCases {
-            #expect(!ActionExecutor.formatDescription(for: type).isEmpty)
+            #expect(ActionExecutor.unsupportedFormatMessage(for: type).contains(type.label))
         }
     }
 

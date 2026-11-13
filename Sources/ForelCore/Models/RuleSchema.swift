@@ -33,21 +33,21 @@ public extension Operator {
     /// Human-readable label shown in the rule editor.
     var label: String {
         switch self {
-        case .isTrue: return "true"
-        case .isFalse: return "false"
-        case .is: return "is"
-        case .isNot: return "is not"
-        case .contains: return "contains"
-        case .doesNotContain: return "does not contain"
-        case .startsWith: return "starts with"
-        case .endsWith: return "ends with"
-        case .matchesRegex: return "matches regex"
-        case .greaterThan: return "greater than"
-        case .lessThan: return "less than"
-        case .before: return "is before"
-        case .after: return "is after"
-        case .olderThan: return "is not in the last"
-        case .withinLast: return "is within the last"
+        case .isTrue: return L10n.string("operator_true")
+        case .isFalse: return L10n.string("operator_false")
+        case .is: return L10n.string("operator_is")
+        case .isNot: return L10n.string("operator_is_not")
+        case .contains: return L10n.string("operator_contains")
+        case .doesNotContain: return L10n.string("operator_does_not_contain")
+        case .startsWith: return L10n.string("operator_starts_with")
+        case .endsWith: return L10n.string("operator_ends_with")
+        case .matchesRegex: return L10n.string("operator_matches_regex")
+        case .greaterThan: return L10n.string("operator_greater_than")
+        case .lessThan: return L10n.string("operator_less_than")
+        case .before: return L10n.string("operator_is_before")
+        case .after: return L10n.string("operator_is_after")
+        case .olderThan: return L10n.string("operator_is_not_in_the_last")
+        case .withinLast: return L10n.string("operator_is_within_the_last")
         }
     }
 
@@ -84,22 +84,22 @@ public enum ConditionValueKind: Sendable, Equatable {
 public extension ConditionKind {
     var label: String {
         switch self {
-        case .name: return "Name"
-        case .comment: return "Comment"
-        case .locked: return "Locked"
-        case .extension_: return "Extension"
-        case .kind: return "Kind"
-        case .sizeBytes: return "Size"
-        case .tags: return "Tags"
-        case .colorLabel: return "Color label"
-        case .contents: return "Contents"
-        case .createdAt: return "Date created"
-        case .dateModified: return "Date modified"
-        case .dateAdded: return "Date added"
-        case .dateLastOpened: return "Date last opened"
-        case .downloadedFromWebsite: return "Downloaded from website"
-        case .downloadedWithApp: return "Downloaded with app"
-        case .rawWhereFromMetadata: return "Raw where-from metadata"
+        case .name: return L10n.string("condition_name")
+        case .comment: return L10n.string("condition_comment")
+        case .locked: return L10n.string("locked")
+        case .extension_: return L10n.string("extension")
+        case .kind: return L10n.string("condition_kind")
+        case .sizeBytes: return L10n.string("condition_size")
+        case .tags: return L10n.string("tags")
+        case .colorLabel: return L10n.string("condition_color_label")
+        case .contents: return L10n.string("condition_contents")
+        case .createdAt: return L10n.string("condition_date_created")
+        case .dateModified: return L10n.string("condition_date_modified")
+        case .dateAdded: return L10n.string("condition_date_added")
+        case .dateLastOpened: return L10n.string("condition_date_last_opened")
+        case .downloadedFromWebsite: return L10n.string("condition_downloaded_from_website")
+        case .downloadedWithApp: return L10n.string("condition_downloaded_with_app")
+        case .rawWhereFromMetadata: return L10n.string("condition_raw_where_from_metadata")
         }
     }
 
@@ -171,21 +171,21 @@ public extension ConditionKind {
     var helpText: String? {
         switch self {
         case .locked:
-            return "Matches the Locked checkbox in Finder's Get Info window, independently of read and write permissions."
+            return L10n.string("condition_help_matches_locked_checkbox_finders")
         case .comment:
-            return "Matches the Finder comment shown in Get Info. Files without a comment are treated as having an empty comment."
+            return L10n.string("condition_help_matches_finder_comment_shown")
         case .dateLastOpened:
-            return "Uses the last-opened date recorded by macOS, not the last filesystem access. Items without this date do not match."
+            return L10n.string("condition_help_uses_last_opened_date")
         case .tags:
-            return "Matches the Finder tags shown in Get Info, not other file metadata."
+            return L10n.string("condition_help_matches_finder_tags_shown")
         case .downloadedFromWebsite:
-            return "Matches only http and https addresses from the file's download metadata. For other sources, such as blob: addresses, use Raw where-from metadata."
+            return L10n.string("condition_help_matches_only_http_https")
         case .downloadedWithApp:
-            return "Matches the app that macOS recorded as having downloaded the file, such as Safari or Firefox. Availability depends on that app."
+            return L10n.string("condition_help_matches_app_macos_recorded")
         case .rawWhereFromMetadata:
-            return "Matches every value of the file's download metadata, as Finder shows it in Get Info under Where from. Availability depends on the app that created the file."
+            return L10n.string("condition_help_matches_every_value_files")
         case .contents:
-            return "Matches text from plain files, PDFs, Word documents, and images via OCR when available."
+            return L10n.string("condition_help_matches_text_plain_files")
         default:
             return nil
         }
@@ -195,9 +195,12 @@ public extension ConditionKind {
 // MARK: - File kinds (for the `kind` condition)
 
 public enum FileKindCatalog {
-    /// `(value, label)` pairs for the file-kind picker. `value` matches the
-    /// strings `ConditionEvaluator.detectKind` produces.
-    public static let all: [(value: String, label: String)] = [
+    /// `(value, folderName)` pairs in picker order. `value` matches the
+    /// strings `ConditionEvaluator.detectKind` produces. `folderName` is what
+    /// the `{kind}` destination token writes to disk: it stays in English
+    /// whatever the app's language, so a rule keeps filing into the same
+    /// folders when the language changes.
+    public static let all: [(value: String, folderName: String)] = [
         ("image", "Image"),
         ("movie", "Movie"),
         ("music", "Music"),
@@ -210,6 +213,24 @@ public enum FileKindCatalog {
         ("folder", "Folder"),
         ("application", "Application"),
     ]
+
+    /// The file kind's name in the picker, in the app's language.
+    public static func label(for value: String) -> String {
+        switch value {
+        case "image": return L10n.string("kind_image")
+        case "movie": return L10n.string("kind_movie")
+        case "music": return L10n.string("music")
+        case "pdf": return L10n.string("kind_pdf")
+        case "text": return L10n.string("kind_text")
+        case "document": return L10n.string("kind_document")
+        case "presentation": return L10n.string("presentation")
+        case "archive": return L10n.string("kind_archive")
+        case "disk_image": return L10n.string("kind_disk_image")
+        case "folder": return L10n.string("kind_folder")
+        case "application": return L10n.string("application")
+        default: return value
+        }
+    }
 }
 
 // MARK: - Action parameters
@@ -267,23 +288,23 @@ public struct ActionParamSpec: Sendable, Equatable {
 public extension ActionKind {
     var label: String {
         switch self {
-        case .moveToFolder: return "Move to folder"
-        case .copyToFolder: return "Copy to folder"
-        case .syncFolders: return "Sync folders"
-        case .rename: return "Rename"
-        case .moveToTrash: return "Move to Trash"
-        case .delete: return "Delete"
-        case .addTag: return "Add tag"
-        case .removeTag: return "Remove tag"
-        case .setColorLabel: return "Set color label"
-        case .toggleLock: return "Toggle lock"
-        case .toggleExtension: return "Toggle extension"
-        case .runScript: return "Run script"
-        case .runShortcut: return "Run shortcut"
-        case .openApplication: return "Open application"
-        case .importToLibrary: return "Import to library"
-        case .compress: return "Compress"
-        case .uncompress: return "Uncompress"
+        case .moveToFolder: return L10n.string("action_move_to_folder")
+        case .copyToFolder: return L10n.string("action_copy_to_folder")
+        case .syncFolders: return L10n.string("action_sync_folders")
+        case .rename: return L10n.string("action_rename")
+        case .moveToTrash: return L10n.string("move_to_trash")
+        case .delete: return L10n.string("action_delete")
+        case .addTag: return L10n.string("add_tag")
+        case .removeTag: return L10n.string("remove_tag")
+        case .setColorLabel: return L10n.string("action_set_color_label")
+        case .toggleLock: return L10n.string("action_toggle_lock")
+        case .toggleExtension: return L10n.string("action_toggle_extension")
+        case .runScript: return L10n.string("run_script")
+        case .runShortcut: return L10n.string("run_shortcut")
+        case .openApplication: return L10n.string("open_application")
+        case .importToLibrary: return L10n.string("action_import_to_library")
+        case .compress: return L10n.string("action_compress")
+        case .uncompress: return L10n.string("action_uncompress")
         }
     }
 
@@ -388,7 +409,7 @@ public enum RuleSchema {
             .name, .extension_, .kind, .sizeBytes, .tags, .colorLabel, .locked, .contents,
             .createdAt, .dateModified, .dateAdded, .dateLastOpened,
         ]),
-        ConditionKindGroup(title: "Metadata", kinds: [
+        ConditionKindGroup(title: L10n.string("condition_metadata"), kinds: [
             .comment, .downloadedFromWebsite, .downloadedWithApp,
         ]),
     ]
@@ -397,11 +418,11 @@ public enum RuleSchema {
 
     public static let actionKindGroups: [ActionKindGroup] = [
         ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .syncFolders, .rename, .compress, .uncompress]),
-        ActionKindGroup(title: "Tags", kinds: [.addTag, .removeTag, .setColorLabel]),
-        ActionKindGroup(title: "Finder", kinds: [.toggleLock, .toggleExtension]),
-        ActionKindGroup(title: "Automation", kinds: [.runScript, .runShortcut, .openApplication]),
-        ActionKindGroup(title: "Disposal", kinds: [.moveToTrash, .delete]),
-        ActionKindGroup(title: "Library", kinds: [.importToLibrary]),
+        ActionKindGroup(title: L10n.string("tags"), kinds: [.addTag, .removeTag, .setColorLabel]),
+        ActionKindGroup(title: L10n.string("action_section_finder"), kinds: [.toggleLock, .toggleExtension]),
+        ActionKindGroup(title: L10n.string("action_section_automation"), kinds: [.runScript, .runShortcut, .openApplication]),
+        ActionKindGroup(title: L10n.string("action_section_disposal"), kinds: [.moveToTrash, .delete]),
+        ActionKindGroup(title: L10n.string("action_section_library"), kinds: [.importToLibrary]),
     ]
 
     public static let actionKinds: [ActionKind] = actionKindGroups.flatMap(\.kinds)

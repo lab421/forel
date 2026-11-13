@@ -30,21 +30,21 @@ struct PermissionsSection: View {
     @State private var isCheckingTV = false
 
     var body: some View {
-        SectionLabel(title: "Permissions")
+        SectionLabel(title: L10n.string("permissions"))
         GlassCard {
             PhotosPermissionRow(status: photosStatus, onRequest: {
                 photosStatus = PermissionsChecker.requestPhotosAccess()
             })
             Divider().overlay(ForelTheme.divider).padding(.leading, 14)
             AutomationPermissionRow(
-                appName: "Music",
+                appName: LibraryType.music.label,
                 status: musicStatus,
                 isChecking: isCheckingMusic,
                 onCheck: { check(app: "Music") }
             )
             Divider().overlay(ForelTheme.divider).padding(.leading, 14)
             AutomationPermissionRow(
-                appName: "TV",
+                appName: LibraryType.tv.label,
                 status: tvStatus,
                 isChecking: isCheckingTV,
                 onCheck: { check(app: "TV") }
@@ -94,8 +94,8 @@ private struct PhotosPermissionRow: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Photos").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
-                Text("Needed by the Import to Library action when importing photos or videos.")
+                Text(L10n.string("photos")).font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
+                Text(L10n.string("permissions_needed_import_library_action"))
                     .font(.system(size: 11))
                     .foregroundStyle(ForelTheme.secondaryText)
             }
@@ -103,10 +103,10 @@ private struct PhotosPermissionRow: View {
             PermissionStatusBadge(status: status)
             switch status {
             case .unknown:
-                Button("Request Access", action: onRequest)
+                Button(L10n.string("permissions_request_access"), action: onRequest)
                     .buttonStyle(SecondaryButtonStyle())
             case .denied, .restricted:
-                Button("Open Settings") { SystemSettings.openPrivacyPane(.photos) }
+                Button(L10n.string("permissions_open_settings")) { SystemSettings.openPrivacyPane(.photos) }
                     .buttonStyle(SecondaryButtonStyle())
             case .granted:
                 EmptyView()
@@ -126,8 +126,8 @@ private struct AutomationPermissionRow: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(appName) automation").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
-                Text("Needed by the Import to Library action when importing into \(appName).")
+                Text(L10n.string("permissions_automation", appName)).font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
+                Text(L10n.string("permissions_needed_import_library_action_when", appName))
                     .font(.system(size: 11))
                     .foregroundStyle(ForelTheme.secondaryText)
             }
@@ -141,17 +141,17 @@ private struct AutomationPermissionRow: View {
             case .granted:
                 EmptyView()
             case .denied, .restricted:
-                Button("Open Settings") { SystemSettings.openPrivacyPane(.automation) }
+                Button(L10n.string("permissions_open_settings")) { SystemSettings.openPrivacyPane(.automation) }
                     .buttonStyle(SecondaryButtonStyle())
-                Button("Check Again", action: onCheck)
+                Button(L10n.string("permissions_check_again"), action: onCheck)
                     .buttonStyle(SecondaryButtonStyle())
                     .disabled(isChecking)
-                    .help("Talks to \(appName) to verify automation access — launches it if it isn't already running.")
+                    .help(L10n.string("permissions_talks_verify_automation_access", appName))
             case .unknown:
-                Button("Check Access", action: onCheck)
+                Button(L10n.string("permissions_check_access"), action: onCheck)
                     .buttonStyle(SecondaryButtonStyle())
                     .disabled(isChecking)
-                    .help("Talks to \(appName) to verify automation access — launches it if it isn't already running.")
+                    .help(L10n.string("permissions_talks_verify_automation_access", appName))
             }
         }
         .padding(.vertical, 10)
@@ -173,10 +173,10 @@ private struct PermissionStatusBadge: View {
 
     private var label: String {
         switch status {
-        case .granted: return "Granted"
-        case .denied: return "Denied"
-        case .restricted: return "Restricted"
-        case .unknown: return "Not checked"
+        case .granted: return L10n.string("permissions_granted")
+        case .denied: return L10n.string("permissions_denied")
+        case .restricted: return L10n.string("permissions_restricted")
+        case .unknown: return L10n.string("permissions_not_checked")
         }
     }
 

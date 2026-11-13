@@ -19,6 +19,7 @@ import Testing
 @testable import ForelCore
 
 @Suite struct RunSummaryTests {
+
     private func entry(_ status: HistoryStatus) -> HistoryEntry {
         HistoryEntry(
             batchId: "batch",

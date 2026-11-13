@@ -21,7 +21,7 @@ import Darwin
 /// attribute. Tags are stored as a binary-plist-encoded `[String]`. A colour
 /// label is just a tag whose name matches a system colour, optionally suffixed
 /// with "\nN" (the colour's Finder index).
-enum FinderTags {
+public enum FinderTags {
     static let xattrName = "com.apple.metadata:_kMDItemUserTags"
 
     /// Reads the Finder tags on `path`, or an empty list if there are none.
@@ -73,6 +73,21 @@ enum FinderTags {
         case "red": return 6
         case "orange": return 7
         default: return nil
+        }
+    }
+
+    /// A color label's name in the app's language. Rules store the English
+    /// name, which is also the tag Finder reads, so it is never translated.
+    public static func displayName(forColor name: String) -> String {
+        switch name.lowercased() {
+        case "gray", "grey": L10n.string("color_gray")
+        case "green": L10n.string("color_green")
+        case "purple": L10n.string("color_purple")
+        case "blue": L10n.string("color_blue")
+        case "yellow": L10n.string("color_yellow")
+        case "red": L10n.string("color_red")
+        case "orange": L10n.string("color_orange")
+        default: name
         }
     }
 

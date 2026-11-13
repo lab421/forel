@@ -25,26 +25,26 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ViewHeader(title: "Forel", subtitle: "File automation") {
+            ViewHeader(title: L10n.string("forel"), subtitle: L10n.string("sidebar_file_automation")) {
                 StatusBadge(active: !model.paused)
             }
 
             GlassCard {
                 ToggleRow(
-                    title: model.paused ? "Paused" : "Watching",
-                    subtitle: model.paused ? "New files are ignored" : "Rules run automatically",
+                    title: model.paused ? L10n.string("sidebar_paused") : L10n.string("watching"),
+                    subtitle: model.paused ? L10n.string("sidebar_new_files_are_ignored") : L10n.string("sidebar_rules_run_automatically"),
                     isOn: watchingBinding
                 )
             }
 
             HStack {
-                SectionLabel(title: "Watched Folders")
+                SectionLabel(title: L10n.string("watched_folders"))
                 Spacer()
                 Button(action: addFolder) {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(IconButtonStyle())
-                .help("Add a folder to watch")
+                .help(L10n.string("sidebar_add_folder_watch"))
             }
 
             if model.folders.isEmpty {
@@ -97,16 +97,16 @@ struct SidebarView: View {
                 if #available(macOS 14.0, *) {
                     SettingsFooterLink()
                 } else {
-                    FooterLink(title: "Settings", systemImage: "gearshape") {
+                    FooterLink(title: L10n.string("settings"), systemImage: "gearshape") {
                         NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
                     }
-                    .help("Settings")
+                    .help(L10n.string("settings"))
                 }
                 Spacer()
-                FooterLink(title: "Activity", systemImage: "clock.arrow.circlepath") {
+                FooterLink(title: L10n.string("activity"), systemImage: "clock.arrow.circlepath") {
                     model.leaveRuleEditor { model.showActivity() }
                 }
-                .help("Activity history")
+                .help(L10n.string("activity_history"))
             }
         }
         .padding(16)
@@ -175,7 +175,7 @@ struct SidebarView: View {
             Spacer(minLength: 4)
 
             if !isAllowed {
-                Label("Pro", systemImage: "lock.fill")
+                Label(L10n.string("pro"), systemImage: "lock.fill")
                     .font(.caption)
                     .foregroundStyle(ForelTheme.pro)
             }
@@ -193,7 +193,7 @@ struct SidebarView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(isSelected ? (isAllowed ? ForelTheme.accent : ForelTheme.secondaryText).opacity(0.5) : ForelTheme.surfaceBorder)
         )
-        .help(isAllowed ? folder.path : "Reorder folders or activate Pro to use this folder.")
+        .help(isAllowed ? folder.path : L10n.string("reorder_folders_activate_pro"))
         .contentShape(Rectangle())
         .onTapGesture {
             model.leaveRuleEditor {
@@ -203,12 +203,12 @@ struct SidebarView: View {
             }
         }
         .contextMenu {
-            Button("Show in Finder") {
+            Button(L10n.string("show_in_finder")) {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: folder.path)])
             }
             Divider()
-            Button("Change path of folder…") { changeFolder(folder) }
-            Button("Remove", role: .destructive) {
+            Button(L10n.string("sidebar_change_path_of_folder")) { changeFolder(folder) }
+            Button(L10n.string("sidebar_remove"), role: .destructive) {
                 // Its rules go with it, including one being edited.
                 if model.editingRule?.folderId == folder.id {
                     model.leaveRuleEditor { model.removeFolder(folder) }
@@ -224,14 +224,14 @@ struct SidebarView: View {
             Image(systemName: "folder.badge.plus")
                 .font(.system(size: 28))
                 .foregroundStyle(ForelTheme.secondaryText)
-            Text("No folders yet")
+            Text(L10n.string("sidebar_no_folders_yet"))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(ForelTheme.primaryText)
-            Text("Add a folder to start automating files.")
+            Text(L10n.string("sidebar_add_folder_start_automating"))
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .multilineTextAlignment(.center)
-            Button("Add Folder", action: addFolder)
+            Button(L10n.string("sidebar_add_folder"), action: addFolder)
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.top, 4)
         }
@@ -274,10 +274,10 @@ private struct SettingsFooterLink: View {
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        FooterLink(title: "Settings", systemImage: "gearshape") {
+        FooterLink(title: L10n.string("settings"), systemImage: "gearshape") {
             openSettings()
         }
-        .help("Settings")
+        .help(L10n.string("settings"))
     }
 }
 

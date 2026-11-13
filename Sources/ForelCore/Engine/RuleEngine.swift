@@ -432,8 +432,7 @@ public enum RuleEngine {
                     // conflict-aware skips (already in destination, or
                     // explicitly configured to skip); everything else is
                     // skipped because it simply wouldn't change the file.
-                    let isConflictAwareSkip = actionPlan.description == "Already in destination" || actionPlan.description.hasPrefix("Skip —")
-                    history.append(
+                                        history.append(
                         HistoryEntry(
                             batchId: batchId,
                             ruleId: rule.id,
@@ -444,7 +443,7 @@ public enum RuleEngine {
                             undo: Undo.none.toJSON(),
                             reversible: false,
                             status: .skipped,
-                            message: isConflictAwareSkip ? actionPlan.description : "Skipped because the action would not change this file."
+                            message: actionPlan.explainsSkip ? actionPlan.description : L10n.string("engine_skipped_because_action_change")
                         )
                     )
                 case .blockedByConflict:
@@ -459,7 +458,7 @@ public enum RuleEngine {
                             undo: Undo.none.toJSON(),
                             reversible: false,
                             status: .failed,
-                            message: "A file already exists at the destination."
+                            message: L10n.string("engine_file_already_exists_destination")
                         )
                     )
                 case .needsConfirmation:
@@ -564,7 +563,7 @@ public enum RuleEngine {
                 actions.append(
                     ActionPreview(
                         kind: action.kind,
-                        description: "Preview unavailable: \(error)",
+                        description: L10n.string("preview_unavailable", String(describing: error)),
                         sourcePath: current,
                         targetPath: nil,
                         status: .wouldSkip
