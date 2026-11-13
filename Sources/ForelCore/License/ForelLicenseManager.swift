@@ -37,7 +37,7 @@ public final class ForelLicenseManager: ObservableObject {
         store = secureStore
         self.client = client ?? LicenseAPIClient(baseURL: baseURL)
         guard enabled else { return }
-        do { record = try store.load() } catch { lastError = String(localized: "Could not read your saved license: \(error.localizedDescription)", bundle: .forelStrings, comment: "License error") }
+        do { record = try store.load() } catch { lastError = L10n.string("license_error_could_read_saved_license", error.localizedDescription) }
         refreshState()
     }
 
@@ -73,18 +73,18 @@ public final class ForelLicenseManager: ObservableObject {
     public func activate(licenseKey: String) async {
         guard enabled, !isWorking else { return }
         let key = licenseKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { lastError = String(localized: "Enter a license key to activate Forel Pro.", bundle: .forelStrings, comment: "License error"); return }
+        guard !key.isEmpty else { lastError = L10n.string("license_error_enter_license_key_activate"); return }
         isWorking = true
         lastError = nil
         defer { isWorking = false }
         do {
             guard let token = try await client.activate(licenseKey: key, deviceID: deviceID, deviceName: deviceName, deviceProfile: nil),
-                  accepts(token, key: key) else { lastError = String(localized: "The server did not return a valid Forel Pro license.", bundle: .forelStrings, comment: "License error"); return }
+                  accepts(token, key: key) else { lastError = L10n.string("license_error_server_did_return_valid"); return }
             let next = LicenseRecord(lastObservedAt: Date(), licenseKey: key, licenseIsValid: true, lastValidatedAt: Date(), licenseToken: token)
             try store.save(next)
             record = next
             refreshState()
-        } catch { lastError = String(localized: "Could not activate Forel Pro: \(error.localizedDescription)", bundle: .forelStrings, comment: "License error") }
+        } catch { lastError = L10n.string("license_error_could_activate_forel_pro", error.localizedDescription) }
     }
 
     public func validate() async {
@@ -95,7 +95,7 @@ public final class ForelLicenseManager: ObservableObject {
         do {
             switch try await client.validate(licenseKey: key, deviceID: deviceID) {
             case .success(let token):
-                guard let token, accepts(token, key: key) else { lastError = String(localized: "The server did not return a valid Forel Pro license.", bundle: .forelStrings, comment: "License error"); return }
+                guard let token, accepts(token, key: key) else { lastError = L10n.string("license_error_server_did_return_valid"); return }
                 let next = LicenseRecord(lastObservedAt: Date(), licenseKey: key, licenseIsValid: true, lastValidatedAt: Date(), licenseToken: token)
                 try store.save(next)
                 record = next
@@ -104,12 +104,12 @@ public final class ForelLicenseManager: ObservableObject {
                 record?.licenseIsValid = false
                 refreshState()
                 if let record { try store.save(record) }
-                lastError = String(localized: "Your license is no longer valid. Forel remains available in Free mode.", bundle: .forelStrings, comment: "License error")
+                lastError = L10n.string("license_error_license_longer_valid_forel")
             }
             refreshState()
         } catch {
             refreshState()
-            lastError = String(localized: "Could not verify your license. A valid saved license still works offline.", bundle: .forelStrings, comment: "License error")
+            lastError = L10n.string("license_error_could_verify_license_valid")
         }
     }
 
@@ -126,6 +126,6 @@ public final class ForelLicenseManager: ObservableObject {
             try store.save(LicenseRecord(lastObservedAt: Date()))
             record = nil
             lastError = nil
-        } catch { lastError = String(localized: "Could not finish deactivating your license: \(error.localizedDescription)", bundle: .forelStrings, comment: "License error") }
+        } catch { lastError = L10n.string("license_error_could_finish_deactivating_license", error.localizedDescription) }
     }
 }

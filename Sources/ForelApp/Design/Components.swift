@@ -42,19 +42,10 @@ struct VisualEffectBlur: NSViewRepresentable {
 
 /// Small caps section header, e.g. "WATCHED FOLDERS".
 struct SectionLabel: View {
-    let title: Text
-
-    init(title: LocalizedStringKey) {
-        self.title = Text(title)
-    }
-
-    /// For text built elsewhere, such as a date.
-    init(verbatim title: String) {
-        self.title = Text(verbatim: title)
-    }
+    let title: String
 
     var body: some View {
-        title
+        Text(title)
             .textCase(.uppercase)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(ForelTheme.secondaryText)
@@ -67,7 +58,7 @@ struct StatusBadge: View {
     let active: Bool
 
     var body: some View {
-        Text(active ? "ACTIVE" : "PAUSED")
+        Text(active ? L10n.string("component_active") : L10n.string("component_paused"))
             .font(.system(size: 9, weight: .bold))
             .foregroundStyle(active ? ForelTheme.success : ForelTheme.danger)
             .padding(.horizontal, 6)
@@ -114,12 +105,12 @@ struct UpdateAvailableBanner: View {
             .frame(width: 26, height: 26)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text("Update available")
+                Text(L10n.string("component_update_available"))
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
-                Text(version.map { "Version \($0)" } ?? "New version available")
+                Text(version.map { L10n.string("component_version", $0) } ?? L10n.string("component_new_version_available"))
                     .font(.system(size: 10))
                     .foregroundStyle(.white.opacity(0.85))
                     .lineLimit(1)
@@ -129,7 +120,7 @@ struct UpdateAvailableBanner: View {
 
             Spacer(minLength: 6)
 
-            Button(isInstalling ? "Installing…" : "Download", action: action)
+            Button(isInstalling ? L10n.string("component_installing") : L10n.string("component_download"), action: action)
                 .buttonStyle(.plain)
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(Color.orange)
@@ -153,8 +144,8 @@ struct UpdateAvailableBanner: View {
 
 /// A title/subtitle row with a trailing switch, e.g. "Watching".
 struct ToggleRow: View {
-    let title: LocalizedStringKey
-    let subtitle: LocalizedStringKey
+    let title: String
+    let subtitle: String
     @Binding var isOn: Bool
 
     var body: some View {
@@ -197,8 +188,8 @@ struct ForelSwitch: View {
                 }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Enabled")
-        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityLabel(L10n.string("enabled"))
+        .accessibilityValue(isOn ? L10n.string("component_on") : L10n.string("component_off"))
         .accessibilityAddTraits(.isButton)
     }
 }
@@ -228,7 +219,7 @@ struct QuickFolderRow: View {
 
             Spacer()
             if isBlocked {
-                Label("Pro", systemImage: "lock.fill")
+                Label(L10n.string("pro"), systemImage: "lock.fill")
                     .font(.caption)
                     .foregroundStyle(ForelTheme.pro)
             }
@@ -238,13 +229,13 @@ struct QuickFolderRow: View {
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 14)
-        .help(isBlocked ? String(localized: "Reorder folders or activate Pro to use this folder.") : folder.path)
+        .help(isBlocked ? L10n.string("reorder_folders_activate_pro") : folder.path)
     }
 }
 
 /// A title row with a trailing segmented picker, used in Settings (e.g. "Theme").
 struct PickerRow<Value: Hashable, Content: View>: View {
-    let title: LocalizedStringKey
+    let title: String
     @Binding var selection: Value
     @ViewBuilder var options: Content
 
@@ -265,32 +256,17 @@ struct PickerRow<Value: Hashable, Content: View>: View {
 /// A title/subtitle row with a trailing borderless action button, e.g.
 /// "Check for updates now".
 struct SettingsActionRow: View {
-    let title: Text
-    let subtitle: Text?
-    let buttonTitle: LocalizedStringKey
+    let title: String
+    let subtitle: String?
+    let buttonTitle: String
     let action: () -> Void
-
-    init(title: LocalizedStringKey, subtitle: LocalizedStringKey?, buttonTitle: LocalizedStringKey, action: @escaping () -> Void) {
-        self.title = Text(title)
-        self.subtitle = subtitle.map { Text($0) }
-        self.buttonTitle = buttonTitle
-        self.action = action
-    }
-
-    /// For text built elsewhere, such as the user's device name.
-    init(title: Text, subtitle: Text?, buttonTitle: LocalizedStringKey, action: @escaping () -> Void) {
-        self.title = title
-        self.subtitle = subtitle
-        self.buttonTitle = buttonTitle
-        self.action = action
-    }
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                title.font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
+                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
                 if let subtitle {
-                    subtitle.font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
+                    Text(subtitle).font(.system(size: 11)).foregroundStyle(ForelTheme.secondaryText)
                 }
             }
             Spacer()
@@ -307,7 +283,7 @@ struct SettingsActionRow: View {
 /// by the menu-bar quick panel — mirrors how native macOS widgets (Control
 /// Center, the Notification Center weather widget) lay out footer actions.
 struct QuickPanelFooterButton: View {
-    let title: LocalizedStringKey
+    let title: String
     let systemImage: String
     let action: () -> Void
 
@@ -329,7 +305,7 @@ struct QuickPanelFooterButton: View {
 
 /// Borderless footer link, e.g. "Settings" / "Quit".
 struct FooterLink: View {
-    let title: LocalizedStringKey
+    let title: String
     let systemImage: String
     let action: () -> Void
 
@@ -405,17 +381,12 @@ struct BrandMark: View {
 /// Standard window header: brand mark + title/subtitle + optional trailing
 /// content.
 struct ViewHeader<Trailing: View>: View {
-    let title: Text
-    let subtitle: Text
+    let title: String
+    let subtitle: String
     var systemImage: String?
     @ViewBuilder var trailing: Trailing
 
-    init(title: LocalizedStringKey, subtitle: LocalizedStringKey, systemImage: String? = nil, @ViewBuilder trailing: () -> Trailing) {
-        self.init(title: Text(title), subtitle: Text(subtitle), systemImage: systemImage, trailing: trailing)
-    }
-
-    /// For text built elsewhere, such as a folder's name.
-    init(title: Text, subtitle: Text, systemImage: String? = nil, @ViewBuilder trailing: () -> Trailing) {
+    init(title: String, subtitle: String, systemImage: String? = nil, @ViewBuilder trailing: () -> Trailing) {
         self.title = title
         self.subtitle = subtitle
         self.systemImage = systemImage
@@ -437,11 +408,11 @@ struct ViewHeader<Trailing: View>: View {
                 BrandMark()
             }
             VStack(alignment: .leading, spacing: 1) {
-                title
+                Text(title)
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(ForelTheme.primaryText)
                     .lineLimit(1)
-                subtitle
+                Text(subtitle)
                     .font(.system(size: 11))
                     .foregroundStyle(ForelTheme.secondaryText)
                     .lineLimit(1)
@@ -455,11 +426,7 @@ struct ViewHeader<Trailing: View>: View {
 }
 
 extension ViewHeader where Trailing == EmptyView {
-    init(title: LocalizedStringKey, subtitle: LocalizedStringKey, systemImage: String? = nil) {
-        self.init(title: title, subtitle: subtitle, systemImage: systemImage) { EmptyView() }
-    }
-
-    init(title: Text, subtitle: Text, systemImage: String? = nil) {
+    init(title: String, subtitle: String, systemImage: String? = nil) {
         self.init(title: title, subtitle: subtitle, systemImage: systemImage) { EmptyView() }
     }
 }
@@ -518,7 +485,7 @@ struct IconButtonStyle: ButtonStyle {
 
 /// Dark glass text field matching the surface styling.
 struct GlassField: View {
-    let placeholder: LocalizedStringKey
+    let placeholder: String
     @Binding var text: String
 
     var body: some View {
@@ -538,10 +505,10 @@ struct GlassField: View {
 /// with tokens (e.g. `/Volumes/Archive/{year}/{month}`) can be typed.
 /// Used everywhere a folder is selected.
 struct FolderField: View {
-    let placeholder: LocalizedStringKey
+    let placeholder: String
     @Binding var path: String
     /// Shown under the field only while the user is typing in it.
-    var hint: LocalizedStringKey? = nil
+    var hint: String? = nil
     @FocusState private var isEditing: Bool
 
     var body: some View {
@@ -562,7 +529,7 @@ struct FolderField: View {
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
 
-                Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+                Button(L10n.string("choose"), action: choose).buttonStyle(SecondaryButtonStyle())
             }
 
             if let hint, isEditing {
@@ -588,7 +555,7 @@ enum FolderPicker {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = String(localized: "Choose", comment: "Button of the folder picker")
+        panel.prompt = L10n.string("component_choose")
         if let path, !path.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: path)
         }
@@ -650,6 +617,6 @@ struct ColorLabelPicker: View {
                 }
         }
         .buttonStyle(.plain)
-        .help(name.isEmpty ? String(localized: "No label", comment: "Color label") : FinderTags.displayName(forColor: name))
+        .help(name.isEmpty ? L10n.string("color_no_label") : FinderTags.displayName(forColor: name))
     }
 }

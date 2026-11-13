@@ -19,7 +19,6 @@ import Testing
 @testable import ForelCore
 
 @Suite struct RunSummaryTests {
-    init() { CompiledStrings.install() }
 
     private func entry(_ status: HistoryStatus) -> HistoryEntry {
         HistoryEntry(

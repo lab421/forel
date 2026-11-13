@@ -46,8 +46,8 @@ struct RuleEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             ViewHeader(
-                title: rule.name.isEmpty ? "New Rule" : "Edit Rule",
-                subtitle: "Conditions decide which files match; actions decide what happens",
+                title: rule.name.isEmpty ? L10n.string("new_rule") : L10n.string("rule_editor_edit_rule"),
+                subtitle: L10n.string("rule_editor_conditions_decide_which_files"),
                 systemImage: "slider.horizontal.3"
             )
             if showValidationErrors, !validationMessages.isEmpty {
@@ -70,14 +70,14 @@ struct RuleEditorView: View {
             Divider().overlay(ForelTheme.divider)
 
             HStack {
-                Toggle("Enabled", isOn: $rule.enabled)
+                Toggle(L10n.string("enabled"), isOn: $rule.enabled)
                     .toggleStyle(.switch)
                     .tint(ForelTheme.accent)
                     .font(.system(size: 12))
                     .foregroundStyle(ForelTheme.primaryText)
                 Spacer()
-                Button("Cancel", action: onCancel).buttonStyle(SecondaryButtonStyle())
-                Button("Save") {
+                Button(L10n.string("cancel"), action: onCancel).buttonStyle(SecondaryButtonStyle())
+                Button(L10n.string("save")) {
                     if hasValidationErrors {
                         showValidationErrors = true
                         errorDismissTask?.cancel()
@@ -115,15 +115,15 @@ struct RuleEditorView: View {
     /// wide window, below them otherwise.
     private var sections: some View {
         VStack(alignment: .leading, spacing: 18) {
-            SectionLabel(title: "Basics")
+            SectionLabel(title: L10n.string("rule_editor_basics"))
             GlassCard {
                 VStack(alignment: .leading, spacing: 14) {
-                    GlassField(placeholder: "Rule name", text: $rule.name)
+                    GlassField(placeholder: L10n.string("rule_editor_rule_name"), text: $rule.name)
                     ScopeEditor(depth: $rule.recursionDepth)
 
                     Picker("", selection: $rule.conditionMatch) {
-                        Text("Match all conditions").tag(ConditionMatch.all)
-                        Text("Match any condition").tag(ConditionMatch.any)
+                        Text(L10n.string("rule_editor_match_all_conditions")).tag(ConditionMatch.all)
+                        Text(L10n.string("rule_editor_match_any_condition")).tag(ConditionMatch.any)
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
@@ -132,7 +132,7 @@ struct RuleEditorView: View {
             }
 
             HStack {
-                SectionLabel(title: "Conditions")
+                SectionLabel(title: L10n.string("rule_editor_conditions"))
                 Spacer()
                 Button {
                     rule.conditions.append(Condition(ruleId: rule.id, kind: .name, operator: .contains, value: ""))
@@ -144,7 +144,7 @@ struct RuleEditorView: View {
             GlassCard {
                 VStack(alignment: .leading, spacing: 12) {
                     if rule.conditions.isEmpty {
-                        placeholder("No conditions — this rule matches every file in scope.")
+                        placeholder(L10n.string("rule_editor_conditions_rule_matches_every"))
                     }
                     ForEach($rule.conditions, id: \.id) { $condition in
                         ConditionRow(condition: $condition, onRequestUpgrade: { upgradeContext = .feature($0) }) {
@@ -156,8 +156,8 @@ struct RuleEditorView: View {
             }
 
             HStack {
-                SectionLabel(title: "Actions")
-                Text("\(rule.actions.count)")
+                SectionLabel(title: L10n.string("rule_editor_actions"))
+                Text(verbatim: "\(rule.actions.count)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(ForelTheme.secondaryText)
                 Spacer()
@@ -171,7 +171,7 @@ struct RuleEditorView: View {
             GlassCard {
                 VStack(alignment: .leading, spacing: 12) {
                     if rule.actions.isEmpty {
-                        placeholder("No actions yet — add at least one to make this rule do something.")
+                        placeholder(L10n.string("rule_editor_actions_yet_add_least"))
                     }
                     ForEach($rule.actions, id: \.id) { $action in
                         ActionRow(action: $action, onRequestUpgrade: { upgradeContext = .feature($0) }) {
@@ -201,7 +201,7 @@ struct RuleEditorView: View {
         !validationMessages.isEmpty
     }
 
-    private func placeholder(_ text: LocalizedStringKey) -> some View {
+    private func placeholder(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 11))
             .foregroundStyle(ForelTheme.secondaryText)
@@ -215,7 +215,7 @@ enum RuleEditorDraftCheck {
     static func problems(_ rule: Rule) -> [String] {
         var problems: [String] = []
         if rule.name.trimmingCharacters(in: .whitespaces).isEmpty {
-            problems.append(String(localized: "The rule needs a name."))
+            problems.append(L10n.string("rule_editor_rule_needs_name"))
         }
         problems += (RuleValidator.validate(rule.conditions) + RuleValidator.validate(rule.actions)).map(\.message)
         return problems
@@ -296,14 +296,14 @@ private struct RuleMatchPreviewCard: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(ForelTheme.secondaryText)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    SectionLabel(title: "Matching Files")
+                    SectionLabel(title: L10n.string("rule_editor_matching_files"))
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(isExpanded ? "Hide the matching files" : "Show the files this rule matches right now")
-            .accessibilityLabel("Matching Files")
-            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .help(isExpanded ? L10n.string("rule_editor_hide_the_matching_files") : L10n.string("rule_editor_show_files_rule_matches"))
+            .accessibilityLabel(L10n.string("rule_editor_matching_files"))
+            .accessibilityValue(isExpanded ? L10n.string("rule_editor_expanded") : L10n.string("rule_editor_collapsed"))
             if isScanning { ProgressView().controlSize(.small) }
             Spacer()
             if let summary, !needsPro {
@@ -326,12 +326,12 @@ private struct RuleMatchPreviewCard: View {
 
     @ViewBuilder private var content: some View {
         if needsPro {
-            note("This rule uses a Forel Pro feature, so it can't be previewed on the Free plan.")
+            note(L10n.string("rule_editor_rule_uses_forel_pro"))
         } else if let summary {
             if summary.total == 0 {
                 note(summary.isComplete
-                     ? "Nothing in this folder matches right now. Matching files are processed when they arrive."
-                     : "Nothing matches in the first \(summary.checked) items of this folder.")
+                     ? L10n.string("rule_editor_nothing_folder_matches_right")
+                     : L10n.plural("rule_editor_nothing_matches_first_items", summary.checked))
             } else {
                 Text(matchLabel(summary))
                     .font(.system(size: 15, weight: .semibold))
@@ -347,15 +347,15 @@ private struct RuleMatchPreviewCard: View {
                     row(match, showsAction: sharedNote(summary) == nil)
                 }
                 if summary.total > shown.count {
-                    Text(summary.isComplete ? "and \(summary.total - shown.count) more…" : "and more…")
+                    Text(summary.isComplete ? L10n.plural("rule_editor_and_more_count", summary.total - shown.count) : L10n.string("rule_editor_and_more"))
                         .font(.caption)
                         .foregroundStyle(ForelTheme.secondaryText)
                 }
             }
-            note("Only this rule is checked. Use Dry Run to preview all of the folder's rules together.")
+            note(L10n.string("rule_editor_only_rule_checked_use"))
                 .font(.caption)
         } else {
-            note("Checking the items in this folder…")
+            note(L10n.string("rule_editor_checking_items_folder"))
         }
     }
 
@@ -382,17 +382,17 @@ private struct RuleMatchPreviewCard: View {
         .font(.system(size: 13))
         .help(match.path)
         .contextMenu {
-            Button("Show in Finder") {
+            Button(L10n.string("show_in_finder")) {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: match.path)])
             }
-            Button("Copy Path") {
+            Button(L10n.string("rule_editor_copy_path")) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(match.path, forType: .string)
             }
         }
     }
 
-    private func note(_ text: LocalizedStringKey) -> some View {
+    private func note(_ text: String) -> some View {
         Text(text)
             .font(.subheadline)
             .foregroundStyle(ForelTheme.secondaryText)
@@ -402,8 +402,8 @@ private struct RuleMatchPreviewCard: View {
     /// One message instead of the same one on every row: the actions are
     /// incomplete, or every listed file hits the same problem.
     private func sharedNote(_ summary: RuleMatchSummary) -> String? {
-        if rule.actions.isEmpty { return String(localized: "Add an action to see what would happen to these files.") }
-        if !RuleValidator.validate(rule.actions).isEmpty { return String(localized: "Complete the actions above to see what would happen to these files.") }
+        if rule.actions.isEmpty { return L10n.string("rule_editor_add_action_see_what") }
+        if !RuleValidator.validate(rule.actions).isEmpty { return L10n.string("rule_editor_complete_actions_above_see") }
         let warnings = Set(summary.matches.prefix(Self.shownLimit).map(\.warning))
         if warnings.count == 1, let warning = warnings.first ?? nil { return warning }
         return nil
@@ -411,14 +411,14 @@ private struct RuleMatchPreviewCard: View {
 
     private func matchLabel(_ summary: RuleMatchSummary) -> String {
         summary.isComplete
-            ? String(localized: "\(summary.total) items match", comment: "Matching Files preview in the rule editor")
-            : String(localized: "At least \(summary.total) items match", comment: "Matching Files preview in the rule editor")
+            ? L10n.plural("rule_editor_items_match", summary.total)
+            : L10n.plural("rule_editor_at_least_items_match", summary.total)
     }
 
     private func checkedLabel(_ summary: RuleMatchSummary) -> String {
         summary.isComplete
-            ? String(localized: "\(summary.checked) items checked", comment: "Matching Files preview in the rule editor")
-            : String(localized: "First \(summary.checked) items checked", comment: "Matching Files preview in the rule editor")
+            ? L10n.plural("rule_editor_items_checked", summary.checked)
+            : L10n.plural("rule_editor_first_items_checked", summary.checked)
     }
 
     private var needsPro: Bool {
@@ -495,11 +495,11 @@ private struct ScopeEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 16) {
-                Text("Scope").font(.system(size: 12)).foregroundStyle(ForelTheme.secondaryText)
+                Text(L10n.string("rule_editor_scope")).font(.system(size: 12)).foregroundStyle(ForelTheme.secondaryText)
                 Spacer()
                 Picker("", selection: modeBinding) {
-                    Text("Current folder").tag(0)
-                    Text("Subfolders").tag(1)
+                    Text(L10n.string("rule_editor_current_folder")).tag(0)
+                    Text(L10n.string("rule_editor_subfolders")).tag(1)
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
@@ -508,11 +508,11 @@ private struct ScopeEditor: View {
 
             if depth != 0 {
                 HStack(spacing: 10) {
-                    Text("Depth").font(.system(size: 12)).foregroundStyle(ForelTheme.secondaryText)
+                    Text(L10n.string("rule_editor_depth")).font(.system(size: 12)).foregroundStyle(ForelTheme.secondaryText)
                     GlassField(placeholder: "1", text: depthTextBinding)
                         .frame(width: 72)
                         .disabled(depth == nil)
-                    Toggle("All levels", isOn: allLevelsBinding)
+                    Toggle(L10n.string("rule_editor_all_levels"), isOn: allLevelsBinding)
                         .toggleStyle(.checkbox)
                         .font(.system(size: 12))
                         .foregroundStyle(ForelTheme.primaryText)
@@ -527,7 +527,7 @@ private struct ScopeEditor: View {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 11))
                             .foregroundStyle(Color.orange)
-                        Text("All levels can slow execution in folders with many files. Use with caution.")
+                        Text(L10n.string("rule_editor_all_levels_slow_execution"))
                             .font(.system(size: 11))
                             .foregroundStyle(ForelTheme.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
@@ -555,8 +555,8 @@ private struct ScopeEditor: View {
     }
 
     private var scopeSummary: String {
-        guard let depth else { return String(localized: "All subfolder levels") }
-        return String(localized: "\(Int(max(1, depth))) subfolder levels")
+        guard let depth else { return L10n.string("rule_editor_all_subfolder_levels") }
+        return L10n.plural("rule_editor_subfolder_levels", Int(max(1, depth)))
     }
 }
 
@@ -595,10 +595,10 @@ private struct ConditionRow: View {
             }
             if condition.kind == .contents, !model.isPro {
                 HStack {
-                    Text("Document text is included in Free. Images and scanned PDFs require Pro OCR.")
+                    Text(L10n.string("rule_editor_document_text_included_free"))
                         .font(.caption)
                         .foregroundStyle(ForelTheme.secondaryText)
-                    Button("Unlock OCR") { onRequestUpgrade(.ocr) }
+                    Button(L10n.string("rule_editor_unlock_ocr")) { onRequestUpgrade(.ocr) }
                         .buttonStyle(.link)
                 }
             }
@@ -624,13 +624,13 @@ private struct ConditionRow: View {
         case .regex:
             RegexValueEditor(value: $condition.value)
         case .text:
-            GlassField(placeholder: "Value", text: $condition.value)
+            GlassField(placeholder: L10n.string("rule_editor_value"), text: $condition.value)
         }
     }
 
     private var rowHelpText: String? {
         if condition.kind == .kind, condition.value == "archive" {
-            return String(localized: "Archive matches compressed formats such as ZIP, TAR, GZ, 7Z, RAR, XZ, ZST, TGZ, TBZ, and CAB.", comment: "Help shown next to a Kind condition set to Archive")
+            return L10n.string("rule_editor_archive_matches_compressed_formats")
         }
         return condition.kind.helpText
     }
@@ -748,7 +748,7 @@ private struct ActionKindMenu: View {
                                         .frame(width: 16)
                                     Text(kind.label)
                                     if !model.isPro, FreePlan.requiredFeature(for: kind) != nil {
-                                        Label("Pro", systemImage: "lock.fill")
+                                        Label(L10n.string("pro"), systemImage: "lock.fill")
                                     }
                                 }
                             }
@@ -764,7 +764,7 @@ private struct ActionKindMenu: View {
                                     .frame(width: 16)
                                 Text(kind.label)
                                 if !model.isPro, FreePlan.requiredFeature(for: kind) != nil {
-                                    Label("Pro", systemImage: "lock.fill")
+                                    Label(L10n.string("pro"), systemImage: "lock.fill")
                                 }
                             }
                         }
@@ -846,13 +846,13 @@ private struct RegexValueEditor: View {
             _ = try NSRegularExpression(pattern: value)
             return nil
         } catch {
-            return String(localized: "Invalid regular expression")
+            return L10n.string("rule_editor_invalid_regular_expression")
         }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            GlassField(placeholder: "Regex pattern", text: $value)
+            GlassField(placeholder: L10n.string("rule_editor_regex_pattern"), text: $value)
             if let errorMessage {
                 Text(errorMessage)
                     .font(.system(size: 10))
@@ -916,11 +916,11 @@ private struct RelativeDateValueEditor: View {
     /// The stored value keeps the English unit ("7 days"): the engine reads it.
     private static func unitLabel(_ unit: String) -> String {
         switch unit {
-        case "hours": String(localized: "hours", comment: "Unit of a relative date condition, as in “is within the last 7 hours”")
-        case "days": String(localized: "days", comment: "Unit of a relative date condition, as in “is within the last 7 days”")
-        case "weeks": String(localized: "weeks", comment: "Unit of a relative date condition, as in “is within the last 7 weeks”")
-        case "months": String(localized: "months", comment: "Unit of a relative date condition, as in “is within the last 7 months”")
-        case "years": String(localized: "years", comment: "Unit of a relative date condition, as in “is within the last 7 years”")
+        case "hours": L10n.string("rule_editor_hours")
+        case "days": L10n.string("rule_editor_days")
+        case "weeks": L10n.string("rule_editor_weeks")
+        case "months": L10n.string("rule_editor_months")
+        case "years": L10n.string("rule_editor_years")
         default: unit
         }
     }
@@ -965,10 +965,10 @@ private struct SizeValueEditor: View {
     /// The stored value keeps the English unit ("10 MB"): the engine reads it.
     private static func unitLabel(_ unit: String) -> String {
         switch unit {
-        case "bytes": String(localized: "bytes", comment: "Unit of a Size condition")
-        case "KB": String(localized: "KB", comment: "Unit of a Size condition: kilobytes")
-        case "MB": String(localized: "MB", comment: "Unit of a Size condition: megabytes")
-        case "GB": String(localized: "GB", comment: "Unit of a Size condition: gigabytes")
+        case "bytes": L10n.string("rule_editor_bytes")
+        case "KB": L10n.string("rule_editor_kb")
+        case "MB": L10n.string("rule_editor_mb")
+        case "GB": L10n.string("rule_editor_gb")
         default: unit
         }
     }
@@ -993,7 +993,7 @@ private struct AppPickerField: View {
         HStack(spacing: 8) {
             HStack(spacing: 6) {
                 iconView
-                TextField("App name", text: $value)
+                TextField(L10n.string("rule_editor_app_name"), text: $value)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
                     .foregroundStyle(ForelTheme.primaryText)
@@ -1003,7 +1003,7 @@ private struct AppPickerField: View {
             .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
 
-            Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+            Button(L10n.string("choose"), action: choose).buttonStyle(SecondaryButtonStyle())
         }
     }
 
@@ -1034,7 +1034,7 @@ private struct ApplicationPathPickerField: View {
         HStack(spacing: 8) {
             HStack(spacing: 6) {
                 iconView
-                TextField("Application", text: $path)
+                TextField(L10n.string("application"), text: $path)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
                     .foregroundStyle(ForelTheme.primaryText)
@@ -1044,7 +1044,7 @@ private struct ApplicationPathPickerField: View {
             .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
 
-            Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+            Button(L10n.string("choose"), action: choose).buttonStyle(SecondaryButtonStyle())
         }
     }
 
@@ -1104,7 +1104,7 @@ private struct ActionRow: View {
 
             Group {
                 if !model.isPro, let feature = FreePlan.requiredFeature(for: action.kind) {
-                    Button("Unlock \(feature.title)") { onRequestUpgrade(feature) }
+                    Button(L10n.string("rule_editor_unlock", feature.title)) { onRequestUpgrade(feature) }
                         .buttonStyle(.link)
                 } else {
                     actionParams
@@ -1121,7 +1121,7 @@ private struct ActionRow: View {
                     Image(systemName: "ellipsis")
                 }
                 .buttonStyle(IconButtonStyle())
-                .help("Action options")
+                .help(L10n.string("rule_editor_action_options"))
                 .frame(width: 28)
                 .popover(isPresented: $showingOptions, arrowEdge: .bottom) {
                     ActionOptionsView(action: $action)
@@ -1147,34 +1147,34 @@ private struct ActionRow: View {
         switch action.kind {
         case .moveToFolder, .copyToFolder:
             FolderField(
-                placeholder: "Destination folder",
+                placeholder: L10n.string("rule_editor_destination_folder"),
                 path: paramBinding(ActionParam.destination),
-                hint: "Add {kind}, {extension}, {year}, {month}, {day}, {hour}, {minute}, or {quarter} to sort into folders, e.g. …/Sorted/{kind}/{year}"
+                hint: L10n.string("rule_editor_add_kind_extension_year")
             )
         case .syncFolders:
-            FolderField(placeholder: "Destination folder", path: paramBinding(ActionParam.destination))
+            FolderField(placeholder: L10n.string("rule_editor_destination_folder"), path: paramBinding(ActionParam.destination))
         case .rename:
             RenamePatternEditor(pattern: paramBinding(ActionParam.pattern), cleanFileName: action.params[ActionParam.cleanFileName]?.boolValue == true)
         case .addTag, .removeTag:
-            TagTokensEditor(tags: tagsBinding, placeholder: action.kind == .addTag ? "Add tag" : "Tag")
+            TagTokensEditor(tags: tagsBinding, placeholder: action.kind == .addTag ? L10n.string("add_tag") : L10n.string("rule_editor_tag"))
         case .setColorLabel:
             ColorLabelPicker(selection: paramBinding(ActionParam.color), allowNone: true)
         case .toggleLock:
-            Picker("State", selection: boolParamBinding(ActionParam.locked)) {
-                Text("Locked").tag(true)
-                Text("Unlocked").tag(false)
+            Picker(L10n.string("rule_editor_state"), selection: boolParamBinding(ActionParam.locked)) {
+                Text(L10n.string("locked")).tag(true)
+                Text(L10n.string("rule_editor_unlocked")).tag(false)
             }
             .labelsHidden()
         case .toggleExtension:
-            Picker("Extension", selection: boolParamBinding(ActionParam.extensionHidden)) {
-                Text("Hidden").tag(true)
-                Text("Visible").tag(false)
+            Picker(L10n.string("extension"), selection: boolParamBinding(ActionParam.extensionHidden)) {
+                Text(L10n.string("rule_editor_hidden")).tag(true)
+                Text(L10n.string("rule_editor_visible")).tag(false)
             }
             .labelsHidden()
         case .runScript:
             VStack(alignment: .leading, spacing: 6) {
                 ScriptEditor(script: paramBinding(ActionParam.script))
-                Text("Runs once per matching file. Use \"$FOREL_FILE\" for its full path. Dry Run does not execute scripts; script changes cannot be undone.")
+                Text(L10n.string("rule_editor_runs_once_per_matching"))
                     .font(.caption)
                     .foregroundStyle(ForelTheme.secondaryText)
                     .textSelection(.enabled)
@@ -1188,7 +1188,7 @@ private struct ActionRow: View {
             let libType = LibraryType(rawValue: libTypeBinding.wrappedValue)
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    Text("Library:")
+                    Text(L10n.string("rule_editor_library"))
                         .font(.system(size: 11))
                         .foregroundStyle(ForelTheme.secondaryText)
                         .frame(width: 52, alignment: .trailing)
@@ -1197,7 +1197,7 @@ private struct ActionRow: View {
                 if libType == .music || libType == .tv {
                     let app = libType == .music ? "Music" : "TV"
                     HStack(spacing: 6) {
-                        Text("Playlist:")
+                        Text(L10n.string("rule_editor_playlist"))
                             .font(.system(size: 11))
                             .foregroundStyle(ForelTheme.secondaryText)
                             .frame(width: 52, alignment: .trailing)
@@ -1206,7 +1206,7 @@ private struct ActionRow: View {
                     }
                 } else if libType == .photos {
                     HStack(spacing: 6) {
-                        Text("Album:")
+                        Text(L10n.string("rule_editor_album"))
                             .font(.system(size: 11))
                             .foregroundStyle(ForelTheme.secondaryText)
                             .frame(width: 52, alignment: .trailing)
@@ -1215,14 +1215,14 @@ private struct ActionRow: View {
                 }
             }
         case .uncompress:
-            Text("ZIP archives only")
+            Text(L10n.string("rule_editor_zip_archives_only"))
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
         case .compress:
             ArchiveNameEditor(pattern: paramBinding(ActionParam.archiveName))
         case .moveToTrash, .delete:
-            Text("No parameters")
+            Text(L10n.string("rule_editor_no_parameters"))
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
@@ -1305,7 +1305,7 @@ private struct ActionOptionsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Options")
+            Text(L10n.string("rule_editor_options"))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(ForelTheme.primaryText)
 
@@ -1323,7 +1323,7 @@ private struct ActionOptionsView: View {
             case .compress:
                 compressionOptions
             default:
-                Text("No options for this action.")
+                Text(L10n.string("rule_editor_options_action"))
                     .font(.system(size: 12))
                     .foregroundStyle(ForelTheme.secondaryText)
             }
@@ -1333,7 +1333,7 @@ private struct ActionOptionsView: View {
     private var openApplicationOptions: some View {
         VStack(alignment: .leading, spacing: 6) {
             Toggle(isOn: passFileToApplicationBinding) {
-                Text("Pass matched file to app")
+                Text(L10n.string("rule_editor_pass_matched_file_app"))
                     .font(.system(size: 12))
                     .foregroundStyle(ForelTheme.primaryText)
             }
@@ -1344,30 +1344,30 @@ private struct ActionOptionsView: View {
 
     private var compressionOptions: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Destination")
+            Text(L10n.string("destination"))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(ForelTheme.secondaryText)
             FolderField(
-                placeholder: "Next to the source (default)",
+                placeholder: L10n.string("rule_editor_next_source_default"),
                 path: paramBinding(ActionParam.destination),
-                hint: "Supports {kind}, {extension}, {year}, {month}, {day}, {hour}, {minute}, and {quarter}."
+                hint: L10n.string("rule_editor_supports_kind_extension_year")
             )
             if action.params[ActionParam.destination]?.stringValue?.isEmpty == false {
-                Button("Use source folder") { paramBinding(ActionParam.destination).wrappedValue = "" }
+                Button(L10n.string("rule_editor_use_source_folder")) { paramBinding(ActionParam.destination).wrappedValue = "" }
                     .buttonStyle(.link)
             }
-            Text("Leave empty to save next to the source. Existing ZIPs are kept; new archives are numbered.")
+            Text(L10n.string("rule_editor_leave_empty_save_next"))
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Divider()
-            Toggle("Delete source after compression", isOn: deleteSourceBinding)
+            Toggle(L10n.string("rule_editor_delete_source_after_compression"), isOn: deleteSourceBinding)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .font(.system(size: 12))
             if ActionExecutor.deletesSourceAfterCompression(action) {
                 Label(
-                    "After the ZIP is created successfully, the original file or folder and all its contents are permanently deleted. This cannot be undone. Following actions apply to the ZIP.",
+                    L10n.string("rule_editor_after_zip_created_successfully"),
                     systemImage: "exclamationmark.triangle"
                 )
                     .font(.system(size: 11))
@@ -1395,7 +1395,7 @@ private struct ActionOptionsView: View {
             ? MoveConflictResolution.allCases.filter { $0 != .rename }.map(\.rawValue)
             : MoveConflictResolution.allCases.map(\.rawValue)
         return VStack(alignment: .leading, spacing: 6) {
-            Text("If a file already exists")
+            Text(L10n.string("rule_editor_if_file_already_exists"))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(ForelTheme.secondaryText)
 
@@ -1410,7 +1410,7 @@ private struct ActionOptionsView: View {
 
     private var shortcutOptions: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Input")
+            Text(L10n.string("rule_editor_input"))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(ForelTheme.secondaryText)
 
@@ -1425,7 +1425,7 @@ private struct ActionOptionsView: View {
 
     private var syncOptions: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Deletes")
+            Text(L10n.string("rule_editor_deletes"))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(ForelTheme.secondaryText)
 
@@ -1437,7 +1437,7 @@ private struct ActionOptionsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             if ActionExecutor.syncDeletePolicy(action) == .delete {
                 Label(
-                    "When a file is deleted from the watched folder, its copy in the destination is permanently deleted too. This cannot be undone.",
+                    L10n.string("rule_editor_when_file_deleted_watched"),
                     systemImage: "exclamationmark.triangle"
                 )
                     .font(.system(size: 11))
@@ -1450,7 +1450,7 @@ private struct ActionOptionsView: View {
     private var renameOptions: some View {
         VStack(alignment: .leading, spacing: 6) {
             Toggle(isOn: cleanNameBinding) {
-                Text("Clean file name")
+                Text(L10n.string("rule_editor_clean_file_name"))
                     .font(.system(size: 12))
                     .foregroundStyle(ForelTheme.primaryText)
             }
@@ -1504,7 +1504,7 @@ private struct ShortcutPicker: View {
     var body: some View {
         HStack(spacing: 8) {
             if shortcuts.isEmpty {
-                GlassField(placeholder: isLoading ? "Loading shortcuts..." : "Shortcut name", text: $selection)
+                GlassField(placeholder: isLoading ? L10n.string("rule_editor_loading_shortcuts") : L10n.string("rule_editor_shortcut_name"), text: $selection)
             } else {
                 StringSelectMenu(selection: shortcutBinding, options: shortcutOptions)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1514,7 +1514,7 @@ private struct ShortcutPicker: View {
                 Image(systemName: "arrow.clockwise")
             }
             .buttonStyle(IconButtonStyle())
-            .help("Refresh shortcuts")
+            .help(L10n.string("rule_editor_refresh_shortcuts"))
         }
         .task {
             if shortcuts.isEmpty {
@@ -1580,7 +1580,7 @@ private struct PlaylistPicker: View {
             StringSelectMenu(
                 selection: $selection,
                 options: items,
-                label: { $0.isEmpty ? String(localized: "None", comment: "No playlist or album") : $0 }
+                label: { $0.isEmpty ? L10n.string("rule_editor_none") : $0 }
             )
             if isLoading {
                 ProgressView()
@@ -1630,7 +1630,7 @@ private struct AlbumPicker: View {
             StringSelectMenu(
                 selection: $selection,
                 options: items,
-                label: { $0.isEmpty ? String(localized: "None", comment: "No playlist or album") : $0 }
+                label: { $0.isEmpty ? L10n.string("rule_editor_none") : $0 }
             )
             if isLoading {
                 ProgressView()
@@ -1653,7 +1653,7 @@ private struct AlbumPicker: View {
             let collections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: options)
             var names: [String] = []
             collections.enumerateObjects { collection, _, _ in
-                names.append(collection.localizedTitle ?? String(localized: "Untitled", comment: "A Photos album without a name"))
+                names.append(collection.localizedTitle ?? L10n.string("rule_editor_untitled"))
             }
             items = [""] + names.sorted()
             #endif
@@ -1664,7 +1664,7 @@ private struct AlbumPicker: View {
 
 private struct TagTokensEditor: View {
     @Binding var tags: [String]
-    let placeholder: LocalizedStringKey
+    let placeholder: String
     @State private var draft = ""
     @FocusState private var isFocused: Bool
 
@@ -1693,7 +1693,7 @@ private struct TagTokensEditor: View {
                 Image(systemName: "return")
             }
             .buttonStyle(IconButtonStyle())
-            .help("Add tag")
+            .help(L10n.string("add_tag"))
         }
         .onAppear { isFocused = true }
     }
@@ -1739,28 +1739,28 @@ private struct ArchiveNameEditor: View {
     @Binding var pattern: String
 
     private let tokens = [
-        (value: "{name}", label: String(localized: "Source name", comment: "Archive name token")),
-        (value: "{current_date}", label: String(localized: "Current date", comment: "Archive name token")),
-        (value: "{timestamp}", label: String(localized: "Timestamp", comment: "Archive name token")),
+        (value: "{name}", label: L10n.string("rule_editor_source_name")),
+        (value: "{current_date}", label: L10n.string("rule_editor_current_date")),
+        (value: "{timestamp}", label: L10n.string("rule_editor_timestamp")),
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            GlassField(placeholder: "Archive name, e.g. {name}-{timestamp}.zip", text: $pattern)
-                .accessibilityLabel("Archive name")
+            GlassField(placeholder: L10n.string("rule_editor_archive_name_e_g"), text: $pattern)
+                .accessibilityLabel(L10n.string("rule_editor_archive_name"))
             HStack(spacing: 6) {
                 ForEach(tokens, id: \.value) { token in
                     Button(token.label) { insert(token.value) }
                         .buttonStyle(.bordered)
                         .controlSize(.mini)
-                        .help("Insert \(token.value)")
+                        .help(L10n.string("rule_editor_insert", token.value))
                 }
             }
             Text(preview)
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .textSelection(.enabled)
-            Text("Empty uses {name}.zip. The .zip extension is added automatically; choose a destination in Options.")
+            Text(L10n.string("rule_editor_empty_uses_name_zip"))
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1769,7 +1769,7 @@ private struct ArchiveNameEditor: View {
 
     private var preview: String {
         do {
-            return String(localized: "Preview: \(try ActionExecutor.archiveFileName(pattern: pattern, sourceName: "file"))", comment: "Example archive name")
+            return L10n.string("rule_editor_preview", try ActionExecutor.archiveFileName(pattern: pattern, sourceName: "file"))
         } catch {
             return String(describing: error)
         }
@@ -1788,17 +1788,17 @@ private struct RenamePatternEditor: View {
     let cleanFileName: Bool
 
     private let tokens: [(placeholder: String, label: String)] = [
-        ("{name}", String(localized: "name", comment: "Rename pattern token")),
-        ("{extension}", String(localized: "extension", comment: "Rename pattern token")),
-        ("{date_modified}", String(localized: "date modified", comment: "Rename pattern token")),
-        ("{date_created}", String(localized: "date created", comment: "Rename pattern token")),
-        ("{current_date}", String(localized: "current date", comment: "Rename pattern token")),
-        ("{size}", String(localized: "size", comment: "Rename pattern token")),
+        ("{name}", L10n.string("rule_editor_token_name")),
+        ("{extension}", L10n.string("rule_editor_token_extension")),
+        ("{date_modified}", L10n.string("rule_editor_token_date_modified")),
+        ("{date_created}", L10n.string("rule_editor_token_date_created")),
+        ("{current_date}", L10n.string("rule_editor_token_current_date")),
+        ("{size}", L10n.string("rule_editor_token_size")),
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            GlassField(placeholder: "Pattern, e.g. {name}-{current_date}.{extension}", text: $pattern)
+            GlassField(placeholder: L10n.string("rule_editor_pattern_e_g_name"), text: $pattern)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -1817,9 +1817,9 @@ private struct RenamePatternEditor: View {
 
     private var preview: String {
         let candidate = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !candidate.isEmpty else { return String(localized: "Preview: \("")", comment: "Example file name for a rename pattern") }
+        guard !candidate.isEmpty else { return L10n.string("rule_editor_preview", "") }
         if candidate.contains("/") {
-            return String(localized: "⚠️ Pattern contains '/' which is not allowed in filenames")
+            return L10n.string("rule_editor_pattern_contains_which_allowed")
         }
         let previewName = candidate
             .replacingOccurrences(of: "{name}", with: "file")
@@ -1827,15 +1827,15 @@ private struct RenamePatternEditor: View {
             .replacingOccurrences(of: "{current_date}", with: dateString())
         let displayName = cleanFileName ? ActionExecutor.cleanFileName(previewName) : previewName
         if displayName == "." || displayName == ".." {
-            return String(localized: "⚠️ Pattern resolves to '\(displayName)' which is not a valid filename")
+            return L10n.string("rule_editor_pattern_resolves_which_valid", displayName)
         }
         if displayName.utf8.count > 255 {
-            return String(localized: "⚠️ Pattern resolves to a filename longer than 255 characters")
+            return L10n.string("rule_editor_pattern_resolves_filename_longer")
         }
         if let last = displayName.last, last == "." || last == " " {
-            return String(localized: "⚠️ Pattern resolves to '\(displayName)' — trailing '.' or space is not supported")
+            return L10n.string("rule_editor_pattern_resolves_trailing_space", displayName)
         }
-        return String(localized: "Preview: \(displayName)", comment: "Example file name for a rename pattern")
+        return L10n.string("rule_editor_preview", displayName)
     }
 
     private func dateString() -> String {

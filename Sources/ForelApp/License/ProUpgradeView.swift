@@ -13,15 +13,15 @@ enum ProUpgradeContext: Identifiable {
     }
     var title: String {
         switch self {
-        case .folders: String(localized: "Automate more folders")
-        case .monthlyFiles: String(localized: "Keep processing with Pro")
+        case .folders: L10n.string("pro_automate_more_folders")
+        case .monthlyFiles: L10n.string("pro_keep_processing_with_pro")
         case .feature(let feature): feature.title
         }
     }
     var message: String {
         switch self {
-        case .folders: String(localized: "Free includes 2 watched folders. With Pro, organize your projects, invoices, and downloads with unlimited folders.")
-        case .monthlyFiles: String(localized: "Free includes 300 processed files per calendar month, shared across all folders. Activate Pro for unlimited processing, or resume next month. Dry Run remains available and your remaining files stay in place.")
+        case .folders: L10n.string("pro_free_includes_2_watched")
+        case .monthlyFiles: L10n.string("pro_free_includes_300_processed")
         case .feature(let feature): feature.benefit
         }
     }
@@ -36,7 +36,7 @@ struct ProUpgradeView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Label("Forel Pro", systemImage: "sparkles")
+            Label(L10n.string("forel_pro"), systemImage: "sparkles")
                 .font(.headline)
                 .foregroundStyle(ForelTheme.pro)
             Text(context.title).font(.title2.bold())
@@ -44,19 +44,19 @@ struct ProUpgradeView: View {
                 .foregroundStyle(ForelTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             ProBenefitsView()
-            Text("Free stays free. Pro is a paid license, with no trial.")
+            Text(L10n.string("pro_free_stays_free_pro"))
                 .font(.caption)
                 .foregroundStyle(ForelTheme.secondaryText)
             HStack {
-                Button("Continue in Free") { dismiss() }
+                Button(L10n.string("pro_continue_in_free")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Activate a license") {
+                Button(L10n.string("pro_activate_a_license")) {
                     navigation.selectedCategory = .license
                     dismiss()
                     openSettings()
                 }
-                Button("View pricing & buy Pro") {
+                Button(L10n.string("pro_view_pricing_buy_pro")) {
                     openURL(ForelLicensing.purchaseURL)
                 }
                 .buttonStyle(.borderedProminent)
@@ -72,10 +72,10 @@ struct ProUpgradeView: View {
 struct ProBenefitsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Label("Unlimited watched folders", systemImage: "folder.badge.plus")
-            Label("Unlimited files processed", systemImage: "doc.on.doc")
-            Label("OCR for images and scanned PDFs", systemImage: "text.viewfinder")
-            Label("Photos, Music, and TV imports", systemImage: "photo.on.rectangle")
+            Label(L10n.string("pro_unlimited_watched_folders"), systemImage: "folder.badge.plus")
+            Label(L10n.string("pro_unlimited_files_processed"), systemImage: "doc.on.doc")
+            Label(L10n.string("pro_ocr_images_scanned_pdfs"), systemImage: "text.viewfinder")
+            Label(L10n.string("pro_photos_music_tv_imports"), systemImage: "photo.on.rectangle")
         }
         .font(.callout)
         .foregroundStyle(ForelTheme.primaryText)

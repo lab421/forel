@@ -44,6 +44,3 @@ jobs:
 
       - name: Test
         run: swift test
-
-      - name: Check string catalog
-        run: ./build.sh strings --check

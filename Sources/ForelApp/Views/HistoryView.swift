@@ -29,25 +29,25 @@ struct HistoryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ViewHeader(title: "Activity", subtitle: "\(model.historyTotalCount) recorded actions", systemImage: "clock.arrow.circlepath") {
+            ViewHeader(title: L10n.string("activity"), subtitle: L10n.plural("activity_recorded_actions", model.historyTotalCount), systemImage: "clock.arrow.circlepath") {
                 Button {
                     model.detailRoute = .rules
                 } label: {
                     Image(systemName: "chevron.backward")
                 }
                 .buttonStyle(IconButtonStyle())
-                .help("Back to rules")
+                .help(L10n.string("activity_back_to_rules"))
             }
 
             HStack(spacing: 8) {
                 Image(systemName: "folder")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(ForelTheme.secondaryText)
-                Picker("Directory", selection: Binding(
+                Picker(L10n.string("activity_directory"), selection: Binding(
                     get: { model.historyFolderFilterId ?? "" },
                     set: { model.setHistoryFolderFilter($0.isEmpty ? nil : $0) }
                 )) {
-                    Text("All directories").tag("")
+                    Text(L10n.string("activity_all_directories")).tag("")
                     ForEach(model.folders, id: \.id) { folder in
                         Text((folder.path as NSString).lastPathComponent).tag(folder.id)
                     }
@@ -69,10 +69,10 @@ struct HistoryView: View {
                     ForEach(batches, id: \.id) { batch in
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                SectionLabel(verbatim: relativeLabel(batch.entries.first?.createdAt))
+                                SectionLabel(title: relativeLabel(batch.entries.first?.createdAt))
                                 Spacer()
                                 if undoableCount(batch.entries) > 0 {
-                                    Button("Undo Batch (\(undoableCount(batch.entries)))") {
+                                    Button(L10n.string("activity_undo_batch", undoableCount(batch.entries))) {
                                         model.undoBatch(batch.id)
                                     }
                                     .buttonStyle(SecondaryButtonStyle())
@@ -100,7 +100,7 @@ struct HistoryView: View {
             if !batches.isEmpty {
                 HStack {
                     Spacer()
-                    Button("Clear History", role: .destructive) {
+                    Button(L10n.string("activity_clear_history"), role: .destructive) {
                         try? model.db.clearHistory()
                         model.reloadHistory()
                     }
@@ -119,10 +119,10 @@ struct HistoryView: View {
             Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 28))
                 .foregroundStyle(ForelTheme.secondaryText)
-            Text("No activity yet")
+            Text(L10n.string("no_activity_yet"))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(ForelTheme.primaryText)
-            Text("Actions performed by your rules will appear here.")
+            Text(L10n.string("activity_actions_performed_rules_appear"))
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .multilineTextAlignment(.center)
@@ -139,7 +139,7 @@ struct HistoryView: View {
 
     private func relativeLabel(_ iso: String?) -> String {
         guard let iso, let localized = HistoryTimestampFormatter.localized(iso) else {
-            return String(localized: "Earlier", comment: "Activity entries without a readable date")
+            return L10n.string("activity_earlier")
         }
         return localized
     }
@@ -214,10 +214,10 @@ private struct HistoryRow: View {
             .frame(width: 28, height: 28)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(entry.ruleName) · \(label)")
+                Text(verbatim: "\(entry.ruleName) · \(label)")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(ForelTheme.primaryText)
-                Text("\(entry.originalPath) → \(entry.resultPath)")
+                Text(verbatim: "\(entry.originalPath) → \(entry.resultPath)")
                     .font(.system(size: 10))
                     .foregroundStyle(ForelTheme.secondaryText)
                     .lineLimit(1)
@@ -235,7 +235,7 @@ private struct HistoryRow: View {
             if entry.status == .undone {
                 statusBadge
             } else if entry.status == .applied && entry.reversible {
-                Button("Undo") { model.undo(entry) }
+                Button(L10n.string("activity_undo")) { model.undo(entry) }
                     .buttonStyle(SecondaryButtonStyle())
             } else {
                 statusBadge
@@ -260,11 +260,11 @@ private struct HistoryRow: View {
 
     private var statusLabel: String {
         switch entry.status {
-        case .applied: return String(localized: "Applied", comment: "Activity status")
-        case .undone: return String(localized: "Undone", comment: "Activity status")
-        case .failed: return String(localized: "Failed", comment: "Activity status")
-        case .skipped: return String(localized: "Skipped", comment: "Activity status")
-        case .needsConfirmation: return String(localized: "Needs confirmation", comment: "Activity status")
+        case .applied: return L10n.string("activity_applied")
+        case .undone: return L10n.string("undone")
+        case .failed: return L10n.string("failed")
+        case .skipped: return L10n.string("skipped")
+        case .needsConfirmation: return L10n.string("needs_confirmation")
         }
     }
 

@@ -271,7 +271,7 @@ public enum RuleEngine {
                 let result = ConditionEvaluator.evaluateContents(condition, path: path, allowOCR: allowOCR)
                 let detail: String
                 if let message = result.message {
-                    detail = String(localized: "\(result.strategy.label) — \(message)", bundle: .forelStrings, comment: "Dry Run detail for a Contents condition: %1$@ is how the file was read, %2$@ why it failed")
+                    detail = "\(result.strategy.label) — \(message)"
                 } else {
                     detail = result.strategy.label
                 }
@@ -443,7 +443,7 @@ public enum RuleEngine {
                             undo: Undo.none.toJSON(),
                             reversible: false,
                             status: .skipped,
-                            message: actionPlan.explainsSkip ? actionPlan.description : String(localized: "Skipped because the action would not change this file.", bundle: .forelStrings, comment: "Activity message")
+                            message: actionPlan.explainsSkip ? actionPlan.description : L10n.string("engine_skipped_because_action_change")
                         )
                     )
                 case .blockedByConflict:
@@ -458,7 +458,7 @@ public enum RuleEngine {
                             undo: Undo.none.toJSON(),
                             reversible: false,
                             status: .failed,
-                            message: String(localized: "A file already exists at the destination.", bundle: .forelStrings, comment: "Activity message")
+                            message: L10n.string("engine_file_already_exists_destination")
                         )
                     )
                 case .needsConfirmation:
@@ -563,7 +563,7 @@ public enum RuleEngine {
                 actions.append(
                     ActionPreview(
                         kind: action.kind,
-                        description: String(localized: "Preview unavailable: \(String(describing: error))", bundle: .forelStrings, comment: "Dry Run; %@ is the error"),
+                        description: L10n.string("preview_unavailable", String(describing: error)),
                         sourcePath: current,
                         targetPath: nil,
                         status: .wouldSkip

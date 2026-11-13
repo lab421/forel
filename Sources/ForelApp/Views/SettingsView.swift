@@ -48,7 +48,7 @@ struct SettingsView: View {
         }
         .frame(width: 600, height: 440)
         .background(ForelTheme.background)
-        .navigationTitle("Settings")
+        .navigationTitle(L10n.string("settings"))
         .onAppear {
             let storedLogin = (try? model.db.getSetting("launch_at_login")) ?? nil
             launchAtLogin = LoginItem.isEnabled || storedLogin == "1"
@@ -97,10 +97,10 @@ struct SettingsView: View {
 
     private var generalPane: some View {
         Group {
-            SectionLabel(title: "Appearance")
+            SectionLabel(title: L10n.string("settings_appearance"))
             GlassCard {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Accent color").font(.system(size: 13)).foregroundStyle(ForelTheme.primaryText)
+                    Text(L10n.string("settings_accent_color")).font(.system(size: 13)).foregroundStyle(ForelTheme.primaryText)
                     AccentColorPicker(selection: accentBinding)
                 }
                 .padding(.vertical, 10)
@@ -111,37 +111,37 @@ struct SettingsView: View {
                 }
             }
 
-            SectionLabel(title: "General")
+            SectionLabel(title: L10n.string("settings_general"))
             GlassCard {
                 ToggleRow(
-                    title: "Automatic watching",
-                    subtitle: model.paused ? "Paused — new files are ignored" : "Watching folders — rules run automatically",
+                    title: L10n.string("settings_automatic_watching"),
+                    subtitle: model.paused ? L10n.string("paused_new_files_ignored") : L10n.string("watching_folders_rules_run"),
                     isOn: watchingBinding
                 )
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
                 ToggleRow(
-                    title: "Start at login",
-                    subtitle: "Open Forel automatically when you log in",
+                    title: L10n.string("settings_start_at_login"),
+                    subtitle: L10n.string("settings_open_forel_automatically_when"),
                     isOn: launchAtLoginBinding
                 )
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
                 ToggleRow(
-                    title: "Show Dock icon",
-                    subtitle: "Keep Forel visible in the Dock while it runs",
+                    title: L10n.string("settings_show_dock_icon"),
+                    subtitle: L10n.string("settings_keep_forel_visible_dock"),
                     isOn: dockIconBinding
                 )
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
                 ToggleRow(
-                    title: "Watcher notifications",
-                    subtitle: "Notify when automatic rules process files",
+                    title: L10n.string("settings_watcher_notifications"),
+                    subtitle: L10n.string("settings_notify_when_automatic_rules"),
                     isOn: watcherNotificationsBinding
                 )
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("Keep history for").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
+                        Text(L10n.string("settings_keep_history_for")).font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
                         Spacer()
-                        Text("\(model.historyMaxDays) days").font(.system(size: 12)).foregroundStyle(ForelTheme.secondaryText)
+                        Text(L10n.plural("settings_days", model.historyMaxDays)).font(.system(size: 12)).foregroundStyle(ForelTheme.secondaryText)
                     }
                     Slider(value: historyMaxDaysDoubleBinding, in: 1...30, step: 1)
                         .tint(ForelTheme.accent)
@@ -154,7 +154,7 @@ struct SettingsView: View {
 
     private var updatesPane: some View {
         Group {
-            SectionLabel(title: "Updates")
+            SectionLabel(title: L10n.string("settings_updates"))
             if updater.updateAvailable {
                 UpdateAvailableBanner(
                     version: updater.latestVersion,
@@ -164,15 +164,15 @@ struct SettingsView: View {
             }
             GlassCard {
                 ToggleRow(
-                    title: "Automatic updates",
-                    subtitle: "Check for new versions in the background",
+                    title: L10n.string("settings_automatic_updates"),
+                    subtitle: L10n.string("settings_check_new_versions_background"),
                     isOn: $updater.automaticallyChecksForUpdates
                 )
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
                 SettingsActionRow(
-                    title: Text("Current version"),
-                    subtitle: Text(versionSubtitle),
-                    buttonTitle: "Check Now",
+                    title: L10n.string("settings_current_version"),
+                    subtitle: versionSubtitle,
+                    buttonTitle: L10n.string("settings_check_now"),
                     action: { updater.checkForUpdates() }
                 )
                 .disabled(updater.isChecking || updater.isInstalling || updater.updateAvailable)
@@ -182,7 +182,7 @@ struct SettingsView: View {
 
     private var aboutPane: some View {
         Group {
-            SectionLabel(title: "About")
+            SectionLabel(title: L10n.string("settings_about"))
             GlassCard {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
@@ -194,18 +194,18 @@ struct SettingsView: View {
                 .padding(.vertical, 10)
                 .padding(.horizontal, 14)
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
-                aboutRow(title: "Version", value: AppInfo.version)
+                aboutRow(title: L10n.string("settings_version"), value: AppInfo.version)
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
-                aboutRow(title: "Build", value: AppInfo.build)
+                aboutRow(title: L10n.string("settings_build"), value: AppInfo.build)
                 if let copyright = AppInfo.copyright {
                     Divider().overlay(ForelTheme.divider).padding(.leading, 14)
-                    aboutRow(title: "Copyright", value: copyright)
+                    aboutRow(title: L10n.string("settings_copyright"), value: copyright)
                 }
                 Divider().overlay(ForelTheme.divider).padding(.leading, 14)
                 HStack {
-                    Text("GitHub Repository").font(.system(size: 13)).foregroundStyle(ForelTheme.primaryText)
+                    Text(L10n.string("github_repository")).font(.system(size: 13)).foregroundStyle(ForelTheme.primaryText)
                     Spacer()
-                    Link("lab421/forel", destination: AppInfo.repositoryURL)
+                    Link(L10n.string("settings_lab421_forel"), destination: AppInfo.repositoryURL)
                         .font(.system(size: 12))
                 }
                 .padding(.vertical, 10)
@@ -214,7 +214,7 @@ struct SettingsView: View {
         }
     }
 
-    private func aboutRow(title: LocalizedStringKey, value: String) -> some View {
+    private func aboutRow(title: String, value: String) -> some View {
         HStack {
             Text(title).font(.system(size: 13)).foregroundStyle(ForelTheme.primaryText)
             Spacer()
@@ -231,15 +231,15 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Language").font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
-                    Text("Applies to Forel only, like System Settings > General > Language & Region > Applications.")
+                    Text(L10n.string("settings_language")).font(.system(size: 13, weight: .semibold)).foregroundStyle(ForelTheme.primaryText)
+                    Text(L10n.string("settings_applies_forel_only_like"))
                         .font(.system(size: 11))
                         .foregroundStyle(ForelTheme.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Picker("Language", selection: languageBinding) {
-                    Text("Same as macOS").tag("")
+                Picker(L10n.string("settings_language"), selection: languageBinding) {
+                    Text(L10n.string("settings_same_as_macos")).tag("")
                     Divider()
                     ForEach(AppLanguage.available, id: \.self) { code in
                         Text(verbatim: AppLanguage.nativeName(code)).tag(code)
@@ -251,12 +251,12 @@ struct SettingsView: View {
             }
             if nextLanguage != AppLanguage.current {
                 HStack(spacing: 8) {
-                    Text("Forel switches to \(AppLanguage.displayName(nextLanguage)) when it relaunches.")
+                    Text(L10n.string("settings_forel_switches_when_relaunches", AppLanguage.displayName(nextLanguage)))
                         .font(.system(size: 11))
                         .foregroundStyle(ForelTheme.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer()
-                    Button("Relaunch Now", action: AppLanguage.relaunch)
+                    Button(L10n.string("settings_relaunch_now"), action: AppLanguage.relaunch)
                         .controlSize(.small)
                         .disabled(relaunchBlocker != nil)
                         .help(relaunchBlocker ?? "")
@@ -286,10 +286,10 @@ struct SettingsView: View {
     /// Why relaunching now would lose work, if it would.
     private var relaunchBlocker: String? {
         if model.editorHasUnsavedChanges {
-            return String(localized: "Save or discard the changes to the rule you're editing first.")
+            return L10n.string("settings_save_discard_changes_rule")
         }
         if model.isRunningNow || model.isPreviewing {
-            return String(localized: "Wait for Run Now or Dry Run to finish first.")
+            return L10n.string("settings_wait_run_now_dry")
         }
         return nil
     }
@@ -335,7 +335,7 @@ struct SettingsView: View {
 
     private var versionSubtitle: String {
         let current = AppInfo.version
-        if updater.isChecking { return String(localized: "\(current) — Checking…", comment: "Version number while checking for updates") }
+        if updater.isChecking { return L10n.string("settings_checking", current) }
         return current
     }
 }
@@ -345,13 +345,13 @@ enum SettingsCategory: CaseIterable, Identifiable {
 
     var id: Self { self }
 
-    var title: LocalizedStringKey {
+    var title: String {
         switch self {
-        case .general: "General"
-        case .permissions: "Permissions"
-        case .license: "License"
-        case .updates: "Updates"
-        case .about: "About"
+        case .general: L10n.string("settings_general")
+        case .permissions: L10n.string("permissions")
+        case .license: L10n.string("settings_license")
+        case .updates: L10n.string("settings_updates")
+        case .about: L10n.string("settings_about")
         }
     }
 

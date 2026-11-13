@@ -27,26 +27,26 @@ public enum RunSummary {
             // "2 actions applied, 1 failed".
             parts.append(parts.isEmpty ? firstPart(status, count) : laterPart(status, count))
         }
-        guard !parts.isEmpty else { return String(localized: "Run complete — no matching files", bundle: .forelStrings, comment: "Result of Run Now") }
-        return String(localized: "Run complete — \(parts.joined(separator: ", "))", bundle: .forelStrings, comment: "Result of Run Now; %@ lists the counts, as in “2 actions applied, 1 failed”")
+        guard !parts.isEmpty else { return L10n.string("run_summary_run_complete_matching_files") }
+        return L10n.string("run_summary_run_complete", parts.joined(separator: ", "))
     }
 
     private static func firstPart(_ status: HistoryStatus, _ count: Int) -> String {
         switch status {
-        case .applied: String(localized: "\(count) actions applied", bundle: .forelStrings, comment: "Result of Run Now")
-        case .failed: String(localized: "\(count) actions failed", bundle: .forelStrings, comment: "Result of Run Now")
-        case .skipped: String(localized: "\(count) actions skipped", bundle: .forelStrings, comment: "Result of Run Now")
-        default: String(localized: "\(count) actions awaiting confirmation", bundle: .forelStrings, comment: "Result of Run Now")
+        case .applied: L10n.plural("run_summary_actions_applied", count)
+        case .failed: L10n.plural("run_summary_actions_failed", count)
+        case .skipped: L10n.plural("run_summary_actions_skipped", count)
+        default: L10n.plural("run_summary_actions_awaiting_confirmation", count)
         }
     }
 
     /// Follows the first part, as in “2 actions applied, 1 failed”.
     private static func laterPart(_ status: HistoryStatus, _ count: Int) -> String {
         switch status {
-        case .applied: String(localized: "\(count) applied", bundle: .forelStrings, comment: "Result of Run Now, after “2 actions failed, ”")
-        case .failed: String(localized: "\(count) failed", bundle: .forelStrings, comment: "Result of Run Now, after “2 actions applied, ”")
-        case .skipped: String(localized: "\(count) skipped", bundle: .forelStrings, comment: "Result of Run Now, after “2 actions applied, ”")
-        default: String(localized: "\(count) awaiting confirmation", bundle: .forelStrings, comment: "Result of Run Now, after “2 actions applied, ”")
+        case .applied: L10n.plural("run_summary_applied", count)
+        case .failed: L10n.plural("run_summary_failed", count)
+        case .skipped: L10n.plural("run_summary_skipped", count)
+        default: L10n.plural("run_summary_awaiting_confirmation", count)
         }
     }
 }

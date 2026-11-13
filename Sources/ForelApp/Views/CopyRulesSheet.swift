@@ -26,19 +26,19 @@ struct CopyRulesSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             ViewHeader(
-                title: ruleCount == 1 ? "Copy Rule" : "Copy \(ruleCount) Rules",
-                subtitle: "Choose another watched folder",
+                title: L10n.plural("copy_rules_title", ruleCount),
+                subtitle: L10n.string("copy_rules_choose_another_watched_folder"),
                 systemImage: "doc.on.doc"
             )
 
             if destinations.isEmpty {
-                Text("Add another watched folder to copy rules to it.")
+                Text(L10n.string("copy_rules_add_another_watched_folder"))
                     .foregroundStyle(ForelTheme.secondaryText)
             } else {
-                Picker("Destination", selection: $destinationFolderID) {
-                    Text("Choose a folder").tag("")
+                Picker(L10n.string("destination"), selection: $destinationFolderID) {
+                    Text(L10n.string("copy_rules_choose_a_folder")).tag("")
                     ForEach(destinations, id: \.id) { folder in
-                        Text(isAllowed(folder) ? folder.path : String(localized: "\(folder.path) — Pro", comment: "A folder that needs Forel Pro"))
+                        Text(isAllowed(folder) ? folder.path : L10n.string("copy_rules_pro", folder.path))
                             .tag(folder.id)
                             .disabled(!isAllowed(folder))
                     }
@@ -46,13 +46,13 @@ struct CopyRulesSheet: View {
                 .pickerStyle(.menu)
 
                 if !destinations.contains(where: isAllowed) {
-                    Text("Reorder your watched folders or activate Pro to use these destinations.")
+                    Text(L10n.string("copy_rules_reorder_watched_folders_activate"))
                         .font(.callout)
                         .foregroundStyle(ForelTheme.secondaryText)
                 }
             }
 
-            Text("Copies are independent and keep their conditions, actions, and enabled state. Action destinations stay unchanged.")
+            Text(L10n.string("copy_rules_copies_independent_keep_their"))
                 .font(.callout)
                 .foregroundStyle(ForelTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -67,10 +67,10 @@ struct CopyRulesSheet: View {
 
             HStack {
                 Spacer()
-                Button("Cancel", action: onCancel)
+                Button(L10n.string("cancel"), action: onCancel)
                     .buttonStyle(SecondaryButtonStyle())
                     .keyboardShortcut(.cancelAction)
-                Button("Copy") {
+                Button(L10n.string("copy_rules_copy")) {
                     do { try onCopy(destinationFolderID) }
                     catch { errorMessage = error.localizedDescription }
                 }

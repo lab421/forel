@@ -80,13 +80,13 @@ public enum FinderTags {
     /// name, which is also the tag Finder reads, so it is never translated.
     public static func displayName(forColor name: String) -> String {
         switch name.lowercased() {
-        case "gray", "grey": String(localized: "Gray", bundle: .forelStrings, comment: "Finder color label")
-        case "green": String(localized: "Green", bundle: .forelStrings, comment: "Finder color label")
-        case "purple": String(localized: "Purple", bundle: .forelStrings, comment: "Finder color label")
-        case "blue": String(localized: "Blue", bundle: .forelStrings, comment: "Finder color label")
-        case "yellow": String(localized: "Yellow", bundle: .forelStrings, comment: "Finder color label")
-        case "red": String(localized: "Red", bundle: .forelStrings, comment: "Finder color label")
-        case "orange": String(localized: "Orange", bundle: .forelStrings, comment: "Finder color label")
+        case "gray", "grey": L10n.string("color_gray")
+        case "green": L10n.string("color_green")
+        case "purple": L10n.string("color_purple")
+        case "blue": L10n.string("color_blue")
+        case "yellow": L10n.string("color_yellow")
+        case "red": L10n.string("color_red")
+        case "orange": L10n.string("color_orange")
         default: name
         }
     }

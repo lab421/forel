@@ -19,7 +19,6 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct VolumeUnavailableNotifierTests {
-    init() { CompiledStrings.install() }
 
     private func event(_ volumes: [String], rules: [String] = ["to nas"], willRetry: Bool = true) -> VolumeUnavailableEvent {
         VolumeUnavailableEvent(volumes: volumes, ruleNames: rules, willRetry: willRetry)

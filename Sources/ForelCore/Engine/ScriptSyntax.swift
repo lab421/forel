@@ -56,6 +56,6 @@ public enum ScriptSyntax {
                 return text
             }
             .filter { !$0.isEmpty }
-        return lines.first ?? String(localized: "Syntax error", bundle: .forelStrings, comment: "Script check in the rule editor")
+        return lines.first ?? L10n.string("script_syntax_error")
     }
 }

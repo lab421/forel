@@ -19,7 +19,6 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct RuleEngineTests {
-    init() { CompiledStrings.install() }
 
     @Test func evaluateFileMatchesEnabledRulesWithAllOrAnyConditions() throws {
         let dir = TempDir()

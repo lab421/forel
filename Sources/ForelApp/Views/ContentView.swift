@@ -47,7 +47,7 @@ struct ContentView: View {
             }
             .overlay(alignment: .bottomTrailing) {
                 if !model.isPro, model.editingRule == nil {
-                    Button("Discover Pro") { model.proUpgrade = .folders }
+                    Button(L10n.string("discover_pro")) { model.proUpgrade = .folders }
                         .buttonStyle(.link)
                         .padding(16)
                 }
@@ -62,17 +62,17 @@ struct ContentView: View {
             }
         }
         .alert(model.alertTitle, isPresented: errorBinding) {
-            Button("OK") { model.errorMessage = nil }
+            Button(L10n.string("window_ok")) { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")
         }
         .tint(ForelTheme.accent)
         .confirmationDialog(unsavedRuleTitle, isPresented: pendingNavigationBinding, presenting: model.pendingNavigation) { _ in
             if unsavedRuleProblems.isEmpty {
-                Button("Save") { model.savePendingDraftAndNavigate() }
+                Button(L10n.string("save")) { model.savePendingDraftAndNavigate() }
             }
-            Button("Discard Changes", role: .destructive) { model.discardPendingDraftAndNavigate() }
-            Button("Keep Editing", role: .cancel) { model.pendingNavigation = nil }
+            Button(L10n.string("window_discard_changes"), role: .destructive) { model.discardPendingDraftAndNavigate() }
+            Button(L10n.string("window_keep_editing"), role: .cancel) { model.pendingNavigation = nil }
         } message: { _ in
             Text(unsavedRuleMessage)
         }
@@ -98,15 +98,15 @@ struct ContentView: View {
     private var unsavedRuleTitle: String {
         let name = model.editingDraft?.name.trimmingCharacters(in: .whitespaces) ?? ""
         return name.isEmpty
-            ? String(localized: "Save changes to this rule?")
-            : String(localized: "Save changes to the rule “\(name)”?")
+            ? L10n.string("window_save_changes_rule")
+            : L10n.string("window_save_changes_to_the_rule", name)
     }
 
     private var unsavedRuleMessage: String {
         if let problem = unsavedRuleProblems.first {
-            return String(localized: "It can't be saved yet: \(problem) Keep editing to fix it, or discard your changes.", comment: "%@ is a sentence explaining what is wrong with the rule")
+            return L10n.string("window_cant_saved_yet_keep", problem)
         }
-        return String(localized: "Your changes to this rule are lost if you don't save them.")
+        return L10n.string("window_changes_rule_lost_if")
     }
 
     private var errorBinding: Binding<Bool> {
@@ -115,7 +115,7 @@ struct ContentView: View {
             set: {
                 if !$0 {
                     model.errorMessage = nil
-                    model.alertTitle = String(localized: "Error", comment: "Alert title")
+                    model.alertTitle = L10n.string("error")
                 }
             }
         )
@@ -135,8 +135,8 @@ private struct SidebarToggle: View {
                 .foregroundStyle(ForelTheme.secondaryText)
         }
         .buttonStyle(.borderless)
-        .help(isShown ? "Hide Sidebar" : "Show Sidebar")
-        .accessibilityLabel(isShown ? "Hide Sidebar" : "Show Sidebar")
+        .help(isShown ? L10n.string("window_hide_sidebar") : L10n.string("window_show_sidebar"))
+        .accessibilityLabel(isShown ? L10n.string("window_hide_sidebar") : L10n.string("window_show_sidebar"))
     }
 }
 

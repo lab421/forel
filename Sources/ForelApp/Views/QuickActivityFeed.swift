@@ -62,7 +62,7 @@ struct QuickActivityFeed: View {
     var body: some View {
         GlassCard {
             if feed.entries.isEmpty {
-                Text("No activity yet")
+                Text(L10n.string("no_activity_yet"))
                     .font(.system(size: 11))
                     .foregroundStyle(ForelTheme.secondaryText)
                     .frame(maxWidth: .infinity, minHeight: 56)
@@ -115,7 +115,7 @@ private struct QuickActivityRow: View {
                     .foregroundStyle(ForelTheme.primaryText)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text("\(entry.ruleName) · \(entry.actionKind.label)")
+                Text(verbatim: "\(entry.ruleName) · \(entry.actionKind.label)")
                     .font(.system(size: 10))
                     .foregroundStyle(ForelTheme.secondaryText)
                     .lineLimit(1)
@@ -139,16 +139,16 @@ private struct QuickActivityRow: View {
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 10)
-        .help("\(entry.originalPath) → \(entry.resultPath)")
+        .help(Text(verbatim: "\(entry.originalPath) → \(entry.resultPath)"))
     }
 
     private var statusBadge: String? {
         switch entry.status {
         case .applied: return nil
-        case .undone: return String(localized: "Undone", comment: "Activity status")
-        case .failed: return String(localized: "Failed", comment: "Activity status")
-        case .skipped: return String(localized: "Skipped", comment: "Activity status")
-        case .needsConfirmation: return String(localized: "Needs confirmation", comment: "Activity status")
+        case .undone: return L10n.string("undone")
+        case .failed: return L10n.string("failed")
+        case .skipped: return L10n.string("skipped")
+        case .needsConfirmation: return L10n.string("needs_confirmation")
         }
     }
 

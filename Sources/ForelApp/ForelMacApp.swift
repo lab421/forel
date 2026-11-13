@@ -32,7 +32,7 @@ struct ForelMacApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Forel") {
+        WindowGroup(L10n.string("forel")) {
             ContentView()
                 .environmentObject(model)
                 .environmentObject(updater)
@@ -51,11 +51,11 @@ struct ForelMacApp: App {
             // View > Show/Hide Sidebar (⌃⌘S), like every sidebar app.
             SidebarCommands()
             CommandGroup(replacing: .appInfo) {
-                Button("About Forel") {
+                Button(L10n.string("menu_about_forel")) {
                     var options: [NSApplication.AboutPanelOptionKey: Any] = [
                         .applicationName: AppInfo.name,
                         .applicationVersion: AppInfo.version,
-                        .version: String(localized: "Build \(AppInfo.build)", comment: "About panel"),
+                        .version: L10n.string("menu_build", AppInfo.build),
                         .credits: Self.aboutCredits,
                     ]
 
@@ -85,7 +85,7 @@ struct ForelMacApp: App {
 
     private static var aboutCredits: NSAttributedString {
         let credits = NSMutableAttributedString(
-            string: "\n" + String(localized: "GitHub Repository"),
+            string: "\n" + L10n.string("github_repository"),
             attributes: [.link: AppInfo.repositoryURL]
         )
 

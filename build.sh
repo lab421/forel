@@ -12,8 +12,6 @@ Commands:
   test      Run the Swift test suite
   package   Build and package a Forel.app + DMG
   release   Alias for: build + package
-  strings   Add the strings the code uses to Localization/Localizable.xcstrings
-            (--check: only fail if the catalog is out of date, for CI)
 
 Arguments:
   flavor    development, ad-hoc, or app-store
@@ -29,7 +27,6 @@ Examples:
   ./build.sh
   ./build.sh dev
   ./build.sh test
-  ./build.sh strings
   ./build.sh build ad-hoc arm64
   ./build.sh package arm64 v1.2.3
   ./build.sh package ad-hoc arm64 v1.2.3 --sign
@@ -100,80 +97,25 @@ assemble_app_bundle() {
   if [[ -d "$resource_bundle" ]]; then
     cp -R "$resource_bundle" "$resources_dir/"
   fi
-  compile_localizations "$resources_dir"
+  install_localizations "$resources_dir"
 }
 
-# Compiles each string catalog in Localization/ into "<language>.lproj"
-# folders in the app's own Resources, where SwiftUI and String(localized:)
-# look up translations. The catalogs are not SwiftPM resources on purpose:
-# SwiftPM's native build system copies a catalog without compiling it, and
-# either build system would put it in the package's resource bundle instead
-# of the app's main bundle.
-compile_localizations() {
-  local resources_dir="$1" catalog
-  for catalog in "$localization_dir"/*.xcstrings; do
-    xcrun xcstringstool compile "$catalog" --output-directory "$resources_dir" >/dev/null
+# Copies each Localization/<language>.lproj into the app's own Resources,
+# where L10n and macOS (for Info.plist) look up translations. They are not
+# SwiftPM resources on purpose: SwiftPM would put them in the package's
+# resource bundle instead of the app's main bundle. A file with a syntax
+# error fails the build rather than leaving the app untranslated.
+install_localizations() {
+  local resources_dir="$1" lproj file
+  for lproj in "$localization_dir"/*.lproj; do
+    for file in "$lproj"/*; do
+      if ! plutil -lint -s "$file"; then
+        echo "${file#"$repo_root/"} is not a valid strings file." >&2
+        exit 1
+      fi
+    done
+    /usr/bin/ditto "$lproj" "$resources_dir/$(basename "$lproj")"
   done
-}
-
-# Keys of catalog $1 that the code still uses, one per line, sorted.
-catalog_keys() {
-  python3 -c '
-import json, sys
-strings = json.load(open(sys.argv[1]))["strings"]
-for key in sorted(k for k, v in strings.items() if v.get("extractionState") != "stale"):
-    print(json.dumps(key))
-' "$1"
-}
-
-# Warns about strings of catalog $1 that a language already in the catalog
-# doesn't translate yet. The app then shows them in English, so it's a
-# warning, not a failure.
-report_untranslated() {
-  python3 -c '
-import json, sys
-strings = json.load(open(sys.argv[1]))["strings"]
-active = {k: v for k, v in strings.items() if v.get("extractionState") != "stale" and v.get("shouldTranslate", True)}
-languages = sorted({lang for v in active.values() for lang in v.get("localizations", {})} - {"en"})
-for lang in languages:
-    missing = sorted(k for k, v in active.items() if lang not in v.get("localizations", {}))
-    if missing:
-        print(f"warning: {len(missing)} string(s) not translated to {lang}: " + ", ".join(json.dumps(k, ensure_ascii=False) for k in missing), file=sys.stderr)
-' "$1"
-}
-
-# Adds the strings Forel's code uses to catalog $1, with their comments, and
-# marks the ones it no longer uses as stale. The compiler reports them
-# (-emit-localized-strings), so it sees exactly which literals SwiftUI and
-# String(localized:) treat as localizable, including those passed to a
-# LocalizedStringKey parameter. Every file is recompiled so none is skipped
-# as up to date; dependency checkouts are kept to avoid fetching them again.
-sync_string_catalog() {
-  local catalog="$1" scratch="$repo_root/.build/strings" stringsdata_dir name
-  local stringsdata_args=()
-  stringsdata_dir="$scratch/stringsdata"
-  if [[ -d "$scratch" ]]; then
-    find "$scratch" -mindepth 1 -maxdepth 1 \
-      ! -name checkouts ! -name repositories ! -name artifacts ! -name workspace-state.json \
-      -exec rm -rf {} +
-  fi
-  mkdir -p "$stringsdata_dir"
-  swift build --scratch-path "$scratch" \
-    -Xswiftc -emit-localized-strings -Xswiftc -emit-localized-strings-path -Xswiftc "$stringsdata_dir"
-
-  # The compiler names each file's strings after the source file alone, in one
-  # folder for every module, dependencies included. Keep only Forel's own.
-  while IFS= read -r name; do
-    if find "$scratch/checkouts" -path "*/Sources/*" -name "$name.swift" 2>/dev/null | grep -q .; then
-      echo "A dependency also has a $name.swift, so its strings can't be told apart from Forel's. Rename Forel's file." >&2
-      exit 1
-    fi
-    if [[ -f "$stringsdata_dir/$name.stringsdata" ]]; then
-      stringsdata_args+=(--stringsdata "$stringsdata_dir/$name.stringsdata")
-    fi
-  done < <(find "$repo_root/Sources/ForelApp" "$repo_root/Sources/ForelCore" -name "*.swift" -exec basename {} .swift \; | sort)
-
-  xcrun xcstringstool sync "$catalog" "${stringsdata_args[@]}"
 }
 
 # macOS 26 and later only give an app the current system design (control
@@ -228,8 +170,8 @@ verify_design_sdk() {
 # CFBundleVersion, plus any extra keys (already-indented <key>/<value> XML)
 # passed as $3. Shared by `dev` and `package`, which pass only their
 # build-specific extras on top of the identical boilerplate and privacy keys.
-# The privacy texts are translated in Localization/InfoPlist.xcstrings; keep
-# their English there in sync with this file.
+# The privacy texts are translated in Localization/<language>.lproj/InfoPlist.strings;
+# keep their English there in sync with this file.
 write_info_plist() {
   local contents_dir="$1" version_number="$2" extra_keys="${3:-}"
   cat > "$contents_dir/Info.plist" <<EOF
@@ -312,42 +254,11 @@ if [[ $# -gt 0 ]]; then
       usage
       exit 0
       ;;
-    dev|build|test|package|release|strings)
+    dev|build|test|package|release)
       command="$1"
       shift
       ;;
   esac
-fi
-
-if [[ "$command" == "strings" ]]; then
-  cd "$repo_root"
-  catalog="$localization_dir/Localizable.xcstrings"
-  case "${1:-}" in
-    "")
-      sync_string_catalog "$catalog"
-      echo "Updated ${catalog#"$repo_root/"}"
-      report_untranslated "$catalog"
-      ;;
-    --check)
-      # Compares which strings the code uses rather than the file's text, so
-      # a different Xcode formatting the catalog differently doesn't fail CI.
-      checked_copy="$(mktemp -d "$temp_root/Forel-strings.XXXXXX")/Localizable.xcstrings"
-      cp "$catalog" "$checked_copy"
-      sync_string_catalog "$checked_copy"
-      if ! diff <(catalog_keys "$catalog") <(catalog_keys "$checked_copy") >&2; then
-        echo "Localization/Localizable.xcstrings is out of date (> to add, < no longer used). Run ./build.sh strings and commit the result." >&2
-        exit 1
-      fi
-      echo "Localization/Localizable.xcstrings is up to date."
-      report_untranslated "$catalog"
-      ;;
-    *)
-      echo "Unknown argument for strings: $1" >&2
-      usage
-      exit 1
-      ;;
-  esac
-  exit 0
 fi
 
 if [[ "$command" == "test" ]]; then

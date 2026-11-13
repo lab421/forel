@@ -66,21 +66,21 @@ public struct VolumeUnavailableNotifier: Sendable {
         let volumes = pendingVolumes.sorted()
         let one = volumes.count == 1
         let title = one
-            ? String(localized: "“\(volumes[0])” isn't connected", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
-            : String(localized: "\(volumes.count) disks or shares aren't connected", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
+            ? L10n.string("volume_isnt_connected", volumes[0])
+            : L10n.plural("volume_disks_shares_arent_connected", volumes.count)
 
         let ruleNames = pendingRuleNames.sorted()
         let visibleRules = ruleNames.prefix(3).joined(separator: ", ")
         let remainingRuleCount = ruleNames.count - ruleNames.prefix(3).count
         let rulesText = remainingRuleCount > 0
-            ? String(localized: "\(visibleRules) and \(remainingRuleCount) more", bundle: .forelStrings, comment: "Rule names in a notification; %1$@ lists up to three of them")
+            ? L10n.plural("and_more", remainingRuleCount, visibleRules)
             : visibleRules
-        let problem = String(localized: "\(pendingFileCount) files couldn't be moved or copied. Rules: \(rulesText).", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
+        let problem = L10n.plural("volume_files_couldnt_moved_copied", pendingFileCount, rulesText)
         let next = switch (pendingAllRetry, one) {
-        case (true, true): String(localized: "Forel will try again when it's connected, if watching is still on.", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
-        case (true, false): String(localized: "Forel will try again when they're connected, if watching is still on.", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
-        case (false, true): String(localized: "Connect it, then use Run Now.", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
-        case (false, false): String(localized: "Connect them, then use Run Now.", bundle: .forelStrings, comment: "Notification when a destination disk or share isn’t connected")
+        case (true, true): L10n.string("volume_forel_try_again_when")
+        case (true, false): L10n.string("volume_forel_try_again_when_theyre")
+        case (false, true): L10n.string("volume_connect_then_use_run")
+        case (false, false): L10n.string("volume_connect_them_then_use")
         }
         let body = "\(problem) \(next)"
 

@@ -58,14 +58,14 @@ struct QuickPanelView: View {
 
                 GlassCard {
                     ToggleRow(
-                        title: "Watching",
-                        subtitle: model.paused ? "Paused — new files are ignored" : "Watching folders — rules run automatically",
+                        title: L10n.string("watching"),
+                        subtitle: model.paused ? L10n.string("paused_new_files_ignored") : L10n.string("watching_folders_rules_run"),
                         isOn: watchingBinding
                     )
                 }
 
                 if !model.folders.isEmpty {
-                    SectionLabel(title: "Watched Folders")
+                    SectionLabel(title: L10n.string("watched_folders"))
                     GlassCard {
                         VStack(spacing: 0) {
                             ForEach(model.folders, id: \.id) { folder in
@@ -82,26 +82,26 @@ struct QuickPanelView: View {
                     }
                 }
 
-                SectionLabel(title: "Overview")
+                SectionLabel(title: L10n.string("quick_panel_overview"))
                 GlassCard {
                     HStack(spacing: 0) {
-                        QuickCount(value: model.folders.count, label: "Folders")
+                        QuickCount(value: model.folders.count, label: L10n.string("quick_panel_folders"))
                         Divider().overlay(ForelTheme.divider).frame(height: 28)
-                        QuickCount(value: totalRuleCount, label: "Rules")
+                        QuickCount(value: totalRuleCount, label: L10n.string("rules"))
                         Divider().overlay(ForelTheme.divider).frame(height: 28)
-                        QuickCount(value: model.historyTotalCount, label: "History")
+                        QuickCount(value: model.historyTotalCount, label: L10n.string("quick_panel_history"))
                     }
                     .padding(.vertical, 10)
                 }
 
-                SectionLabel(title: "Recent Activity")
+                SectionLabel(title: L10n.string("quick_panel_recent_activity"))
                 QuickActivityFeed(db: model.db)
 
                 Divider().overlay(ForelTheme.divider)
 
                 HStack(spacing: 8) {
-                    QuickPanelFooterButton(title: "Open Forel", systemImage: "arrow.up.forward.app", action: onOpenMainWindow)
-                    QuickPanelFooterButton(title: "Quit", systemImage: "power", action: onQuit)
+                    QuickPanelFooterButton(title: L10n.string("quick_panel_open_forel"), systemImage: "arrow.up.forward.app", action: onOpenMainWindow)
+                    QuickPanelFooterButton(title: L10n.string("quit"), systemImage: "power", action: onQuit)
                 }
             }
             .padding(.horizontal, 12)
@@ -123,21 +123,21 @@ struct QuickPanelView: View {
             BrandMark(size: 38)
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 7) {
-                    Text("Forel")
+                    Text(L10n.string("forel"))
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(ForelTheme.primaryText)
                     Button(action: showLicenseSettings) {
-                      Text(license.hasAccess ? "Pro" : "Free")
+                      Text(license.hasAccess ? L10n.string("pro") : L10n.string("quick_panel_free"))
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(license.hasAccess ? ForelTheme.pro : ForelTheme.primaryText)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
                         .background(Capsule().fill(license.hasAccess ? ForelTheme.pro.opacity(0.16) : ForelTheme.surface))
                         .overlay(Capsule().strokeBorder(license.hasAccess ? ForelTheme.pro.opacity(0.35) : ForelTheme.surfaceBorder, lineWidth: 1))
-                        .accessibilityLabel(license.hasAccess ? "Forel Pro" : "Forel Free")
+                        .accessibilityLabel(license.hasAccess ? L10n.string("forel_pro") : L10n.string("forel_free"))
                     }
                     .buttonStyle(.plain)
-                    .help(license.hasAccess ? "Manage your Pro license" : "Discover Forel Pro")
+                    .help(license.hasAccess ? L10n.string("quick_panel_manage_your_pro_license") : L10n.string("quick_panel_discover_forel_pro"))
                 }
                 StatusBadge(active: !model.paused)
                 if !license.hasAccess {
@@ -178,11 +178,11 @@ struct QuickPanelView: View {
 /// A big number over a small label, used for the quick panel's overview row.
 private struct QuickCount: View {
     let value: Int
-    let label: LocalizedStringKey
+    let label: String
 
     var body: some View {
         VStack(spacing: 2) {
-            Text("\(value)")
+            Text(verbatim: "\(value)")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(ForelTheme.primaryText)
             Text(label)
