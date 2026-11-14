@@ -1197,6 +1197,11 @@ private struct ActionRow: View {
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
+        case .installDiskImage:
+            Text("Disk images only (.dmg, .iso, .img, .sparseimage)")
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .frame(minHeight: 32, alignment: .center)
         case .compress:
             ArchiveNameEditor(pattern: paramBinding(ActionParam.archiveName))
         case .moveToTrash, .delete:
@@ -1300,6 +1305,8 @@ private struct ActionOptionsView: View {
                 renameOptions
             case .compress:
                 compressionOptions
+            case .installDiskImage:
+                installDiskImageOptions
             default:
                 Text("No options for this action.")
                     .font(.system(size: 12))
@@ -1363,6 +1370,61 @@ private struct ActionOptionsView: View {
                 var params: [String: JSONValue] = [:]
                 if case .object(let existing) = action.params { params = existing }
                 params[ActionParam.deleteSourceAfterCompression] = .bool(enabled)
+                action.params = .object(params)
+            }
+        )
+    }
+
+    private var installDiskImageOptions: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Install folder")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(ForelTheme.secondaryText)
+            FolderField(
+                placeholder: "/Applications (default)",
+                path: paramBinding(ActionParam.destination),
+                hint: "Apps are copied here."
+            )
+            Divider()
+            Toggle("Move disk image to Trash after installing", isOn: deleteDiskImageBinding)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .font(.system(size: 12))
+            Text("The image is moved to the Trash, so it can still be restored from there. It is kept when this is off.")
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Divider()
+            Toggle("Replace existing app", isOn: replaceExistingAppBinding)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .font(.system(size: 12))
+            Text("If an app with the same name is already installed, it is replaced by the new copy. The old app is moved to the Trash. When this is off, the install stops and the existing app is kept.")
+                .font(.system(size: 11))
+                .foregroundStyle(ForelTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var replaceExistingAppBinding: Binding<Bool> {
+        Binding(
+            get: { ActionExecutor.replacesExistingApp(action) },
+            set: { enabled in
+                var params: [String: JSONValue] = [:]
+                if case .object(let existing) = action.params { params = existing }
+                params[ActionParam.replaceExistingApp] = .bool(enabled)
+                action.params = .object(params)
+            }
+        )
+    }
+
+    private var deleteDiskImageBinding: Binding<Bool> {
+        Binding(
+            get: { ActionExecutor.deletesDiskImageAfterInstall(action) },
+            set: { enabled in
+                var params: [String: JSONValue] = [:]
+                if case .object(let existing) = action.params { params = existing }
+                params[ActionParam.deleteDiskImageAfterInstall] = .bool(enabled)
                 action.params = .object(params)
             }
         )
