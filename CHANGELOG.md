@@ -3,6 +3,11 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Added an Install disk image action that copies the apps in a disk image into Applications or a folder you choose. You can choose whether to move the disk image to the Trash afterwards, and whether an app that is already installed is replaced by the new version (the old one goes to the Trash).
+
 ## [1.2.0] - 2026-11-09
 
 ### Added

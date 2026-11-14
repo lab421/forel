@@ -141,6 +141,7 @@ public enum ActionKind: String, Codable, Equatable, Sendable {
     case importToLibrary = "import_to_library"
     case compress
     case uncompress
+    case installDiskImage = "install_disk_image"
 
     public init(dbValue: String) {
         self = ActionKind(rawValue: dbValue) ?? .moveToFolder
