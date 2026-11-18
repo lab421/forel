@@ -3,6 +3,11 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- Uncompressing a ZIP archive now leaves signed apps intact. Archives that carry extended attributes as AppleDouble (`._*`) files used to extract those files as extra items inside the app, which broke its signature so macOS reported it as damaged.
+
 ## [1.2.0] - 2026-11-09
 
 ### Added

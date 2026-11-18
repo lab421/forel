@@ -386,6 +386,33 @@ extension ActionExecutorTests {
         #expect(!FileManager.default.fileExists(atPath: zip))
     }
 
+    @Test func uncompressDoesNotLeaveAppleDoubleSidecarFiles() throws {
+        // A plain `ditto -c -k` ZIP (no --sequesterRsrc) stores extended attributes as
+        // in-place `._name` files. Extracting those as real files adds entries that are
+        // not in a signed .app's seal, so macOS reports the app as damaged.
+        let dir = TempDir()
+        let staging = dir.dir("staging")
+        let bundle = (staging as NSString).appendingPathComponent("Sample.app")
+        try FileManager.default.createDirectory(atPath: (bundle as NSString).appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        let payload = (bundle as NSString).appendingPathComponent("Contents/Info.plist")
+        try "plist".write(toFile: payload, atomically: true, encoding: .utf8)
+        try runProcess("/usr/bin/xattr", ["-w", "com.apple.metadata:kMDItemWhereFroms", "test", payload])
+
+        let zip = (dir.path as NSString).appendingPathComponent("download.zip")
+        try runProcess("/usr/bin/ditto", ["-c", "-k", "--keepParent", bundle, zip])
+        #expect(try runProcess("/usr/bin/unzip", ["-l", zip]).contains("._Info.plist"))
+        try FileManager.default.removeItem(atPath: staging)
+
+        let applied = try ActionExecutor.execute(makeAction(.uncompress, .object([:])), path: zip)
+
+        // `find`, not FileManager's enumerator: the enumerator skips hidden files and
+        // `._*` is hidden, so it would pass this test vacuously.
+        let sidecars = try runProcess("/usr/bin/find", [applied.newPath, "-name", "._*"])
+            .split(separator: "\n").map(String.init)
+        #expect(sidecars.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: (applied.newPath as NSString).appendingPathComponent("Contents/Info.plist")))
+    }
+
     @Test func uncompressSkipConflictPlansAndDoesNotExtract() throws {
         let dir = TempDir()
         _ = dir.file("report.txt", contents: "existing")
@@ -718,6 +745,23 @@ extension ActionExecutorTests {
         ])
         #expect(ShortcutRunner.arguments(name: "Archive", input: .none) == ["run", "Archive"])
     }
+}
+
+@discardableResult
+func runProcess(_ path: String, _ arguments: [String]) throws -> String {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: path)
+    process.arguments = arguments
+    let output = Pipe()
+    process.standardOutput = output
+    process.standardError = FileHandle.nullDevice
+    try process.run()
+    let data = output.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    if process.terminationStatus != 0 {
+        throw ActionError("\(path) exited with status \(process.terminationStatus)")
+    }
+    return String(data: data, encoding: .utf8) ?? ""
 }
 
 func makeZip(in directory: String, items: [String], destination: String) throws {

@@ -393,10 +393,24 @@ public enum ActionExecutor {
         try fm.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
         defer { try? fm.removeItem(atPath: replacementDir) }
 
+        // ditto, not ZIPFoundation: ditto merges in-place AppleDouble (`._*`) entries back
+        // into extended attributes, while ZIPFoundation writes them out as real files. Those
+        // extra files break a signed .app's seal, and macOS then calls the app damaged.
+        let ditto = Process()
+        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        ditto.arguments = ["-x", "-k", archiveURL.path, tempDir]
+        let dittoErrors = Pipe()
+        ditto.standardError = dittoErrors
         do {
-            try fm.unzipItem(at: archiveURL, to: URL(fileURLWithPath: tempDir))
+            try ditto.run()
         } catch {
             throw ActionError("Could not uncompress ZIP archive: \(error)")
+        }
+        ditto.waitUntilExit()
+        guard ditto.terminationStatus == 0 else {
+            let message = String(data: dittoErrors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            throw ActionError("Could not uncompress ZIP archive: \(message.isEmpty ? "ditto exited \(ditto.terminationStatus)" : message)")
         }
 
         if plan.conflicts, plan.resolution == .replace {
