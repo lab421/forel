@@ -9,7 +9,7 @@ import Testing
 
     private func state(_ kind: ActionKind, path: String) throws -> Bool {
         let values = try URL(fileURLWithPath: path).resourceValues(forKeys: [.isUserImmutableKey, .hasHiddenExtensionKey])
-        return try #require(kind == .toggleLock ? values.isUserImmutable : values.hasHiddenExtension)
+        return try #require((kind == .toggleLock ? values.isUserImmutable : values.hasHiddenExtension) as Bool?)
     }
 
     private func setState(_ kind: ActionKind, path: String, value: Bool) throws {

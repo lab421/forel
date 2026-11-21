@@ -2,30 +2,37 @@ import Foundation
 import Testing
 @testable import ForelCore
 
-@Suite struct DiskImageInstallTests {
+/// Serialized: each test blocks a thread on `hdiutil`, and running them all at
+/// once starves every other suite of threads until the images finish.
+@Suite(.serialized) struct DiskImageInstallTests {
     /// Whether `hdiutil` can build disk images on this host. Tests that need
     /// a real image are disabled (and reported as skipped) when it cannot,
     /// instead of passing without checking anything.
-    static let canCreateDiskImages: Bool = {
-        let dir = TempDir()
-        return (try? buildDiskImage(in: dir, apps: [])) != nil
-    }()
+    static let canCreateDiskImages: Bool = (try? emptyImage.get()) != nil
 
     private static let needsDiskImages = ConditionTrait.enabled(if: canCreateDiskImages, "hdiutil cannot create disk images on this host")
 
+    /// `hdiutil create` takes seconds, so each image is built once per run and
+    /// copied into the tests that use it.
+    private static let emptyImage = Result { try buildDiskImage(apps: []) }
+    private static let fixtureImage = Result { try buildDiskImage(apps: ["Fixture.app"]) }
+    private static let twoAppsImage = Result { try buildDiskImage(apps: ["Alpha.app", "Beta.app"]) }
+
     /// Builds a real read-only disk image holding the given app bundles and a
     /// notes file.
-    private static func buildDiskImage(in dir: TempDir, apps: [String]) throws -> String {
+    private static func buildDiskImage(apps: [String]) throws -> String {
         let fm = FileManager.default
-        let source = dir.path + "/source"
+        let dir = NSTemporaryDirectory().appending("forel-test-image-\(UUID().uuidString)")
+        let source = dir + "/source"
         try fm.createDirectory(atPath: source, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(atPath: source) }
         for app in apps {
             let contents = (source as NSString).appendingPathComponent("\(app)/Contents")
             try fm.createDirectory(atPath: contents, withIntermediateDirectories: true)
             fm.createFile(atPath: contents + "/Info.plist", contents: Data("<plist/>".utf8))
         }
         fm.createFile(atPath: source + "/notes.txt", contents: Data("readme".utf8))
-        let image = dir.path + "/Fixture.dmg"
+        let image = dir + "/Fixture.dmg"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
         process.arguments = ["create", "-quiet", "-fs", "HFS+", "-srcfolder", source, "-format", "UDRO", image]
@@ -37,8 +44,18 @@ import Testing
         return image
     }
 
+    /// Copies a prebuilt image into `dir`, so each test can move or trash its
+    /// own copy.
     private func makeDiskImage(in dir: TempDir, apps: [String]) throws -> String {
-        try Self.buildDiskImage(in: dir, apps: apps)
+        let template: Result<String, any Error> = switch apps {
+        case []: Self.emptyImage
+        case ["Fixture.app"]: Self.fixtureImage
+        case ["Alpha.app", "Beta.app"]: Self.twoAppsImage
+        default: Result { try Self.buildDiskImage(apps: apps) }
+        }
+        let image = dir.path + "/Fixture.dmg"
+        try FileManager.default.copyItem(atPath: template.get(), toPath: image)
+        return image
     }
 
     private func installAction(into destination: String, deleteImage: Bool = false, ruleId: String = "rule") -> Action {
