@@ -95,36 +95,41 @@ import Testing
     }
 
     @Test func loginKeychainInteractionIsDisabledDuringReadAndRestoredAfterwards() throws {
-        var initial: DarwinBoolean = false
-        #expect(SecKeychainGetUserInteractionAllowed(&initial) == errSecSuccess)
+        let initial = try Self.userInteractionAllowed()
         let result = try ForelKeychainLicenseStore.withoutUserInteraction {
-            var allowed: DarwinBoolean = true
-            #expect(SecKeychainGetUserInteractionAllowed(&allowed) == errSecSuccess)
-            #expect(!allowed.boolValue)
+            let allowedDuringRead = try Self.userInteractionAllowed()
+            #expect(!allowedDuringRead)
             return "saved-record"
         }
         #expect(result == "saved-record")
-        var restored: DarwinBoolean = false
-        #expect(SecKeychainGetUserInteractionAllowed(&restored) == errSecSuccess)
-        #expect(restored.boolValue == initial.boolValue)
+        #expect(try Self.userInteractionAllowed() == initial)
     }
 
     @Test func loginKeychainInteractionIsRestoredAfterReadFailure() throws {
-        var initial: DarwinBoolean = false
-        #expect(SecKeychainGetUserInteractionAllowed(&initial) == errSecSuccess)
+        let initial = try Self.userInteractionAllowed()
         #expect(throws: TestError.denied) {
             try ForelKeychainLicenseStore.withoutUserInteraction {
-                var allowed: DarwinBoolean = true
-                #expect(SecKeychainGetUserInteractionAllowed(&allowed) == errSecSuccess)
-                #expect(!allowed.boolValue)
+                let allowedDuringRead = try Self.userInteractionAllowed()
+                #expect(!allowedDuringRead)
                 throw TestError.denied
             }
         }
-        var restored: DarwinBoolean = false
-        #expect(SecKeychainGetUserInteractionAllowed(&restored) == errSecSuccess)
-        #expect(restored.boolValue == initial.boolValue)
+        #expect(try Self.userInteractionAllowed() == initial)
     }
 
+    #if compiler(>=6.4)
+    @diagnose(DeprecatedDeclaration, as: ignored, reason: "Verifies the legacy file-based Keychain API used to suppress prompts (FB16959400).")
+    #endif
+    private static func userInteractionAllowed() throws -> Bool {
+        var allowed: DarwinBoolean = false
+        let status = SecKeychainGetUserInteractionAllowed(&allowed)
+        try #require(status == errSecSuccess)
+        return allowed.boolValue
+    }
+
+    #if compiler(>=6.4)
+    @diagnose(DeprecatedDeclaration, as: ignored, reason: "Verifies the legacy file-based Keychain API used to suppress prompts (FB16959400).")
+    #endif
     @Test func fileBasedKeychainCannotPromptForUnlockOrItemAccess() throws {
         // Use an isolated file-based Keychain, never the user's login items.
         // Disable interaction for setup too, so a failing test cannot prompt.
@@ -158,12 +163,16 @@ import Testing
 
             // Model an item belonging to a different executable/signature.
             var trusted: SecTrustedApplication?
-            try #require(SecTrustedApplicationCreateFromPath("/usr/bin/false", &trusted) == errSecSuccess)
+            let trustedStatus = SecTrustedApplicationCreateFromPath("/usr/bin/false", &trusted)
+            try #require(trustedStatus == errSecSuccess)
             var access: SecAccess?
-            try #require(SecAccessCreate("Forel test" as CFString, [try #require(trusted)] as CFArray, &access) == errSecSuccess)
+            let trustedApp = try #require(trusted)
+            let accessStatus = SecAccessCreate("Forel test" as CFString, [trustedApp] as CFArray, &access)
+            try #require(accessStatus == errSecSuccess)
+            let restrictedAccess = try #require(access)
             var restrictedItem = item
             restrictedItem[kSecAttrAccount as String] = "restricted-account"
-            restrictedItem[kSecAttrAccess as String] = try #require(access)
+            restrictedItem[kSecAttrAccess as String] = restrictedAccess
             try #require(SecItemAdd(restrictedItem as CFDictionary, nil) == errSecSuccess)
             var restrictedQuery = ForelKeychainLicenseStore.startupQuery(service: service, account: "restricted-account")
             restrictedQuery[kSecMatchSearchList as String] = [keychain]
@@ -172,7 +181,8 @@ import Testing
             #expect(deniedStatus == errSecInteractionNotAllowed || deniedStatus == errSecAuthFailed)
             #expect(result == nil)
 
-            try #require(SecKeychainLock(keychain) == errSecSuccess)
+            let lockStatus = SecKeychainLock(keychain)
+            try #require(lockStatus == errSecSuccess)
             result = nil
             let status = SecItemCopyMatching(query as CFDictionary, &result)
             #expect(status == errSecInteractionNotAllowed || status == errSecAuthFailed)

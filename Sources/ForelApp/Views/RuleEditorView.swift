@@ -33,7 +33,7 @@ struct RuleEditorView: View {
     @AppStorage(RuleMatchPreviewCard.expandedKey) private var previewExpanded = false
 
     /// From this width, the matching files get their own column.
-    private static let wideLayoutWidth: CGFloat = 1000
+    private nonisolated static let wideLayoutWidth: CGFloat = 1000
     let onSave: (Rule) -> Void
     let onCancel: () -> Void
 
