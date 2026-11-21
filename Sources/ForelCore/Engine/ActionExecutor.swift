@@ -406,9 +406,11 @@ public enum ActionExecutor {
         } catch {
             throw ActionError("Could not uncompress ZIP archive: \(error)")
         }
+        // Drain stderr before waiting: a full pipe would block ditto and hang waitUntilExit().
+        let errorData = dittoErrors.fileHandleForReading.readDataToEndOfFile()
         ditto.waitUntilExit()
         guard ditto.terminationStatus == 0 else {
-            let message = String(data: dittoErrors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            let message = String(data: errorData, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             throw ActionError("Could not uncompress ZIP archive: \(message.isEmpty ? "ditto exited \(ditto.terminationStatus)" : message)")
         }
@@ -1574,7 +1576,9 @@ public enum ActionExecutor {
                 continue
             }
             let item = String(first)
-            if item == "__MACOSX" { continue }
+            // Extraction (ditto) folds `__MACOSX` and AppleDouble `._*` entries back into
+            // extended attributes, so they never appear on disk as top-level items.
+            if item == "__MACOSX" || item.hasPrefix("._") { continue }
             if item == "." || item == ".." {
                 throw ActionError("ZIP archive contains an invalid entry path.")
             }

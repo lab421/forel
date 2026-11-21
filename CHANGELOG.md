@@ -8,6 +8,9 @@ All notable changes to Forel are documented here. Format loosely follows
 ### Fixed
 - Uncompressing a ZIP archive now leaves signed apps intact. Archives that carry extended attributes as AppleDouble (`._*`) files used to extract those files as extra items inside the app, which broke its signature so macOS reported it as damaged.
 
+### Changed
+- Files uncompressed from a downloaded ZIP now keep the archive's quarantine flag, so macOS checks extracted apps on first launch just as it does after a double-click in Finder.
+
 ## [1.2.0] - 2026-11-09
 
 ### Added

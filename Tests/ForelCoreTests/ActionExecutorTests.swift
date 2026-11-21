@@ -413,6 +413,36 @@ extension ActionExecutorTests {
         #expect(FileManager.default.fileExists(atPath: (applied.newPath as NSString).appendingPathComponent("Contents/Info.plist")))
     }
 
+    @Test func uncompressIgnoresTopLevelAppleDoubleSidecarWhenPlanning() throws {
+        // `ditto -c -k file` stores the file's extended attributes as a top-level `._file`
+        // entry. Extraction drops it, so the plan must not count it as a second root item
+        // (which would pick a wrapper folder and then fail to move the missing sidecar).
+        let dir = TempDir()
+        let staging = dir.dir("staging")
+        let file = (staging as NSString).appendingPathComponent("report.txt")
+        try "hello".write(toFile: file, atomically: true, encoding: .utf8)
+        try runProcess("/usr/bin/xattr", ["-w", "com.example.forel-test", "1", file])
+
+        let zip = (dir.path as NSString).appendingPathComponent("download.zip")
+        try runProcess("/usr/bin/ditto", ["-c", "-k", file, zip])
+        #expect(try runProcess("/usr/bin/unzip", ["-l", zip]).contains("._report.txt"))
+        try FileManager.default.removeItem(atPath: staging)
+
+        let action = makeAction(.uncompress, .object([:]))
+        let expected = (dir.path as NSString).appendingPathComponent("report.txt")
+        let plan = try ActionExecutor.plan(action, path: zip)
+        #expect(plan.targetPath == expected)
+        #expect(plan.finalPath == expected)
+
+        let applied = try ActionExecutor.execute(action, path: zip)
+
+        #expect(applied.newPath == expected)
+        #expect(try String(contentsOfFile: applied.newPath, encoding: .utf8) == "hello")
+        #expect(!FileManager.default.fileExists(atPath: (dir.path as NSString).appendingPathComponent("._report.txt")))
+        #expect(!FileManager.default.fileExists(atPath: (dir.path as NSString).appendingPathComponent("download")))
+        #expect(!FileManager.default.fileExists(atPath: zip))
+    }
+
     @Test func uncompressSkipConflictPlansAndDoesNotExtract() throws {
         let dir = TempDir()
         _ = dir.file("report.txt", contents: "existing")
