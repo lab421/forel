@@ -19,6 +19,7 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct RuleEngineTests {
+
     @Test func evaluateFileMatchesEnabledRulesWithAllOrAnyConditions() throws {
         let dir = TempDir()
         let file = dir.file("invoice.txt", contents: "paid")
@@ -574,6 +575,33 @@ import Foundation
         #expect(FileManager.default.fileExists(atPath: existing))
         #expect(result.history.count == 1)
         #expect(result.history[0].status == .skipped)
+    }
+
+    /// A skip that already says why keeps its own message in Activity,
+    /// whatever language that message is in.
+    @Test func explainedSkipsKeepTheirOwnMessage() throws {
+        let dir = TempDir()
+        let pdfDir = dir.dir("PDFs")
+        let existing = dir.file("PDFs/existing.pdf", contents: "x")
+        let inPlace = makeRule(
+            name: "already sorted",
+            actions: [makeAction(.moveToFolder, .object(["destination": .string(pdfDir)]))]
+        )
+        let alreadyThere = RuleEngine.run(path: existing, depth: 0, rules: [inPlace], batchId: "batch")
+        #expect(alreadyThere.history.map(\.status) == [.skipped])
+        #expect(alreadyThere.history.first?.message == "Already in destination")
+
+        let incoming = dir.file("existing.pdf", contents: "y")
+        let skipConflicts = makeRule(
+            name: "skip duplicates",
+            actions: [makeAction(.moveToFolder, .object([
+                "destination": .string(pdfDir),
+                ActionParam.onConflict: .string(MoveConflictResolution.skip.rawValue),
+            ]))]
+        )
+        let conflict = RuleEngine.run(path: incoming, depth: 0, rules: [skipConflicts], batchId: "batch")
+        #expect(conflict.history.map(\.status) == [.skipped])
+        #expect(conflict.history.first?.message == "Skip — a file already exists at \(existing)")
     }
 
     @Test func runResolvesDestinationConflictByRenamingByDefault() throws {

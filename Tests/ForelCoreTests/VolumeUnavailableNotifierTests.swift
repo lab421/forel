@@ -19,6 +19,7 @@ import Foundation
 @testable import ForelCore
 
 @Suite struct VolumeUnavailableNotifierTests {
+
     private func event(_ volumes: [String], rules: [String] = ["to nas"], willRetry: Bool = true) -> VolumeUnavailableEvent {
         VolumeUnavailableEvent(volumes: volumes, ruleNames: rules, willRetry: willRetry)
     }
@@ -66,6 +67,15 @@ import Foundation
         let notification = try #require(made)
         #expect(notification.title == "2 disks or shares aren't connected")
         #expect(notification.body == "2 files couldn't be moved or copied. Rules: photos, statements. Connect them, then use Run Now.")
+    }
+
+    @Test func oneFileAndManyRulesReadNaturally() throws {
+        var notifier = VolumeUnavailableNotifier()
+        notifier.add(event(["Photos"], rules: ["a", "b", "c", "d", "e"], willRetry: false))
+
+        let made = notifier.makeNotification()
+        let notification = try #require(made)
+        #expect(notification.body == "1 file couldn't be moved or copied. Rules: a, b, c and 2 more. Connect it, then use Run Now.")
     }
 
     @Test func discardingKeepsWhatWasAlreadyReported() {

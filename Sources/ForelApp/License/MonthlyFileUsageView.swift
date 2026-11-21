@@ -13,7 +13,7 @@ struct MonthlyFileUsageView: View {
                     else { model.proUpgrade = .monthlyFiles }
                 } label: {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("\(usage.processed)/\(FreePlan.monthlyFileLimit) files this month")
+                        Text(L10n.string("usage_files_this_month", usage.processed, FreePlan.monthlyFileLimit))
                             .font(.caption.monospacedDigit())
                         ProgressView(value: Double(usage.processed), total: Double(FreePlan.monthlyFileLimit))
                             .tint(usage.isExhausted ? ForelTheme.pro : ForelTheme.accent)
@@ -22,7 +22,7 @@ struct MonthlyFileUsageView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Renews \(usage.resetsAt.formatted(date: .abbreviated, time: .omitted)). Dry Run does not count. Discover Pro for unlimited processing.")
+                .help(L10n.string("usage_renews_dry_run_count", usage.resetsAt.formatted(date: .abbreviated, time: .omitted)))
             }
         }
     }

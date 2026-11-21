@@ -28,14 +28,14 @@ public enum RuleValidator {
         conditions.compactMap { condition in
             if condition.kind == .locked {
                 return condition.kind.validOperators.contains(condition.operator)
-                    ? nil : Issue(message: "Locked requires true or false")
+                    ? nil : Issue(message: L10n.string("rule_problem_locked_requires_true_false"))
             }
             if condition.value.trimmingCharacters(in: .whitespaces).isEmpty {
-                return Issue(message: "Condition value cannot be empty")
+                return Issue(message: L10n.string("rule_problem_condition_value_cannot_empty"))
             }
             if condition.operator == .matchesRegex,
                (try? NSRegularExpression(pattern: condition.value)) == nil {
-                return Issue(message: "Regex pattern is invalid")
+                return Issue(message: L10n.string("rule_problem_regex_pattern_is_invalid"))
             }
             return nil
         }
@@ -47,15 +47,15 @@ public enum RuleValidator {
             case .toggleLock, .toggleExtension:
                 let key = action.kind == .toggleLock ? ActionParam.locked : ActionParam.extensionHidden
                 if action.params[key]?.boolValue == nil {
-                    return Issue(message: "\(action.kind.label) requires a true or false value")
+                    return Issue(message: L10n.string("requires_true_false_value", action.kind.label))
                 }
             case .moveToFolder, .copyToFolder, .syncFolders:
                 if action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
-                    return Issue(message: "Destination path cannot be empty")
+                    return Issue(message: L10n.string("rule_problem_destination_path_cannot_empty"))
                 }
             case .rename:
                 if action.params[ActionParam.pattern]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
-                    return Issue(message: "Rename pattern cannot be empty")
+                    return Issue(message: L10n.string("rule_problem_rename_pattern_cannot_empty"))
                 }
             case .compress:
                 do {
@@ -66,11 +66,11 @@ public enum RuleValidator {
                 }
             case .addTag, .removeTag:
                 if tags(in: action).isEmpty {
-                    return Issue(message: "At least one tag is required")
+                    return Issue(message: L10n.string("rule_problem_least_one_tag_required"))
                 }
             case .openApplication:
                 if action.params[ActionParam.applicationPath]?.stringValue?.trimmingCharacters(in: .whitespaces).isEmpty != false {
-                    return Issue(message: "Application cannot be empty")
+                    return Issue(message: L10n.string("rule_problem_application_cannot_be_empty"))
                 }
             default:
                 break

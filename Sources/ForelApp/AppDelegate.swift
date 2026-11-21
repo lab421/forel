@@ -166,9 +166,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard Bundle.main.bundleURL.path.hasPrefix("/Volumes/") else { return false }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Move Forel to Applications first"
-        alert.informativeText = "Forel is running from the installer disk image. Drag Forel into your Applications folder, then open it from there."
-        alert.addButton(withTitle: "Quit")
+        alert.messageText = L10n.string("app_move_forel_applications_first")
+        alert.informativeText = L10n.string("app_forel_running_installer_disk")
+        alert.addButton(withTitle: L10n.string("quit"))
         alert.runModal()
         NSApp.terminate(nil)
         return true

@@ -65,18 +65,24 @@ public struct VolumeUnavailableNotifier: Sendable {
         guard !pendingVolumes.isEmpty else { return nil }
         let volumes = pendingVolumes.sorted()
         let one = volumes.count == 1
-        let title = one ? "“\(volumes[0])” isn't connected" : "\(volumes.count) disks or shares aren't connected"
+        let title = one
+            ? L10n.string("volume_isnt_connected", volumes[0])
+            : L10n.plural("volume_disks_shares_arent_connected", volumes.count)
 
-        let fileLabel = pendingFileCount == 1 ? "file" : "files"
         let ruleNames = pendingRuleNames.sorted()
-        let visibleRules = ruleNames.prefix(3)
-        let remainingRuleCount = ruleNames.count - visibleRules.count
-        let rulesText = visibleRules.joined(separator: ", ")
-            + (remainingRuleCount > 0 ? " and \(remainingRuleCount) more" : "")
-        let next = pendingAllRetry
-            ? "Forel will try again when \(one ? "it's" : "they're") connected, if watching is still on."
-            : "Connect \(one ? "it" : "them"), then use Run Now."
-        let body = "\(pendingFileCount) \(fileLabel) couldn't be moved or copied. Rules: \(rulesText). \(next)"
+        let visibleRules = ruleNames.prefix(3).joined(separator: ", ")
+        let remainingRuleCount = ruleNames.count - ruleNames.prefix(3).count
+        let rulesText = remainingRuleCount > 0
+            ? L10n.plural("and_more", remainingRuleCount, visibleRules)
+            : visibleRules
+        let problem = L10n.plural("volume_files_couldnt_moved_copied", pendingFileCount, rulesText)
+        let next = switch (pendingAllRetry, one) {
+        case (true, true): L10n.string("volume_forel_try_again_when")
+        case (true, false): L10n.string("volume_forel_try_again_when_theyre")
+        case (false, true): L10n.string("volume_connect_then_use_run")
+        case (false, false): L10n.string("volume_connect_them_then_use")
+        }
+        let body = "\(problem) \(next)"
 
         reported.formUnion(pendingVolumes)
         discardPending()

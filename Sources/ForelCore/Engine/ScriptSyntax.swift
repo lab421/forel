@@ -56,6 +56,6 @@ public enum ScriptSyntax {
                 return text
             }
             .filter { !$0.isEmpty }
-        return lines.first ?? "Syntax error"
+        return lines.first ?? L10n.string("script_syntax_error")
     }
 }

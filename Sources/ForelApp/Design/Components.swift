@@ -45,7 +45,8 @@ struct SectionLabel: View {
     let title: String
 
     var body: some View {
-        Text(title.uppercased())
+        Text(title)
+            .textCase(.uppercase)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(ForelTheme.secondaryText)
             .padding(.horizontal, 2)
@@ -57,7 +58,7 @@ struct StatusBadge: View {
     let active: Bool
 
     var body: some View {
-        Text(active ? "ACTIVE" : "PAUSED")
+        Text(active ? L10n.string("component_active") : L10n.string("component_paused"))
             .font(.system(size: 9, weight: .bold))
             .foregroundStyle(active ? ForelTheme.success : ForelTheme.danger)
             .padding(.horizontal, 6)
@@ -104,12 +105,12 @@ struct UpdateAvailableBanner: View {
             .frame(width: 26, height: 26)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text("Update available")
+                Text(L10n.string("component_update_available"))
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
-                Text(version.map { "Version \($0)" } ?? "New version available")
+                Text(version.map { L10n.string("component_version", $0) } ?? L10n.string("component_new_version_available"))
                     .font(.system(size: 10))
                     .foregroundStyle(.white.opacity(0.85))
                     .lineLimit(1)
@@ -119,7 +120,7 @@ struct UpdateAvailableBanner: View {
 
             Spacer(minLength: 6)
 
-            Button(isInstalling ? "Installing…" : "Download", action: action)
+            Button(isInstalling ? L10n.string("component_installing") : L10n.string("component_download"), action: action)
                 .buttonStyle(.plain)
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(Color.orange)
@@ -187,8 +188,8 @@ struct ForelSwitch: View {
                 }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Enabled")
-        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityLabel(L10n.string("enabled"))
+        .accessibilityValue(isOn ? L10n.string("component_on") : L10n.string("component_off"))
         .accessibilityAddTraits(.isButton)
     }
 }
@@ -218,7 +219,7 @@ struct QuickFolderRow: View {
 
             Spacer()
             if isBlocked {
-                Label("Pro", systemImage: "lock.fill")
+                Label(L10n.string("pro"), systemImage: "lock.fill")
                     .font(.caption)
                     .foregroundStyle(ForelTheme.pro)
             }
@@ -228,7 +229,7 @@ struct QuickFolderRow: View {
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 14)
-        .help(isBlocked ? "Reorder folders or activate Pro to use this folder." : folder.path)
+        .help(isBlocked ? L10n.string("reorder_folders_activate_pro") : folder.path)
     }
 }
 
@@ -528,7 +529,7 @@ struct FolderField: View {
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ForelTheme.surface))
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ForelTheme.surfaceBorder))
 
-                Button("Choose…", action: choose).buttonStyle(SecondaryButtonStyle())
+                Button(L10n.string("choose"), action: choose).buttonStyle(SecondaryButtonStyle())
             }
 
             if let hint, isEditing {
@@ -554,7 +555,7 @@ enum FolderPicker {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "Choose"
+        panel.prompt = L10n.string("component_choose")
         if let path, !path.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: path)
         }
@@ -572,7 +573,8 @@ struct ColorLabelPicker: View {
     @Binding var selection: String
     var allowNone: Bool = true
 
-    /// Approximation of the macOS Finder label colours.
+    /// Approximation of the macOS Finder label colours. The names are stored
+    /// in rules as is; `FinderTags.displayName(forColor:)` gives the one to show.
     static let colors: [(name: String, color: Color)] = [
         ("Red", .red),
         ("Orange", .orange),
@@ -615,6 +617,6 @@ struct ColorLabelPicker: View {
                 }
         }
         .buttonStyle(.plain)
-        .help(name.isEmpty ? "No label" : name)
+        .help(name.isEmpty ? L10n.string("color_no_label") : FinderTags.displayName(forColor: name))
     }
 }

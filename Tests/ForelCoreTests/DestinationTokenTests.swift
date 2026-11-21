@@ -29,6 +29,17 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: dir.path + "/Sorted"))
     }
 
+    /// `{kind}` and `{extension}` name folders on disk: they stay in English
+    /// whatever the app's language, or a rule would start filing into new
+    /// folders after a language change.
+    @Test func folderNamesNeverFollowTheAppLanguage() {
+        #expect(FileKindCatalog.all.map(\.folderName) == [
+            "Image", "Movie", "Music", "PDF", "Text", "Document", "Presentation",
+            "Archive", "Disk Image", "Folder", "Application",
+        ])
+        #expect(ActionExecutor.noExtensionFolderName == "No Extension")
+    }
+
     @Test func folderUsesTheFolderKind() throws {
         let dir = TempDir()
         let folder = dir.dir("Project")

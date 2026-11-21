@@ -15,16 +15,17 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import Foundation
+import ForelCore
 
 /// App identity shown by both the "About Forel" panel and Settings → About,
 /// so the two never drift apart.
 enum AppInfo {
     static let name = "Forel"
-    static let tagline = "Open-source file automation for macOS"
+    static var tagline: String { L10n.string("about_open_source_file_automation") }
     static let repositoryURL = URL(string: "https://github.com/lab421/forel")!
 
     static var version: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Development"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? L10n.string("about_development")
     }
 
     /// `./build.sh dev` stamps this placeholder version; it is never a release.
@@ -35,7 +36,7 @@ enum AppInfo {
     }
 
     static var build: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Development"
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? L10n.string("about_development")
     }
 
     static var copyright: String? {

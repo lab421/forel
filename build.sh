@@ -47,6 +47,7 @@ icon_source="$repo_root/Sources/ForelApp/Resources/AppIcon.png"
 iconset_dir="$temp_root/Forel.iconset"
 icns_path="$repo_root/dist/Forel.icns"
 entitlements_path="$repo_root/Forel.entitlements"
+localization_dir="$repo_root/Localization"
 code_sign_identity="${CODE_SIGN_IDENTITY:--}"
 notary_work=""
 
@@ -96,6 +97,25 @@ assemble_app_bundle() {
   if [[ -d "$resource_bundle" ]]; then
     cp -R "$resource_bundle" "$resources_dir/"
   fi
+  install_localizations "$resources_dir"
+}
+
+# Copies each Localization/<language>.lproj into the app's own Resources,
+# where L10n and macOS (for Info.plist) look up translations. They are not
+# SwiftPM resources on purpose: SwiftPM would put them in the package's
+# resource bundle instead of the app's main bundle. A file with a syntax
+# error fails the build rather than leaving the app untranslated.
+install_localizations() {
+  local resources_dir="$1" lproj file
+  for lproj in "$localization_dir"/*.lproj; do
+    for file in "$lproj"/*; do
+      if ! plutil -lint -s "$file"; then
+        echo "${file#"$repo_root/"} is not a valid strings file." >&2
+        exit 1
+      fi
+    done
+    /usr/bin/ditto "$lproj" "$resources_dir/$(basename "$lproj")"
+  done
 }
 
 # macOS 26 and later only give an app the current system design (control
@@ -150,6 +170,8 @@ verify_design_sdk() {
 # CFBundleVersion, plus any extra keys (already-indented <key>/<value> XML)
 # passed as $3. Shared by `dev` and `package`, which pass only their
 # build-specific extras on top of the identical boilerplate and privacy keys.
+# The privacy texts are translated in Localization/<language>.lproj/InfoPlist.strings;
+# keep their English there in sync with this file.
 write_info_plist() {
   local contents_dir="$1" version_number="$2" extra_keys="${3:-}"
   cat > "$contents_dir/Info.plist" <<EOF

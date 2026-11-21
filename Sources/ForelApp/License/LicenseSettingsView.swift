@@ -10,7 +10,7 @@ struct LicenseSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            SectionLabel(title: "License Status")
+            SectionLabel(title: L10n.string("license_status"))
             GlassCard {
                 HStack(spacing: 12) {
                     Image(systemName: statusSymbol)
@@ -32,35 +32,35 @@ struct LicenseSettingsView: View {
             }
 
             if case .pro = license.state {
-                SectionLabel(title: "Licensed Device")
+                SectionLabel(title: L10n.string("license_licensed_device"))
                 GlassCard {
                     SettingsActionRow(
                         title: license.deviceName,
                         subtitle: license.licenseKey,
-                        buttonTitle: "Deactivate",
+                        buttonTitle: L10n.string("license_deactivate"),
                         action: { showingDeactivationConfirmation = true }
                     )
                 }
             } else {
-                SectionLabel(title: "Monthly usage")
+                SectionLabel(title: L10n.string("license_monthly_usage"))
                 MonthlyFileUsageView(onUpgrade: { openURL(ForelLicensing.purchaseURL) })
-                SectionLabel(title: "Automate more with Pro")
+                SectionLabel(title: L10n.string("license_automate_more_with_pro"))
                 ProBenefitsView()
-                SectionLabel(title: "Activate License")
+                SectionLabel(title: L10n.string("license_activate_license"))
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        GlassField(placeholder: "License Key", text: $licenseKey)
+                        GlassField(placeholder: L10n.string("license_key"), text: $licenseKey)
                             .onSubmit { activate() }
 
                         HStack {
-                            Button("Buy Forel Pro") {
+                            Button(L10n.string("license_buy_forel_pro")) {
                                 openURL(ForelLicensing.purchaseURL)
                             }
                             .buttonStyle(.link)
 
                             Spacer()
 
-                            Button("Activate", action: activate)
+                            Button(L10n.string("license_activate"), action: activate)
                                 .buttonStyle(.borderedProminent)
                                 .disabled(
                                     licenseKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -87,13 +87,13 @@ struct LicenseSettingsView: View {
         }
         .frame(maxWidth: 460)
         .confirmationDialog(
-            "Are you sure ?",
+            L10n.string("license_are_you_sure"),
             isPresented: $showingDeactivationConfirmation
         ) {
-            Button("Deactivate", role: .destructive) {
+            Button(L10n.string("license_deactivate"), role: .destructive) {
                 Task { await license.deactivate() }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.string("cancel"), role: .cancel) {}
         }
     }
 
@@ -108,10 +108,10 @@ struct LicenseSettingsView: View {
 
     private var statusSymbol: String { license.hasAccess ? "checkmark.seal.fill" : "person.crop.circle" }
     private var statusColor: Color { license.hasAccess ? .green : ForelTheme.secondaryText }
-    private var statusTitle: String { license.hasAccess ? "Forel Pro" : "Forel Free" }
+    private var statusTitle: String { license.hasAccess ? L10n.string("forel_pro") : L10n.string("forel_free") }
     private var statusSubtitle: String {
         license.hasAccess
-            ? "Unlimited folders and files, with OCR and media imports."
-            : "Free forever: 2 watched folders and 300 processed files per month, with unlimited rules and actions. No trial."
+            ? L10n.string("license_unlimited_folders_files_ocr")
+            : L10n.string("license_free_forever_2_watched")
     }
 }

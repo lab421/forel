@@ -85,6 +85,28 @@ swift test
 swift run ForelApp
 ```
 
+## Localization
+
+Forel is written in English and translated into French, Spanish, and German. It follows the language set in macOS unless the user picks one in Settings > General > Language, which writes the same per-app preference as System Settings > General > Language & Region > Applications (`AppLanguage`). The languages offered come from the `.lproj` folders in `Localization/`, so a language added there appears automatically.
+
+- Each language has one key/value file, `Localization/<language>.lproj/Localizable.strings`, grouped by screen with `//` comments. All four files have the same sections and keys in the same order; `en.lproj` is the reference.
+  ```
+  // Settings
+  "settings_language" = "Langue";
+  "settings_relaunch_now" = "Relancer maintenant";
+  ```
+  `InfoPlist.strings`, next to it, holds the privacy texts of `Info.plist`; keep their English in sync with `write_info_plist` in `build.sh`.
+- Keys are `snake_case`, prefixed by the screen or area (`sidebar_`, `rule_editor_`, `settings_`, `action_plan_`…). Text shared by several screens goes in `// Common` without a prefix (`cancel`, `save`).
+- Code reads text with `L10n.string("key", args…)` (`Sources/ForelCore/L10n.swift`), in ForelApp and ForelCore alike. SwiftUI takes the result as a `String`: `Text(L10n.string("sidebar_watching"))`, `Button(L10n.string("cancel"))`, `.help(L10n.string("…"))`. Never write a SwiftUI literal like `Text("Watching")`: it would stay in English. Text that is not translated (`"\(count)"`, a file name) uses `Text(verbatim:)`.
+- Values only use `%@` for arguments; use `%1$@`, `%2$@` when a translation changes their order. Integers are passed as is and shown formatted for the language ("5 000").
+- Plurals are two keys, `key_one` and `key_other`, read with `L10n.plural("key", count, args…)`: the count is the first `%@`, other arguments follow. A singular form may leave the number out ("Copy Rule"). The rule deciding which form applies is in `L10n.usesOneForm` (0 is singular in French); a language with more plural forms needs its rule there.
+- `build.sh` checks each file with `plutil -lint` and copies the `.lproj` folders into the app's own `Contents/Resources`. They are deliberately not SwiftPM resources: Foundation looks in the main bundle. `swift test` (a debug build without that bundle) reads English from `Localization/en.lproj` directly.
+- `LocalizationFilesTests` fails when a key the code uses is missing from English, when English has a key the code no longer uses, when a language misses or adds a key, when a key is written twice, when a translation loses a placeholder, or when ForelApp has a hard-coded SwiftUI literal. So after adding, changing, or removing text: add the key to every language file, in the same section, and translate it.
+- To add a language, copy `en.lproj` to `<code>.lproj`, translate the values, and add its plural rule to `L10n.usesOneForm` if it differs.
+- Translations follow Apple's terminology for each language (Finder, System Settings, Trash…) and address the user the way macOS does: "vous" in French, "tú" in Spanish, "du" in German. Keep `{tokens}`, `$FOREL_FILE`, and `%@` placeholders as they are.
+- One key per sentence with arguments; never concatenate fragments, and never compare displayed text in code. Use `.textCase(.uppercase)` rather than `.uppercased()`, and `FormatStyle` for displayed dates, numbers, and sizes.
+- Never translate text that ends up on disk or in stored data: folder and file names produced by actions (`{kind}`, `{extension}`'s "No Extension", date formats), destination tokens, and the user's own data.
+
 ## Changelog
 
 - New entries always go under `## [Unreleased]` at the top of `CHANGELOG.md`, never directly under a version header. A version header is only created by renaming `[Unreleased]` when actually cutting that release.
