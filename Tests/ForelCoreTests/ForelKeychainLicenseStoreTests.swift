@@ -95,103 +95,117 @@ import Testing
     }
 
     @Test func loginKeychainInteractionIsDisabledDuringReadAndRestoredAfterwards() throws {
-        let initial = try Self.userInteractionAllowed()
+        let initial = try Self.legacy.userInteractionAllowed()
         let result = try ForelKeychainLicenseStore.withoutUserInteraction {
-            let allowedDuringRead = try Self.userInteractionAllowed()
+            let allowedDuringRead = try Self.legacy.userInteractionAllowed()
             #expect(!allowedDuringRead)
             return "saved-record"
         }
         #expect(result == "saved-record")
-        #expect(try Self.userInteractionAllowed() == initial)
+        #expect(try Self.legacy.userInteractionAllowed() == initial)
     }
 
     @Test func loginKeychainInteractionIsRestoredAfterReadFailure() throws {
-        let initial = try Self.userInteractionAllowed()
+        let initial = try Self.legacy.userInteractionAllowed()
         #expect(throws: TestError.denied) {
             try ForelKeychainLicenseStore.withoutUserInteraction {
-                let allowedDuringRead = try Self.userInteractionAllowed()
+                let allowedDuringRead = try Self.legacy.userInteractionAllowed()
                 #expect(!allowedDuringRead)
                 throw TestError.denied
             }
         }
-        #expect(try Self.userInteractionAllowed() == initial)
+        #expect(try Self.legacy.userInteractionAllowed() == initial)
     }
 
-    #if compiler(>=6.4)
-    @diagnose(DeprecatedDeclaration, as: ignored, reason: "Verifies the legacy file-based Keychain API used to suppress prompts (FB16959400).")
-    #endif
-    private static func userInteractionAllowed() throws -> Bool {
+    /// Goes through `LegacyKeychainTests`, which hides the deprecated
+    /// SecKeychain calls from the compiler.
+    private static var legacy: any LegacyKeychainTests { DeprecatedKeychainTests() }
+
+    @Test func fileBasedKeychainCannotPromptForUnlockOrItemAccess() throws {
+        try Self.legacy.checkFileBasedKeychainCannotPrompt()
+    }
+}
+
+private enum TestError: Error { case denied }
+
+/// SecKeychain is deprecated, but the file-based login Keychain still relies
+/// on it (FB16959400). Calling it through this protocol, from an
+/// implementation marked deprecated, keeps every compiler version quiet.
+@MainActor private protocol LegacyKeychainTests {
+    func userInteractionAllowed() throws -> Bool
+    func checkFileBasedKeychainCannotPrompt() throws
+}
+
+private struct DeprecatedKeychainTests: LegacyKeychainTests {
+    @available(macOS, deprecated: 10.10)
+    func userInteractionAllowed() throws -> Bool {
         var allowed: DarwinBoolean = false
         let status = SecKeychainGetUserInteractionAllowed(&allowed)
         try #require(status == errSecSuccess)
         return allowed.boolValue
     }
 
-    #if compiler(>=6.4)
-    @diagnose(DeprecatedDeclaration, as: ignored, reason: "Verifies the legacy file-based Keychain API used to suppress prompts (FB16959400).")
-    #endif
-    @Test func fileBasedKeychainCannotPromptForUnlockOrItemAccess() throws {
-        // Use an isolated file-based Keychain, never the user's login items.
-        // Disable interaction for setup too, so a failing test cannot prompt.
-        try ForelKeychainLicenseStore.withoutUserInteraction {
-            let path = FileManager.default.temporaryDirectory
-                .appendingPathComponent("forel-test-\(UUID().uuidString).keychain").path
-            let password = UUID().uuidString
-            var created: SecKeychain?
-            let createStatus = password.withCString {
-                SecKeychainCreate(path, UInt32(password.utf8.count), $0, false, nil, &created)
+    @available(macOS, deprecated: 10.10)
+    func checkFileBasedKeychainCannotPrompt() throws {
+            // Use an isolated file-based Keychain, never the user's login items.
+            // Disable interaction for setup too, so a failing test cannot prompt.
+            try ForelKeychainLicenseStore.withoutUserInteraction {
+                let path = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("forel-test-\(UUID().uuidString).keychain").path
+                let password = UUID().uuidString
+                var created: SecKeychain?
+                let createStatus = password.withCString {
+                    SecKeychainCreate(path, UInt32(password.utf8.count), $0, false, nil, &created)
+                }
+                try #require(createStatus == errSecSuccess)
+                let keychain = try #require(created)
+                defer { SecKeychainDelete(keychain) }
+
+                let service = "forel.test.\(UUID().uuidString)"
+                let data = Data("test-record".utf8)
+                let item: [String: Any] = [
+                    kSecClass as String: kSecClassGenericPassword,
+                    kSecAttrService as String: service,
+                    kSecAttrAccount as String: "test-account",
+                    kSecValueData as String: data,
+                    kSecUseKeychain as String: keychain,
+                ]
+                try #require(SecItemAdd(item as CFDictionary, nil) == errSecSuccess)
+                var query = ForelKeychainLicenseStore.startupQuery(service: service, account: "test-account")
+                query[kSecMatchSearchList as String] = [keychain]
+                var result: CFTypeRef?
+                try #require(SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess)
+                #expect(result as? Data == data)
+
+                // Model an item belonging to a different executable/signature.
+                var trusted: SecTrustedApplication?
+                let trustedStatus = SecTrustedApplicationCreateFromPath("/usr/bin/false", &trusted)
+                try #require(trustedStatus == errSecSuccess)
+                var access: SecAccess?
+                let trustedApp = try #require(trusted)
+                let accessStatus = SecAccessCreate("Forel test" as CFString, [trustedApp] as CFArray, &access)
+                try #require(accessStatus == errSecSuccess)
+                let restrictedAccess = try #require(access)
+                var restrictedItem = item
+                restrictedItem[kSecAttrAccount as String] = "restricted-account"
+                restrictedItem[kSecAttrAccess as String] = restrictedAccess
+                try #require(SecItemAdd(restrictedItem as CFDictionary, nil) == errSecSuccess)
+                var restrictedQuery = ForelKeychainLicenseStore.startupQuery(service: service, account: "restricted-account")
+                restrictedQuery[kSecMatchSearchList as String] = [keychain]
+                result = nil
+                let deniedStatus = SecItemCopyMatching(restrictedQuery as CFDictionary, &result)
+                #expect(deniedStatus == errSecInteractionNotAllowed || deniedStatus == errSecAuthFailed)
+                #expect(result == nil)
+
+                let lockStatus = SecKeychainLock(keychain)
+                try #require(lockStatus == errSecSuccess)
+                result = nil
+                let status = SecItemCopyMatching(query as CFDictionary, &result)
+                #expect(status == errSecInteractionNotAllowed || status == errSecAuthFailed)
+                #expect(result == nil)
             }
-            try #require(createStatus == errSecSuccess)
-            let keychain = try #require(created)
-            defer { SecKeychainDelete(keychain) }
-
-            let service = "forel.test.\(UUID().uuidString)"
-            let data = Data("test-record".utf8)
-            let item: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: "test-account",
-                kSecValueData as String: data,
-                kSecUseKeychain as String: keychain,
-            ]
-            try #require(SecItemAdd(item as CFDictionary, nil) == errSecSuccess)
-            var query = ForelKeychainLicenseStore.startupQuery(service: service, account: "test-account")
-            query[kSecMatchSearchList as String] = [keychain]
-            var result: CFTypeRef?
-            try #require(SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess)
-            #expect(result as? Data == data)
-
-            // Model an item belonging to a different executable/signature.
-            var trusted: SecTrustedApplication?
-            let trustedStatus = SecTrustedApplicationCreateFromPath("/usr/bin/false", &trusted)
-            try #require(trustedStatus == errSecSuccess)
-            var access: SecAccess?
-            let trustedApp = try #require(trusted)
-            let accessStatus = SecAccessCreate("Forel test" as CFString, [trustedApp] as CFArray, &access)
-            try #require(accessStatus == errSecSuccess)
-            let restrictedAccess = try #require(access)
-            var restrictedItem = item
-            restrictedItem[kSecAttrAccount as String] = "restricted-account"
-            restrictedItem[kSecAttrAccess as String] = restrictedAccess
-            try #require(SecItemAdd(restrictedItem as CFDictionary, nil) == errSecSuccess)
-            var restrictedQuery = ForelKeychainLicenseStore.startupQuery(service: service, account: "restricted-account")
-            restrictedQuery[kSecMatchSearchList as String] = [keychain]
-            result = nil
-            let deniedStatus = SecItemCopyMatching(restrictedQuery as CFDictionary, &result)
-            #expect(deniedStatus == errSecInteractionNotAllowed || deniedStatus == errSecAuthFailed)
-            #expect(result == nil)
-
-            let lockStatus = SecKeychainLock(keychain)
-            try #require(lockStatus == errSecSuccess)
-            result = nil
-            let status = SecItemCopyMatching(query as CFDictionary, &result)
-            #expect(status == errSecInteractionNotAllowed || status == errSecAuthFailed)
-            #expect(result == nil)
-        }
     }
 }
-
-private enum TestError: Error { case denied }
 
 @MainActor private final class Fixture {
     private let suite = "com.lab421.forel.tests.\(UUID().uuidString)"

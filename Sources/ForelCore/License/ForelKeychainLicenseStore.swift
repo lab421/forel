@@ -81,21 +81,19 @@ public final class ForelKeychainLicenseStore: LicenseSecureStoring {
         ]
     }
 
-    #if compiler(>=6.4)
-    @diagnose(DeprecatedDeclaration, as: ignored, reason: "The file-based login Keychain still requires this API to suppress prompts (FB16959400).")
-    #endif
     static func withoutUserInteraction<T>(_ operation: () throws -> T) throws -> T {
         // LAContext only suppresses authentication for the data-protection
         // Keychain. The file-based login Keychain used by KeychainLicenseStore
         // still needs this legacy API (see Chromium's FB16959400 workaround).
         // Keep the synchronous read on MainActor and restore the previous
         // setting before an explicit activation can access the Keychain.
+        let legacy: any LegacyKeychainInteraction = DeprecatedKeychainInteraction()
         var wasAllowed: DarwinBoolean = false
-        let getStatus = SecKeychainGetUserInteractionAllowed(&wasAllowed)
+        let getStatus = legacy.getUserInteractionAllowed(&wasAllowed)
         guard getStatus == errSecSuccess else { throw ReadError(status: getStatus) }
-        let setStatus = SecKeychainSetUserInteractionAllowed(false)
+        let setStatus = legacy.setUserInteractionAllowed(false)
         guard setStatus == errSecSuccess else { throw ReadError(status: setStatus) }
-        defer { SecKeychainSetUserInteractionAllowed(wasAllowed.boolValue) }
+        defer { _ = legacy.setUserInteractionAllowed(wasAllowed.boolValue) }
         return try operation()
     }
 
@@ -108,5 +106,26 @@ public final class ForelKeychainLicenseStore: LicenseSecureStoring {
             }
             return SecCopyErrorMessageString(status, nil) as String? ?? "Keychain error \(status)."
         }
+    }
+}
+
+/// SecKeychain is deprecated, but it is still the only way to stop the
+/// file-based login Keychain from prompting (FB16959400). Calling it through
+/// this protocol, from an implementation marked deprecated, keeps every
+/// compiler version quiet about it.
+private protocol LegacyKeychainInteraction {
+    func getUserInteractionAllowed(_ allowed: inout DarwinBoolean) -> OSStatus
+    func setUserInteractionAllowed(_ allowed: Bool) -> OSStatus
+}
+
+private struct DeprecatedKeychainInteraction: LegacyKeychainInteraction {
+    @available(macOS, deprecated: 10.10)
+    func getUserInteractionAllowed(_ allowed: inout DarwinBoolean) -> OSStatus {
+        SecKeychainGetUserInteractionAllowed(&allowed)
+    }
+
+    @available(macOS, deprecated: 10.10)
+    func setUserInteractionAllowed(_ allowed: Bool) -> OSStatus {
+        SecKeychainSetUserInteractionAllowed(allowed)
     }
 }
