@@ -704,6 +704,12 @@ private struct RuleDetails: View {
             if !destination.isEmpty { details.append(L10n.string("rule_list_to", destination)) }
             if ActionExecutor.deletesSourceAfterCompression(action) { details.append(L10n.string("rule_list_permanently_delete_source_after")) }
             return (L10n.string("rule_list_create_zip"), details.joined(separator: " · "))
+        case .installDiskImage:
+            let destination = action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            var details = [destination.isEmpty ? "/Applications" : destination]
+            if ActionExecutor.replacesExistingApp(action) { details.append(L10n.string("rule_list_replace_existing_apps")) }
+            if ActionExecutor.deletesDiskImageAfterInstall(action) { details.append(L10n.string("rule_list_move_disk_image_to_trash")) }
+            return (L10n.string("rule_list_install_disk_image"), details.joined(separator: " · "))
         }
     }
 

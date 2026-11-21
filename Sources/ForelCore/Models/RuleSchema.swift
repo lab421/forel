@@ -256,6 +256,8 @@ public enum ActionParam {
     public static let cleanFileName = "clean_file_name"
     public static let libraryType = "library_type"
     public static let targetPlaylist = "target_playlist"
+    public static let deleteDiskImageAfterInstall = "delete_disk_image_after_install"
+    public static let replaceExistingApp = "replace_existing_app"
 }
 
 /// The abstract shape of an action parameter; the UI maps it to a concrete editor.
@@ -305,6 +307,7 @@ public extension ActionKind {
         case .importToLibrary: return L10n.string("action_import_to_library")
         case .compress: return L10n.string("action_compress")
         case .uncompress: return L10n.string("action_uncompress")
+        case .installDiskImage: return L10n.string("action_install_disk_image")
         }
     }
 
@@ -326,6 +329,7 @@ public extension ActionKind {
         case .importToLibrary: return "tray.full"
         case .compress: return "archivebox"
         case .uncompress: return "doc.zipper"
+        case .installDiskImage: return "externaldrive.badge.plus"
         }
     }
 
@@ -335,7 +339,7 @@ public extension ActionKind {
     /// have none, instead of showing an empty "No options" popover.
     var hasOptions: Bool {
         switch self {
-        case .moveToFolder, .copyToFolder, .syncFolders, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress, .compress:
+        case .moveToFolder, .copyToFolder, .syncFolders, .runShortcut, .openApplication, .rename, .importToLibrary, .uncompress, .compress, .installDiskImage:
             return true
         case .addTag, .removeTag, .setColorLabel, .toggleLock, .toggleExtension, .runScript, .moveToTrash, .delete:
             return false
@@ -370,6 +374,10 @@ public extension ActionKind {
         case .compress:
             return [ActionParamSpec(key: ActionParam.archiveName, kind: .archiveName),
                     ActionParamSpec(key: ActionParam.destination, kind: .folderPath)]
+        case .installDiskImage:
+            return [ActionParamSpec(key: ActionParam.destination, kind: .folderPath),
+                    ActionParamSpec(key: ActionParam.deleteDiskImageAfterInstall, kind: .boolean),
+                    ActionParamSpec(key: ActionParam.replaceExistingApp, kind: .boolean)]
         case .moveToTrash, .delete, .uncompress:
             return []
         }
@@ -420,7 +428,7 @@ public enum RuleSchema {
         ActionKindGroup(title: nil, kinds: [.moveToFolder, .copyToFolder, .syncFolders, .rename, .compress, .uncompress]),
         ActionKindGroup(title: L10n.string("tags"), kinds: [.addTag, .removeTag, .setColorLabel]),
         ActionKindGroup(title: L10n.string("action_section_finder"), kinds: [.toggleLock, .toggleExtension]),
-        ActionKindGroup(title: L10n.string("action_section_automation"), kinds: [.runScript, .runShortcut, .openApplication]),
+        ActionKindGroup(title: L10n.string("action_section_automation"), kinds: [.runScript, .runShortcut, .openApplication, .installDiskImage]),
         ActionKindGroup(title: L10n.string("action_section_disposal"), kinds: [.moveToTrash, .delete]),
         ActionKindGroup(title: L10n.string("action_section_library"), kinds: [.importToLibrary]),
     ]

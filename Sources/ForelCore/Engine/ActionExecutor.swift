@@ -246,6 +246,8 @@ public enum ActionExecutor {
             return try uncompress(action, path: path)
         case .compress:
             return try compress(action, path: path)
+        case .installDiskImage:
+            return try installDiskImage(action, path: path)
         }
     }
 
@@ -404,10 +406,26 @@ public enum ActionExecutor {
         try fm.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
         defer { try? fm.removeItem(atPath: replacementDir) }
 
+        // ditto, not ZIPFoundation: ditto merges in-place AppleDouble (`._*`) entries back
+        // into extended attributes, while ZIPFoundation writes them out as real files. Those
+        // extra files break a signed .app's seal, and macOS then calls the app damaged.
+        let ditto = Process()
+        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        ditto.arguments = ["-x", "-k", archiveURL.path, tempDir]
+        let dittoErrors = Pipe()
+        ditto.standardError = dittoErrors
         do {
-            try fm.unzipItem(at: archiveURL, to: URL(fileURLWithPath: tempDir))
+            try ditto.run()
         } catch {
             throw ActionError(L10n.string("action_error_could_uncompress_zip_archive", String(describing: error)))
+        }
+        // Drain stderr before waiting: a full pipe would block ditto and hang waitUntilExit().
+        let errorData = dittoErrors.fileHandleForReading.readDataToEndOfFile()
+        ditto.waitUntilExit()
+        guard ditto.terminationStatus == 0 else {
+            let message = String(data: errorData, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            throw ActionError("Could not uncompress ZIP archive: \(message.isEmpty ? "ditto exited \(ditto.terminationStatus)" : message)")
         }
 
         if plan.conflicts, plan.resolution == .replace {
@@ -463,6 +481,77 @@ public enum ActionExecutor {
 
     public static func deletesSourceAfterCompression(_ action: Action) -> Bool {
         action.params[ActionParam.deleteSourceAfterCompression]?.boolValue == true
+    }
+
+    public static func deletesDiskImageAfterInstall(_ action: Action) -> Bool {
+        action.params[ActionParam.deleteDiskImageAfterInstall]?.boolValue == true
+    }
+
+    public static func replacesExistingApp(_ action: Action) -> Bool {
+        action.params[ActionParam.replaceExistingApp]?.boolValue == true
+    }
+
+    /// Empty means /Applications. Custom folders must be absolute or start with ~/.
+    static func installDirectory(_ action: Action) throws -> String {
+        let trimmed = (action.params[ActionParam.destination]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "/Applications" }
+        let expanded = (trimmed as NSString).expandingTildeInPath
+        guard expanded.hasPrefix("/"), !expanded.contains("\0") else {
+            throw ActionError("Install folder must be an absolute path or start with ~/.")
+        }
+        return (expanded as NSString).standardizingPath
+    }
+
+    private static let unsupportedDiskImageMessage = "Only disk images (.dmg, .iso, .img, .sparseimage) can be installed."
+
+    /// `trashDirectory` defaults to the user's Trash; tests pass their own.
+    /// When the image is moved to the Trash, the result points there and can
+    /// be undone like Move to Trash (the installed apps stay).
+    static func installDiskImage(_ action: Action, path: String, trashDirectory: String? = nil) throws -> Applied {
+        guard DiskImageInstaller.isSupported(path) else {
+            throw ActionError(unsupportedDiskImageMessage)
+        }
+        let destination = try installDirectory(action)
+        // `install` unmounts the image before returning, so it is safe to move it next.
+        _ = try DiskImageInstaller.install(imagePath: path, into: destination, replaceExisting: replacesExistingApp(action))
+        if deletesDiskImageAfterInstall(action) {
+            return try moveIntoDir(path: path, destDir: try trashDirectory ?? trashDir())
+        }
+        return Applied(newPath: path, undo: .none)
+    }
+
+    private static func planInstallDiskImage(_ action: Action, path: String) throws -> ActionPlan {
+        let destination = try installDirectory(action)
+        guard DiskImageInstaller.isSupported(path) else {
+            return ActionPlan(
+                kind: action.kind,
+                description: "Skip — \(unsupportedDiskImageMessage)",
+                sourcePath: path,
+                targetPath: nil,
+                status: .wouldSkip,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: true
+            )
+        }
+        var description = "Install apps from disk image to \(destination)"
+        if replacesExistingApp(action) { description += "; replace existing apps (moved to Trash)" }
+        var finalPath = path
+        if deletesDiskImageAfterInstall(action) {
+            description += "; move disk image to Trash"
+            finalPath = (try trashDir() as NSString).appendingPathComponent((path as NSString).lastPathComponent)
+        }
+        return ActionPlan(
+            kind: action.kind,
+            description: description,
+            sourcePath: path,
+            targetPath: destination,
+            status: .wouldRun,
+            finalPath: finalPath,
+            copiedPath: nil,
+            isTerminal: true,
+            warning: "Dry Run does not open the disk image, so the apps it contains are not listed."
+        )
     }
 
     /// Empty means next to the source. Custom destinations must be absolute;
@@ -1460,6 +1549,8 @@ public enum ActionExecutor {
                 isTerminal: false,
                 warning: warning.isEmpty ? nil : warning
             )
+        case .installDiskImage:
+            return try planInstallDiskImage(action, path: path)
         }
     }
 
@@ -1481,7 +1572,7 @@ public enum ActionExecutor {
             let pattern = action.params[ActionParam.pattern]?.stringValue ?? ""
             guard let newName = try? applyRenamePattern(pattern, path: path) else { return true }
             return (path as NSString).lastPathComponent != newName
-        case .moveToFolder, .copyToFolder, .syncFolders, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress, .compress:
+        case .moveToFolder, .copyToFolder, .syncFolders, .moveToTrash, .delete, .runScript, .runShortcut, .openApplication, .importToLibrary, .uncompress, .compress, .installDiskImage:
             return true
         }
     }
@@ -1584,7 +1675,9 @@ public enum ActionExecutor {
                 continue
             }
             let item = String(first)
-            if item == "__MACOSX" { continue }
+            // Extraction (ditto) folds `__MACOSX` and AppleDouble `._*` entries back into
+            // extended attributes, so they never appear on disk as top-level items.
+            if item == "__MACOSX" || item.hasPrefix("._") { continue }
             if item == "." || item == ".." {
                 throw ActionError(L10n.string("action_error_zip_archive_contains_invalid"))
             }

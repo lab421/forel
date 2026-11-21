@@ -79,7 +79,7 @@ File matching and processing happen **locally on your Mac**. Forel does not uplo
 - **Copy rules** — Copy a rule to another watched folder, or select several with ⌘-click and choose **Copy rules to folder…**. Copies are independent and keep their action destinations.
 - **History & Undo** — Review action results and undo supported actions when it is safe to do so.
 - **Menu bar app** — Forel lives in your menu bar. Toggle individual rules on/off without opening the main window.
-- **Actions** — Move, copy, rename, compress, uncompress, tag, trash, delete, or run a custom script. Move and copy destinations accept date tokens like `~/Archive/{year}/{month}` or `~/Archive/{year} - Q{quarter}`. `{quarter}` is 1–4, based on the file's creation date, like `{year}`, `{month}`, and `{day}`.
+- **Actions** — Move, copy, rename, compress, uncompress, tag, trash, delete, install apps from disk images, or run a custom script. Move and copy destinations accept date tokens like `~/Archive/{year}/{month}` or `~/Archive/{year} - Q{quarter}`. `{quarter}` is 1–4, based on the file's creation date, like `{year}`, `{month}`, and `{day}`.
 - **SQLite persistence** — Rules, folders, and history are stored locally in a bundled SQLite database.
 
 ---
@@ -96,7 +96,7 @@ Forel Free is available indefinitely without a license. Pro is a paid license; t
 | Files processed | 300 per calendar month | Unlimited |
 | Rules per folder and actions per rule | Unlimited | Unlimited |
 | Background watching and Run Now | Included | Included |
-| Move, copy, rename, tags, labels, trash, delete, uncompress, open app | Included | Included |
+| Move, copy, rename, tags, labels, trash, delete, uncompress, open app, install disk image | Included | Included |
 | Filename, type, size, dates, tags, Finder comments, and download metadata conditions | Included | Included |
 | Text matching in documents and PDFs with a text layer | Included | Included |
 | On-device OCR for images and scanned PDFs | — | Included |
@@ -250,6 +250,7 @@ History / Undo (SQLite)
 - [x] Copy rules across watched folders
 - [x] Compress actions
 - [x] Sync actions
+- [x] Install disk image actions
 - [x] Dynamic destination folders with date tokens (e.g. `~/Screenshots/{year}/{month}`)
 - [x] Toggle extension hidden / visible
 - [ ] Export / Import rules
