@@ -146,6 +146,9 @@
 "rule_list_uncompress_zip" = "ZIP entpacken";
 "rule_list_permanently_delete_source_after" = "Quelle nach Erfolg endgültig löschen";
 "rule_list_create_zip" = "ZIP erstellen";
+"rule_list_install_disk_image" = "Image installieren";
+"rule_list_replace_existing_apps" = "vorhandene Programme ersetzen";
+"rule_list_move_disk_image_to_trash" = "Image in den Papierkorb legen";
 "rule_list_tag" = "Tag";
 "rule_list_matched_at_least" = "%@+ Treffer";
 "rule_list_matched_count_one" = "%@ Treffer";
@@ -247,6 +250,14 @@
 "rule_editor_leave_empty_save_next" = "Leer lassen, um neben der Quelle zu sichern. Vorhandene ZIPs bleiben erhalten; neue Archive werden nummeriert.";
 "rule_editor_delete_source_after_compression" = "Quelle nach dem Komprimieren löschen";
 "rule_editor_after_zip_created_successfully" = "Nachdem das ZIP erstellt wurde, werden die Originaldatei bzw. der Originalordner samt Inhalt endgültig gelöscht. Dies kann nicht widerrufen werden. Nachfolgende Aktionen gelten für das ZIP.";
+"rule_editor_disk_images_only" = "Nur Images (.dmg, .iso, .img, .sparseimage)";
+"rule_editor_install_folder" = "Installationsordner";
+"rule_editor_applications_default" = "/Applications (Standard)";
+"rule_editor_apps_copied_here" = "Programme werden hierhin kopiert.";
+"rule_editor_move_disk_image_to_trash" = "Image nach der Installation in den Papierkorb legen";
+"rule_editor_disk_image_trash_help" = "Das Image wird in den Papierkorb gelegt und kann dort noch wiederhergestellt werden. Ist diese Option aus, bleibt es erhalten.";
+"rule_editor_replace_existing_app" = "Vorhandenes Programm ersetzen";
+"rule_editor_replace_existing_app_help" = "Ist bereits ein Programm mit demselben Namen installiert, wird es durch die neue Kopie ersetzt. Das alte Programm wird in den Papierkorb gelegt. Ist diese Option aus, wird die Installation abgebrochen und das vorhandene Programm bleibt erhalten.";
 "rule_editor_if_file_already_exists" = "Wenn bereits eine Datei existiert";
 "rule_editor_input" = "Eingabe";
 "rule_editor_deletes" = "Löschungen";
@@ -355,6 +366,7 @@
 "action_import_to_library" = "In Mediathek importieren";
 "action_compress" = "Komprimieren";
 "action_uncompress" = "Entpacken";
+"action_install_disk_image" = "Image installieren";
 
 // Action picker sections
 "action_section_finder" = "Finder";
@@ -419,6 +431,12 @@
 "action_plan_compress_permanently_delete_source" = "Komprimieren nach %@; Quelle nach Erfolg endgültig löschen";
 "action_plan_compress_renamed_avoid_existing_archive" = "Komprimieren nach %@ (umbenannt, um ein vorhandenes Archiv zu vermeiden); Quelle nach Erfolg endgültig löschen";
 "action_plan_original_file_folder_all" = "Die Originaldatei bzw. der Originalordner samt Inhalt wird nach dem Erstellen des ZIP endgültig gelöscht. Dies kann nicht widerrufen werden. Nachfolgende Aktionen gelten für das ZIP.";
+"action_plan_skip_only_disk_images_installed" = "Übersprungen – nur Images (.dmg, .iso, .img, .sparseimage) können installiert werden.";
+"action_plan_install_disk_image_to" = "Programme aus dem Image nach %@ installieren";
+"action_plan_install_disk_image_replace" = "Programme aus dem Image nach %@ installieren; vorhandene Programme ersetzen (in den Papierkorb gelegt)";
+"action_plan_install_disk_image_trash" = "Programme aus dem Image nach %@ installieren; Image in den Papierkorb legen";
+"action_plan_install_disk_image_replace_trash" = "Programme aus dem Image nach %@ installieren; vorhandene Programme ersetzen (in den Papierkorb gelegt); Image in den Papierkorb legen";
+"action_plan_dry_run_does_not_open_disk_image" = "Der Testlauf öffnet das Image nicht, daher werden die enthaltenen Programme nicht aufgeführt.";
 "action_plan_run_shortcut" = "Kurzbefehl ausführen: %@";
 "action_plan_run_shortcut_input" = "Kurzbefehl ausführen: %@ ohne Eingabe";
 "action_plan_move_renamed_avoid_existing" = "Bewegen nach %@ (umbenannt, um eine vorhandene Datei zu vermeiden)";
@@ -436,6 +454,7 @@
 "action_error_cannot_change_extension_visibility" = "Die Sichtbarkeit der Erweiterung kann auf diesem Volume nicht geändert werden.";
 "action_error_requires_param" = "%@ erfordert den Parameter „%@“";
 "action_error_could_uncompress_zip_archive" = "Das ZIP-Archiv konnte nicht entpackt werden: %@";
+"action_error_ditto_exited_with_status" = "ditto wurde mit Status %@ beendet";
 "action_error_could_create_zip_archive" = "Das ZIP-Archiv konnte nicht erstellt werden. Die Quelle wurde behalten. %@";
 "action_error_zip_created_but_source" = "ZIP unter %@ erstellt, aber die Quelle konnte nicht gelöscht werden: %@";
 "action_error_archive_destination_must_absolute" = "Das Archivziel muss ein absoluter Ordnerpfad sein oder mit ~/ beginnen.";
@@ -457,6 +476,14 @@
 "action_error_zip_archive_is_empty" = "Das ZIP-Archiv ist leer.";
 "action_error_could_read_zip_archive" = "Das ZIP-Archiv konnte nicht gelesen werden: %@";
 "action_error_zip_archive_contains_invalid" = "Das ZIP-Archiv enthält einen ungültigen Eintragspfad.";
+"action_error_install_folder_must_absolute" = "Der Installationsordner muss ein absoluter Pfad sein oder mit ~/ beginnen.";
+"action_error_only_disk_images_installed" = "Nur Images (.dmg, .iso, .img, .sparseimage) können installiert werden.";
+"action_error_no_app_in_disk_image" = "In diesem Image wurde kein Programm gefunden.";
+"action_error_app_already_installed" = "%1$@ ist bereits in %2$@, daher wurde nichts installiert. Aktiviere „Vorhandenes Programm ersetzen“, um es zu aktualisieren, oder entferne es zuerst.";
+"action_error_could_not_copy_app" = "%1$@ konnte nicht nach %2$@ kopiert werden, daher wurde nichts installiert. %3$@";
+"action_error_could_not_install_app" = "%1$@ konnte nicht in %2$@ installiert werden. Es wurde nichts geändert und die bereits vorhandenen Programme wurden wiederhergestellt. %3$@";
+"action_error_could_not_open_disk_image" = "Das Image konnte nicht geöffnet werden, daher wurde nichts installiert. Es ist möglicherweise beschädigt, mit einem Passwort geschützt oder verlangt die Zustimmung zu einer Lizenzvereinbarung, was Forel nicht für dich übernehmen kann. Öffne es im Finder, um es manuell zu installieren. %@";
+"action_error_disk_image_did_not_mount" = "Das Image wurde nicht aktiviert, daher wurde nichts installiert.";
 "action_error_rename_pattern_produced_empty" = "Das Umbenennungsmuster ergab einen leeren Dateinamen";
 "action_error_home_not_set" = "HOME ist nicht gesetzt";
 "action_error_rename_pattern_produced_invalid" = "Das Umbenennungsmuster ergab einen ungültigen Dateinamen (enthält „/“)";

@@ -146,6 +146,9 @@
 "rule_list_uncompress_zip" = "décompresser le ZIP";
 "rule_list_permanently_delete_source_after" = "supprimer définitivement la source après réussite";
 "rule_list_create_zip" = "créer un ZIP";
+"rule_list_install_disk_image" = "installer une image disque";
+"rule_list_replace_existing_apps" = "remplacer les apps existantes";
+"rule_list_move_disk_image_to_trash" = "placer l’image disque dans la corbeille";
 "rule_list_tag" = "un tag";
 "rule_list_matched_at_least" = "%@+ correspondants";
 "rule_list_matched_count_one" = "%@ correspondant";
@@ -247,6 +250,14 @@
 "rule_editor_leave_empty_save_next" = "Laissez vide pour enregistrer à côté de la source. Les ZIP existants sont conservés ; les nouvelles archives sont numérotées.";
 "rule_editor_delete_source_after_compression" = "Supprimer la source après la compression";
 "rule_editor_after_zip_created_successfully" = "Une fois le ZIP créé, le fichier ou dossier d’origine et tout son contenu sont supprimés définitivement. Cette opération est irréversible. Les actions suivantes s’appliquent au ZIP.";
+"rule_editor_disk_images_only" = "Images disque uniquement (.dmg, .iso, .img, .sparseimage)";
+"rule_editor_install_folder" = "Dossier d’installation";
+"rule_editor_applications_default" = "/Applications (par défaut)";
+"rule_editor_apps_copied_here" = "Les apps sont copiées ici.";
+"rule_editor_move_disk_image_to_trash" = "Placer l’image disque dans la corbeille après l’installation";
+"rule_editor_disk_image_trash_help" = "L’image est placée dans la corbeille, d’où vous pouvez encore la récupérer. Elle est conservée si cette option est désactivée.";
+"rule_editor_replace_existing_app" = "Remplacer l’app existante";
+"rule_editor_replace_existing_app_help" = "Si une app du même nom est déjà installée, elle est remplacée par la nouvelle copie. L’ancienne app est placée dans la corbeille. Si cette option est désactivée, l’installation s’arrête et l’app existante est conservée.";
 "rule_editor_if_file_already_exists" = "Si un fichier existe déjà";
 "rule_editor_input" = "Entrée";
 "rule_editor_deletes" = "Suppressions";
@@ -355,6 +366,7 @@
 "action_import_to_library" = "Importer dans la bibliothèque";
 "action_compress" = "Compresser";
 "action_uncompress" = "Décompresser";
+"action_install_disk_image" = "Installer une image disque";
 
 // Action picker sections
 "action_section_finder" = "Finder";
@@ -419,6 +431,12 @@
 "action_plan_compress_permanently_delete_source" = "Compresser vers %@ ; supprimer définitivement la source après réussite";
 "action_plan_compress_renamed_avoid_existing_archive" = "Compresser vers %@ (renommé pour éviter une archive existante) ; supprimer définitivement la source après réussite";
 "action_plan_original_file_folder_all" = "Le fichier ou dossier d’origine et tout son contenu seront supprimés définitivement après la création du ZIP. Cette opération est irréversible. Les actions suivantes s’appliquent au ZIP.";
+"action_plan_skip_only_disk_images_installed" = "Ignorée — seules les images disque (.dmg, .iso, .img, .sparseimage) peuvent être installées.";
+"action_plan_install_disk_image_to" = "Installer les apps de l’image disque dans %@";
+"action_plan_install_disk_image_replace" = "Installer les apps de l’image disque dans %@ ; remplacer les apps existantes (placées dans la corbeille)";
+"action_plan_install_disk_image_trash" = "Installer les apps de l’image disque dans %@ ; placer l’image disque dans la corbeille";
+"action_plan_install_disk_image_replace_trash" = "Installer les apps de l’image disque dans %@ ; remplacer les apps existantes (placées dans la corbeille) ; placer l’image disque dans la corbeille";
+"action_plan_dry_run_does_not_open_disk_image" = "La simulation n’ouvre pas l’image disque, donc les apps qu’elle contient ne sont pas listées.";
 "action_plan_run_shortcut" = "Exécuter le raccourci : %@";
 "action_plan_run_shortcut_input" = "Exécuter le raccourci : %@ sans entrée";
 "action_plan_move_renamed_avoid_existing" = "Déplacer vers %@ (renommé pour éviter un fichier existant)";
@@ -436,6 +454,7 @@
 "action_error_cannot_change_extension_visibility" = "Impossible de modifier l’affichage de l’extension sur ce volume.";
 "action_error_requires_param" = "%@ requiert le paramètre « %@ »";
 "action_error_could_uncompress_zip_archive" = "Impossible de décompresser l’archive ZIP : %@";
+"action_error_ditto_exited_with_status" = "ditto s’est terminé avec le code %@";
 "action_error_could_create_zip_archive" = "Impossible de créer l’archive ZIP. La source a été conservée. %@";
 "action_error_zip_created_but_source" = "ZIP créé à l’emplacement %@, mais la source n’a pas pu être supprimée : %@";
 "action_error_archive_destination_must_absolute" = "La destination de l’archive doit être un chemin de dossier absolu ou commencer par ~/.";
@@ -457,6 +476,14 @@
 "action_error_zip_archive_is_empty" = "L’archive ZIP est vide.";
 "action_error_could_read_zip_archive" = "Impossible de lire l’archive ZIP : %@";
 "action_error_zip_archive_contains_invalid" = "L’archive ZIP contient un chemin d’entrée non valide.";
+"action_error_install_folder_must_absolute" = "Le dossier d’installation doit être un chemin absolu ou commencer par ~/.";
+"action_error_only_disk_images_installed" = "Seules les images disque (.dmg, .iso, .img, .sparseimage) peuvent être installées.";
+"action_error_no_app_in_disk_image" = "Aucune application n’a été trouvée dans cette image disque.";
+"action_error_app_already_installed" = "%1$@ se trouve déjà dans %2$@, donc rien n’a été installé. Activez « Remplacer l’app existante » pour la mettre à jour, ou supprimez-la d’abord.";
+"action_error_could_not_copy_app" = "Impossible de copier %1$@ dans %2$@, donc rien n’a été installé. %3$@";
+"action_error_could_not_install_app" = "Impossible d’installer %1$@ dans %2$@. Rien n’a été modifié et les apps déjà présentes ont été remises en place. %3$@";
+"action_error_could_not_open_disk_image" = "Impossible d’ouvrir l’image disque, donc rien n’a été installé. Elle est peut-être endommagée, protégée par un mot de passe, ou demande d’accepter un contrat de licence, ce que Forel ne peut pas faire à votre place. Ouvrez-la dans le Finder pour l’installer vous-même. %@";
+"action_error_disk_image_did_not_mount" = "L’image disque n’a pas pu être montée, donc rien n’a été installé.";
 "action_error_rename_pattern_produced_empty" = "le modèle de nom a produit un nom de fichier vide";
 "action_error_home_not_set" = "HOME n’est pas défini";
 "action_error_rename_pattern_produced_invalid" = "le modèle de nom a produit un nom de fichier non valide (contient « / »)";

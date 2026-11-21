@@ -146,6 +146,9 @@
 "rule_list_uncompress_zip" = "descomprimir ZIP";
 "rule_list_permanently_delete_source_after" = "eliminar permanentemente el origen si se completa";
 "rule_list_create_zip" = "crear ZIP";
+"rule_list_install_disk_image" = "instalar imagen de disco";
+"rule_list_replace_existing_apps" = "reemplazar las apps existentes";
+"rule_list_move_disk_image_to_trash" = "mover la imagen de disco a la papelera";
 "rule_list_tag" = "etiqueta";
 "rule_list_matched_at_least" = "%@+ coincidencias";
 "rule_list_matched_count_one" = "%@ coincidencia";
@@ -247,6 +250,14 @@
 "rule_editor_leave_empty_save_next" = "Déjalo vacío para guardar junto al origen. Los ZIP existentes se conservan; los nuevos archivos se numeran.";
 "rule_editor_delete_source_after_compression" = "Eliminar el origen tras comprimir";
 "rule_editor_after_zip_created_successfully" = "Una vez creado el ZIP, el archivo o la carpeta original y todo su contenido se eliminan permanentemente. Esto no se puede deshacer. Las acciones siguientes se aplican al ZIP.";
+"rule_editor_disk_images_only" = "Solo imágenes de disco (.dmg, .iso, .img, .sparseimage)";
+"rule_editor_install_folder" = "Carpeta de instalación";
+"rule_editor_applications_default" = "/Applications (predeterminado)";
+"rule_editor_apps_copied_here" = "Las apps se copian aquí.";
+"rule_editor_move_disk_image_to_trash" = "Mover la imagen de disco a la papelera tras instalar";
+"rule_editor_disk_image_trash_help" = "La imagen se mueve a la papelera, desde donde aún puedes recuperarla. Se conserva si esta opción está desactivada.";
+"rule_editor_replace_existing_app" = "Reemplazar la app existente";
+"rule_editor_replace_existing_app_help" = "Si ya hay una app instalada con el mismo nombre, se reemplaza por la nueva copia. La app antigua se mueve a la papelera. Si esta opción está desactivada, la instalación se detiene y se conserva la app existente.";
 "rule_editor_if_file_already_exists" = "Si ya existe un archivo";
 "rule_editor_input" = "Entrada";
 "rule_editor_deletes" = "Eliminaciones";
@@ -355,6 +366,7 @@
 "action_import_to_library" = "Importar en la biblioteca";
 "action_compress" = "Comprimir";
 "action_uncompress" = "Descomprimir";
+"action_install_disk_image" = "Instalar imagen de disco";
 
 // Action picker sections
 "action_section_finder" = "Finder";
@@ -419,6 +431,12 @@
 "action_plan_compress_permanently_delete_source" = "Comprimir en %@; eliminar permanentemente el origen si se completa";
 "action_plan_compress_renamed_avoid_existing_archive" = "Comprimir en %@ (renombrado para evitar un archivo comprimido existente); eliminar permanentemente el origen si se completa";
 "action_plan_original_file_folder_all" = "El archivo o la carpeta original y todo su contenido se eliminarán permanentemente después de crear el ZIP. Esto no se puede deshacer. Las acciones siguientes se aplican al ZIP.";
+"action_plan_skip_only_disk_images_installed" = "Omitida: solo se pueden instalar imágenes de disco (.dmg, .iso, .img, .sparseimage).";
+"action_plan_install_disk_image_to" = "Instalar las apps de la imagen de disco en %@";
+"action_plan_install_disk_image_replace" = "Instalar las apps de la imagen de disco en %@; reemplazar las apps existentes (se mueven a la papelera)";
+"action_plan_install_disk_image_trash" = "Instalar las apps de la imagen de disco en %@; mover la imagen de disco a la papelera";
+"action_plan_install_disk_image_replace_trash" = "Instalar las apps de la imagen de disco en %@; reemplazar las apps existentes (se mueven a la papelera); mover la imagen de disco a la papelera";
+"action_plan_dry_run_does_not_open_disk_image" = "La simulación no abre la imagen de disco, así que no se muestran las apps que contiene.";
 "action_plan_run_shortcut" = "Ejecutar atajo: %@";
 "action_plan_run_shortcut_input" = "Ejecutar atajo: %@ sin entrada";
 "action_plan_move_renamed_avoid_existing" = "Mover a %@ (renombrado para evitar un archivo existente)";
@@ -436,6 +454,7 @@
 "action_error_cannot_change_extension_visibility" = "No se puede cambiar la visibilidad de la extensión en este volumen.";
 "action_error_requires_param" = "%@ requiere el parámetro «%@»";
 "action_error_could_uncompress_zip_archive" = "No se pudo descomprimir el archivo ZIP: %@";
+"action_error_ditto_exited_with_status" = "ditto terminó con el código %@";
 "action_error_could_create_zip_archive" = "No se pudo crear el archivo ZIP. Se ha conservado el origen. %@";
 "action_error_zip_created_but_source" = "ZIP creado en %@, pero no se pudo eliminar el origen: %@";
 "action_error_archive_destination_must_absolute" = "El destino del archivo comprimido debe ser una ruta de carpeta absoluta o empezar por ~/.";
@@ -457,6 +476,14 @@
 "action_error_zip_archive_is_empty" = "El archivo ZIP está vacío.";
 "action_error_could_read_zip_archive" = "No se pudo leer el archivo ZIP: %@";
 "action_error_zip_archive_contains_invalid" = "El archivo ZIP contiene una ruta de entrada no válida.";
+"action_error_install_folder_must_absolute" = "La carpeta de instalación debe ser una ruta absoluta o empezar por ~/.";
+"action_error_only_disk_images_installed" = "Solo se pueden instalar imágenes de disco (.dmg, .iso, .img, .sparseimage).";
+"action_error_no_app_in_disk_image" = "No se encontró ninguna aplicación en esta imagen de disco.";
+"action_error_app_already_installed" = "%1$@ ya está en %2$@, así que no se instaló nada. Activa «Reemplazar la app existente» para actualizarla o elimínala primero.";
+"action_error_could_not_copy_app" = "No se pudo copiar %1$@ en %2$@, así que no se instaló nada. %3$@";
+"action_error_could_not_install_app" = "No se pudo instalar %1$@ en %2$@, así que no se cambió nada y las apps que ya estaban se restauraron. %3$@";
+"action_error_could_not_open_disk_image" = "No se pudo abrir la imagen de disco, así que no se instaló nada. Puede que esté dañada, protegida con contraseña o que pida aceptar un acuerdo de licencia, algo que Forel no puede hacer por ti. Ábrela en el Finder para instalarla manualmente. %@";
+"action_error_disk_image_did_not_mount" = "La imagen de disco no se montó, así que no se instaló nada.";
 "action_error_rename_pattern_produced_empty" = "el patrón de nombre produjo un nombre de archivo vacío";
 "action_error_home_not_set" = "HOME no está definido";
 "action_error_rename_pattern_produced_invalid" = "el patrón de nombre produjo un nombre de archivo no válido (contiene «/»)";

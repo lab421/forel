@@ -146,6 +146,9 @@
 "rule_list_uncompress_zip" = "uncompress ZIP";
 "rule_list_permanently_delete_source_after" = "permanently delete source after success";
 "rule_list_create_zip" = "create ZIP";
+"rule_list_install_disk_image" = "install disk image";
+"rule_list_replace_existing_apps" = "replace existing apps";
+"rule_list_move_disk_image_to_trash" = "move disk image to Trash";
 "rule_list_tag" = "tag";
 "rule_list_matched_at_least" = "%@+ matched";
 "rule_list_matched_count_one" = "%@ matched";
@@ -247,6 +250,14 @@
 "rule_editor_leave_empty_save_next" = "Leave empty to save next to the source. Existing ZIPs are kept; new archives are numbered.";
 "rule_editor_delete_source_after_compression" = "Delete source after compression";
 "rule_editor_after_zip_created_successfully" = "After the ZIP is created successfully, the original file or folder and all its contents are permanently deleted. This cannot be undone. Following actions apply to the ZIP.";
+"rule_editor_disk_images_only" = "Disk images only (.dmg, .iso, .img, .sparseimage)";
+"rule_editor_install_folder" = "Install folder";
+"rule_editor_applications_default" = "/Applications (default)";
+"rule_editor_apps_copied_here" = "Apps are copied here.";
+"rule_editor_move_disk_image_to_trash" = "Move disk image to Trash after installing";
+"rule_editor_disk_image_trash_help" = "The image is moved to the Trash, so it can still be restored from there. It is kept when this is off.";
+"rule_editor_replace_existing_app" = "Replace existing app";
+"rule_editor_replace_existing_app_help" = "If an app with the same name is already installed, it is replaced by the new copy. The old app is moved to the Trash. When this is off, the install stops and the existing app is kept.";
 "rule_editor_if_file_already_exists" = "If a file already exists";
 "rule_editor_input" = "Input";
 "rule_editor_deletes" = "Deletes";
@@ -355,6 +366,7 @@
 "action_import_to_library" = "Import to library";
 "action_compress" = "Compress";
 "action_uncompress" = "Uncompress";
+"action_install_disk_image" = "Install disk image";
 
 // Action picker sections
 "action_section_finder" = "Finder";
@@ -419,6 +431,12 @@
 "action_plan_compress_permanently_delete_source" = "Compress to %@; permanently delete source after success";
 "action_plan_compress_renamed_avoid_existing_archive" = "Compress to %@ (renamed to avoid an existing archive); permanently delete source after success";
 "action_plan_original_file_folder_all" = "The original file or folder and all its contents will be permanently deleted after the ZIP is created. This cannot be undone. Following actions apply to the ZIP.";
+"action_plan_skip_only_disk_images_installed" = "Skip — Only disk images (.dmg, .iso, .img, .sparseimage) can be installed.";
+"action_plan_install_disk_image_to" = "Install apps from disk image to %@";
+"action_plan_install_disk_image_replace" = "Install apps from disk image to %@; replace existing apps (moved to Trash)";
+"action_plan_install_disk_image_trash" = "Install apps from disk image to %@; move disk image to Trash";
+"action_plan_install_disk_image_replace_trash" = "Install apps from disk image to %@; replace existing apps (moved to Trash); move disk image to Trash";
+"action_plan_dry_run_does_not_open_disk_image" = "Dry Run does not open the disk image, so the apps it contains are not listed.";
 "action_plan_run_shortcut" = "Run shortcut: %@";
 "action_plan_run_shortcut_input" = "Run shortcut: %@ with no input";
 "action_plan_move_renamed_avoid_existing" = "Move to %@ (renamed to avoid an existing file)";
@@ -436,6 +454,7 @@
 "action_error_cannot_change_extension_visibility" = "Cannot change extension visibility on this volume.";
 "action_error_requires_param" = "%@ requires '%@' param";
 "action_error_could_uncompress_zip_archive" = "Could not uncompress ZIP archive: %@";
+"action_error_ditto_exited_with_status" = "ditto exited with status %@";
 "action_error_could_create_zip_archive" = "Could not create ZIP archive. The source was kept. %@";
 "action_error_zip_created_but_source" = "ZIP created at %@, but the source could not be deleted: %@";
 "action_error_archive_destination_must_absolute" = "Archive destination must be an absolute folder path or start with ~/.";
@@ -457,6 +476,14 @@
 "action_error_zip_archive_is_empty" = "ZIP archive is empty.";
 "action_error_could_read_zip_archive" = "Could not read ZIP archive: %@";
 "action_error_zip_archive_contains_invalid" = "ZIP archive contains an invalid entry path.";
+"action_error_install_folder_must_absolute" = "Install folder must be an absolute path or start with ~/.";
+"action_error_only_disk_images_installed" = "Only disk images (.dmg, .iso, .img, .sparseimage) can be installed.";
+"action_error_no_app_in_disk_image" = "No application was found in this disk image.";
+"action_error_app_already_installed" = "%1$@ is already in %2$@, so nothing was installed. Turn on Replace existing app to update it, or remove it first.";
+"action_error_could_not_copy_app" = "Could not copy %1$@ to %2$@, so nothing was installed. %3$@";
+"action_error_could_not_install_app" = "Could not install %1$@ in %2$@, so nothing was changed and the apps already there were put back. %3$@";
+"action_error_could_not_open_disk_image" = "Could not open the disk image, so nothing was installed. It may be damaged, protected by a password, or ask you to accept a license agreement, which Forel cannot do for you. Open it in Finder to install it by hand. %@";
+"action_error_disk_image_did_not_mount" = "The disk image did not mount, so nothing was installed.";
 "action_error_rename_pattern_produced_empty" = "rename pattern produced empty filename";
 "action_error_home_not_set" = "HOME not set";
 "action_error_rename_pattern_produced_invalid" = "rename pattern produced an invalid filename (contains '/')";

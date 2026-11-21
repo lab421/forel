@@ -425,7 +425,8 @@ public enum ActionExecutor {
         guard ditto.terminationStatus == 0 else {
             let message = String(data: errorData, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            throw ActionError("Could not uncompress ZIP archive: \(message.isEmpty ? "ditto exited \(ditto.terminationStatus)" : message)")
+            let reason = message.isEmpty ? L10n.string("action_error_ditto_exited_with_status", Int(ditto.terminationStatus)) : message
+            throw ActionError(L10n.string("action_error_could_uncompress_zip_archive", reason))
         }
 
         if plan.conflicts, plan.resolution == .replace {
@@ -497,19 +498,17 @@ public enum ActionExecutor {
         guard !trimmed.isEmpty else { return "/Applications" }
         let expanded = (trimmed as NSString).expandingTildeInPath
         guard expanded.hasPrefix("/"), !expanded.contains("\0") else {
-            throw ActionError("Install folder must be an absolute path or start with ~/.")
+            throw ActionError(L10n.string("action_error_install_folder_must_absolute"))
         }
         return (expanded as NSString).standardizingPath
     }
-
-    private static let unsupportedDiskImageMessage = "Only disk images (.dmg, .iso, .img, .sparseimage) can be installed."
 
     /// `trashDirectory` defaults to the user's Trash; tests pass their own.
     /// When the image is moved to the Trash, the result points there and can
     /// be undone like Move to Trash (the installed apps stay).
     static func installDiskImage(_ action: Action, path: String, trashDirectory: String? = nil) throws -> Applied {
         guard DiskImageInstaller.isSupported(path) else {
-            throw ActionError(unsupportedDiskImageMessage)
+            throw ActionError(L10n.string("action_error_only_disk_images_installed"))
         }
         let destination = try installDirectory(action)
         // `install` unmounts the image before returning, so it is safe to move it next.
@@ -525,20 +524,26 @@ public enum ActionExecutor {
         guard DiskImageInstaller.isSupported(path) else {
             return ActionPlan(
                 kind: action.kind,
-                description: "Skip — \(unsupportedDiskImageMessage)",
+                description: L10n.string("action_plan_skip_only_disk_images_installed"),
                 sourcePath: path,
                 targetPath: nil,
                 status: .wouldSkip,
                 finalPath: path,
                 copiedPath: nil,
-                isTerminal: true
+                isTerminal: true,
+                explainsSkip: true
             )
         }
-        var description = "Install apps from disk image to \(destination)"
-        if replacesExistingApp(action) { description += "; replace existing apps (moved to Trash)" }
+        let replaces = replacesExistingApp(action)
+        let trashesImage = deletesDiskImageAfterInstall(action)
+        let description = switch (replaces, trashesImage) {
+        case (false, false): L10n.string("action_plan_install_disk_image_to", destination)
+        case (true, false): L10n.string("action_plan_install_disk_image_replace", destination)
+        case (false, true): L10n.string("action_plan_install_disk_image_trash", destination)
+        case (true, true): L10n.string("action_plan_install_disk_image_replace_trash", destination)
+        }
         var finalPath = path
-        if deletesDiskImageAfterInstall(action) {
-            description += "; move disk image to Trash"
+        if trashesImage {
             finalPath = (try trashDir() as NSString).appendingPathComponent((path as NSString).lastPathComponent)
         }
         return ActionPlan(
@@ -550,7 +555,7 @@ public enum ActionExecutor {
             finalPath: finalPath,
             copiedPath: nil,
             isTerminal: true,
-            warning: "Dry Run does not open the disk image, so the apps it contains are not listed."
+            warning: L10n.string("action_plan_dry_run_does_not_open_disk_image")
         )
     }
 

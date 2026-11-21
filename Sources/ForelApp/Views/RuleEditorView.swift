@@ -1220,7 +1220,7 @@ private struct ActionRow: View {
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
         case .installDiskImage:
-            Text("Disk images only (.dmg, .iso, .img, .sparseimage)")
+            Text(L10n.string("rule_editor_disk_images_only"))
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .frame(minHeight: 32, alignment: .center)
@@ -1398,29 +1398,29 @@ private struct ActionOptionsView: View {
 
     private var installDiskImageOptions: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Install folder")
+            Text(L10n.string("rule_editor_install_folder"))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(ForelTheme.secondaryText)
             FolderField(
-                placeholder: "/Applications (default)",
+                placeholder: L10n.string("rule_editor_applications_default"),
                 path: paramBinding(ActionParam.destination),
-                hint: "Apps are copied here."
+                hint: L10n.string("rule_editor_apps_copied_here")
             )
             Divider()
-            Toggle("Move disk image to Trash after installing", isOn: deleteDiskImageBinding)
+            Toggle(L10n.string("rule_editor_move_disk_image_to_trash"), isOn: deleteDiskImageBinding)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .font(.system(size: 12))
-            Text("The image is moved to the Trash, so it can still be restored from there. It is kept when this is off.")
+            Text(L10n.string("rule_editor_disk_image_trash_help"))
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Divider()
-            Toggle("Replace existing app", isOn: replaceExistingAppBinding)
+            Toggle(L10n.string("rule_editor_replace_existing_app"), isOn: replaceExistingAppBinding)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .font(.system(size: 12))
-            Text("If an app with the same name is already installed, it is replaced by the new copy. The old app is moved to the Trash. When this is off, the install stops and the existing app is kept.")
+            Text(L10n.string("rule_editor_replace_existing_app_help"))
                 .font(.system(size: 11))
                 .foregroundStyle(ForelTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)

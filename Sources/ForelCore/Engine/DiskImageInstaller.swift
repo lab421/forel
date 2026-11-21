@@ -56,13 +56,13 @@ enum DiskImageInstaller {
             .filter { $0.lowercased().hasSuffix(".app") }
             .sorted()
         guard !apps.isEmpty else {
-            throw ActionError("No application was found in this disk image.")
+            throw ActionError(L10n.string("action_error_no_app_in_disk_image"))
         }
 
         let targets = apps.map { (destinationDir as NSString).appendingPathComponent($0) }
         let existing = zip(apps, targets).filter { fm.fileExists(atPath: $0.1) }
         if !replaceExisting, let first = existing.first {
-            throw ActionError("\(first.0) is already in \(destinationDir), so nothing was installed. Turn on Replace existing app to update it, or remove it first.")
+            throw ActionError(L10n.string("action_error_app_already_installed", first.0, destinationDir))
         }
 
         try fm.createDirectory(atPath: destinationDir, withIntermediateDirectories: true)
@@ -78,7 +78,7 @@ enum DiskImageInstaller {
             do {
                 try copyApp(source, copy)
             } catch {
-                throw ActionError("Could not copy \(app) to \(destinationDir), so nothing was installed. \(message(of: error))")
+                throw ActionError(L10n.string("action_error_could_not_copy_app", app, destinationDir, message(of: error)))
             }
         }
 
@@ -96,7 +96,7 @@ enum DiskImageInstaller {
                 for old in replaced.reversed() {
                     if let inTrash = old.inTrash { try? fm.moveItem(atPath: inTrash, toPath: old.original) }
                 }
-                throw ActionError("Could not install \(apps[index]) in \(destinationDir), so nothing was changed and the apps already there were put back. \(message(of: error))")
+                throw ActionError(L10n.string("action_error_could_not_install_app", apps[index], destinationDir, message(of: error)))
             }
         }
         staged.removeAll()
@@ -112,12 +112,12 @@ enum DiskImageInstaller {
             "attach", "-nobrowse", "-readonly", "-noverify", "-noautoopen", "-plist", imagePath,
         ])
         guard result.status == 0 else {
-            throw ActionError("Could not open the disk image, so nothing was installed. It may be damaged, protected by a password, or ask you to accept a license agreement, which Forel cannot do for you. Open it in Finder to install it by hand. \(result.error)")
+            throw ActionError(L10n.string("action_error_could_not_open_disk_image", result.error))
         }
         let plist = try? PropertyListSerialization.propertyList(from: result.output, options: [], format: nil)
         let entities = (plist as? [String: Any])?["system-entities"] as? [[String: Any]] ?? []
         guard let mountPoint = entities.compactMap({ $0["mount-point"] as? String }).first else {
-            throw ActionError("The disk image did not mount, so nothing was installed.")
+            throw ActionError(L10n.string("action_error_disk_image_did_not_mount"))
         }
         return mountPoint
     }
