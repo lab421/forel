@@ -698,6 +698,12 @@ private struct RuleDetails: View {
             if !destination.isEmpty { details.append("to \(destination)") }
             if ActionExecutor.deletesSourceAfterCompression(action) { details.append("permanently delete source after success") }
             return ("create ZIP", details.joined(separator: " · "))
+        case .installDiskImage:
+            let destination = action.params[ActionParam.destination]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            var details = [destination.isEmpty ? "/Applications" : destination]
+            if ActionExecutor.replacesExistingApp(action) { details.append("replace existing apps") }
+            if ActionExecutor.deletesDiskImageAfterInstall(action) { details.append("move disk image to Trash") }
+            return ("install disk image", details.joined(separator: " · "))
         }
     }
 
