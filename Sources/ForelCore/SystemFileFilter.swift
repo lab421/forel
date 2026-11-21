@@ -68,6 +68,7 @@ enum SystemFileFilter {
             // Not-yet-downloaded iCloud Drive item: ".report.pdf.icloud"
             || (filename.hasPrefix(".") && lowercased.hasSuffix(".icloud"))
             || filename.hasPrefix(".forel-uncompress-")
+            || filename.hasPrefix(DiskImageInstaller.stagingPrefix)
             || filename.hasPrefix("._")
             || filename.hasPrefix("~$")
             || incompleteDownloadPrefixes.contains { filename.hasPrefix($0) }

@@ -475,31 +475,52 @@ public enum ActionExecutor {
         return (expanded as NSString).standardizingPath
     }
 
-    private static func installDiskImage(_ action: Action, path: String) throws -> Applied {
+    private static let unsupportedDiskImageMessage = "Only disk images (.dmg, .iso, .img, .sparseimage) can be installed."
+
+    /// `trashDirectory` defaults to the user's Trash; tests pass their own.
+    /// When the image is moved to the Trash, the result points there and can
+    /// be undone like Move to Trash (the installed apps stay).
+    static func installDiskImage(_ action: Action, path: String, trashDirectory: String? = nil) throws -> Applied {
         guard DiskImageInstaller.isSupported(path) else {
-            throw ActionError("Only disk images (.dmg, .iso, .img, .sparseimage) can be installed.")
+            throw ActionError(unsupportedDiskImageMessage)
         }
         let destination = try installDirectory(action)
         // `install` unmounts the image before returning, so it is safe to move it next.
         _ = try DiskImageInstaller.install(imagePath: path, into: destination, replaceExisting: replacesExistingApp(action))
         if deletesDiskImageAfterInstall(action) {
-            _ = try moveIntoDir(path: path, destDir: try trashDir())
+            return try moveIntoDir(path: path, destDir: try trashDirectory ?? trashDir())
         }
         return Applied(newPath: path, undo: .none)
     }
 
     private static func planInstallDiskImage(_ action: Action, path: String) throws -> ActionPlan {
         let destination = try installDirectory(action)
+        guard DiskImageInstaller.isSupported(path) else {
+            return ActionPlan(
+                kind: action.kind,
+                description: "Skip — \(unsupportedDiskImageMessage)",
+                sourcePath: path,
+                targetPath: nil,
+                status: .wouldSkip,
+                finalPath: path,
+                copiedPath: nil,
+                isTerminal: true
+            )
+        }
         var description = "Install apps from disk image to \(destination)"
         if replacesExistingApp(action) { description += "; replace existing apps (moved to Trash)" }
-        if deletesDiskImageAfterInstall(action) { description += "; move disk image to Trash" }
+        var finalPath = path
+        if deletesDiskImageAfterInstall(action) {
+            description += "; move disk image to Trash"
+            finalPath = (try trashDir() as NSString).appendingPathComponent((path as NSString).lastPathComponent)
+        }
         return ActionPlan(
             kind: action.kind,
             description: description,
             sourcePath: path,
             targetPath: destination,
-            status: DiskImageInstaller.isSupported(path) ? .wouldRun : .wouldSkip,
-            finalPath: path,
+            status: .wouldRun,
+            finalPath: finalPath,
             copiedPath: nil,
             isTerminal: true,
             warning: "Dry Run does not open the disk image, so the apps it contains are not listed."
