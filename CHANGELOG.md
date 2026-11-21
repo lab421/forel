@@ -8,6 +8,12 @@ All notable changes to Forel are documented here. Format loosely follows
 ### Added
 - Added an Install disk image action that copies the apps in a disk image into Applications or a folder you choose. You can choose whether to move the disk image to the Trash afterwards, and whether an app that is already installed is replaced by the new version (the old one goes to the Trash). If an install fails partway, the apps already installed are put back as they were.
 
+### Fixed
+- Uncompressing a ZIP archive now leaves signed apps intact. Archives that carry extended attributes as AppleDouble (`._*`) files used to extract those files as extra items inside the app, which broke its signature so macOS reported it as damaged.
+
+### Changed
+- Files uncompressed from a downloaded ZIP now keep the archive's quarantine flag, so macOS checks extracted apps on first launch just as it does after a double-click in Finder.
+
 ## [1.2.0] - 2026-11-09
 
 ### Added
