@@ -30,6 +30,25 @@ import Foundation
         #expect(RuleValidator.validate(conditions).isEmpty)
     }
 
+    @Test(arguments: ["0 minutes", "0 hours", "00 days", "minutes"])
+    func relativeDurationBelowOneReportsIssue(value: String) {
+        for op in [Operator.olderThan, .withinLast] {
+            let conditions = [makeCondition(.dateModified, op, value)]
+            #expect(RuleValidator.validate(conditions) == [.init(message: "Duration must be at least 1")])
+        }
+    }
+
+    @Test(arguments: ["1 minutes", "5 minutes", "1 hours", "30 days"])
+    func relativeDurationOfAtLeastOneProducesNoIssues(value: String) {
+        for op in [Operator.olderThan, .withinLast] {
+            #expect(RuleValidator.validate([makeCondition(.dateModified, op, value)]).isEmpty)
+        }
+    }
+
+    @Test func absoluteDatesAreNotCheckedAsDurations() {
+        #expect(RuleValidator.validate([makeCondition(.dateModified, .before, "2026-01-01")]).isEmpty)
+    }
+
     @Test func multipleInvalidConditionsReportAllIssues() {
         let conditions = [
             makeCondition(.extension_, .is, ""),

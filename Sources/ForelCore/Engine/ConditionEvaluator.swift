@@ -246,18 +246,27 @@ public enum ConditionEvaluator {
         return formatter.date(from: value.trimmingCharacters(in: .whitespaces))
     }
 
-    /// Parses a relative duration ("2 hours", "30 days", "2 weeks", "6 months", "1 years")
+    /// The count of a relative duration ("5" in "5 minutes"), or nil when it
+    /// is missing or below 1: "within the last 0 hours" means nothing.
+    static func relativeDurationCount(_ value: String) -> Int? {
+        let s = value.trimmingCharacters(in: .whitespaces)
+        let numPart = s.prefix(while: \.isNumber)
+        guard let n = Int(numPart), n >= 1 else { return nil }
+        return n
+    }
+
+    /// Parses a relative duration ("5 minutes", "2 hours", "30 days", "2 weeks", "6 months", "1 years")
     /// into the cutoff instant `now - duration`. Months/years use calendar arithmetic.
     private static func cutoffDate(_ value: String) -> Date? {
         let s = value.trimmingCharacters(in: .whitespaces)
-        guard let splitIndex = s.firstIndex(where: { !$0.isNumber }) else { return nil }
-        let numPart = String(s[s.startIndex..<splitIndex]).trimmingCharacters(in: .whitespaces)
+        guard let splitIndex = s.firstIndex(where: { !$0.isNumber }),
+              let n = relativeDurationCount(s) else { return nil }
         let unitPart = String(s[splitIndex...]).trimmingCharacters(in: .whitespaces).lowercased()
-        guard let n = Int(numPart) else { return nil }
 
         let now = Date()
         var component: Calendar.Component
         switch unitPart {
+        case "minute", "minutes": component = .minute
         case "hour", "hours": component = .hour
         case "day", "days": component = .day
         case "week", "weeks": component = .weekOfYear

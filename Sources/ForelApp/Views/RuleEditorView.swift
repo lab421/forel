@@ -887,7 +887,7 @@ private struct AbsoluteDateValueEditor: View {
 
 private struct RelativeDateValueEditor: View {
     @Binding var value: String
-    private let units = ["hours", "days", "weeks", "months", "years"]
+    private let units = ["minutes", "hours", "days", "weeks", "months", "years"]
 
     var body: some View {
         HStack(spacing: 8) {
@@ -916,6 +916,7 @@ private struct RelativeDateValueEditor: View {
     /// The stored value keeps the English unit ("7 days"): the engine reads it.
     private static func unitLabel(_ unit: String) -> String {
         switch unit {
+        case "minutes": L10n.string("rule_editor_minutes")
         case "hours": L10n.string("rule_editor_hours")
         case "days": L10n.string("rule_editor_days")
         case "weeks": L10n.string("rule_editor_weeks")

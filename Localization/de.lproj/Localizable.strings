@@ -216,6 +216,7 @@
 "rule_editor_archive_matches_compressed_formats" = "Archiv umfasst komprimierte Formate wie ZIP, TAR, GZ, 7Z, RAR, XZ, ZST, TGZ, TBZ und CAB.";
 "rule_editor_invalid_regular_expression" = "Ungültiger regulärer Ausdruck";
 "rule_editor_regex_pattern" = "Regulärer Ausdruck";
+"rule_editor_minutes" = "Minuten";
 "rule_editor_hours" = "Stunden";
 "rule_editor_days" = "Tagen";
 "rule_editor_weeks" = "Wochen";
@@ -557,6 +558,7 @@
 // Rule problems
 "rule_problem_locked_requires_true_false" = "„Geschützt“ erfordert „wahr“ oder „falsch“";
 "rule_problem_condition_value_cannot_empty" = "Der Bedingungswert darf nicht leer sein";
+"rule_problem_duration_must_be_least_one" = "Die Dauer muss mindestens 1 betragen";
 "rule_problem_regex_pattern_is_invalid" = "Der reguläre Ausdruck ist ungültig";
 "rule_problem_destination_path_cannot_empty" = "Der Zielpfad darf nicht leer sein";
 "rule_problem_rename_pattern_cannot_empty" = "Das Umbenennungsmuster darf nicht leer sein";

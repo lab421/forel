@@ -8,8 +8,10 @@ All notable changes to Forel are documented here. Format loosely follows
 ### Added
 - Forel is now available in French, Spanish, and German. It follows the language of your Mac, or the one you choose in Settings > General > Language, applied after a relaunch.
 - Added an Install disk image action that copies the apps in a disk image into Applications or a folder you choose. You can choose whether to move the disk image to the Trash afterwards, and whether an app that is already installed is replaced by the new version (the old one goes to the Trash). If an install fails partway, the apps already installed are put back as they were.
+- Date conditions can now use minutes, for example "Date modified is not in the last 5 minutes".
 
 ### Fixed
+- A relative date condition can no longer be saved with a duration of 0. An existing rule that already uses one no longer matches any file: "older than 0 hours" used to match every file.
 - The rule list and the Dry Run preview now say "1 rule" and "1 item scanned" instead of "1 rules" and "1 items scanned".
 - Uncompressing a ZIP archive now leaves signed apps intact. Archives that carry extended attributes as AppleDouble (`._*`) files used to extract those files as extra items inside the app, which broke its signature so macOS reported it as damaged.
 

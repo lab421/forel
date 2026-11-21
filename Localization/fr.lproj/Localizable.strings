@@ -216,6 +216,7 @@
 "rule_editor_archive_matches_compressed_formats" = "Archive correspond aux formats compressés comme ZIP, TAR, GZ, 7Z, RAR, XZ, ZST, TGZ, TBZ et CAB.";
 "rule_editor_invalid_regular_expression" = "Expression régulière non valide";
 "rule_editor_regex_pattern" = "Expression régulière";
+"rule_editor_minutes" = "minutes";
 "rule_editor_hours" = "heures";
 "rule_editor_days" = "jours";
 "rule_editor_weeks" = "semaines";
@@ -557,6 +558,7 @@
 // Rule problems
 "rule_problem_locked_requires_true_false" = "Verrouillé requiert vrai ou faux";
 "rule_problem_condition_value_cannot_empty" = "La valeur de la condition ne peut pas être vide";
+"rule_problem_duration_must_be_least_one" = "La durée doit être d’au moins 1";
 "rule_problem_regex_pattern_is_invalid" = "L’expression régulière n’est pas valide";
 "rule_problem_destination_path_cannot_empty" = "Le chemin de destination ne peut pas être vide";
 "rule_problem_rename_pattern_cannot_empty" = "Le modèle de nom ne peut pas être vide";

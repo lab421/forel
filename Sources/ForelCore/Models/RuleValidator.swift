@@ -33,6 +33,10 @@ public enum RuleValidator {
             if condition.value.trimmingCharacters(in: .whitespaces).isEmpty {
                 return Issue(message: L10n.string("rule_problem_condition_value_cannot_empty"))
             }
+            if RuleSchema.valueKind(for: condition.kind, operator: condition.operator) == .relativeDate,
+               ConditionEvaluator.relativeDurationCount(condition.value) == nil {
+                return Issue(message: L10n.string("rule_problem_duration_must_be_least_one"))
+            }
             if condition.operator == .matchesRegex,
                (try? NSRegularExpression(pattern: condition.value)) == nil {
                 return Issue(message: L10n.string("rule_problem_regex_pattern_is_invalid"))

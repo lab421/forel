@@ -24,27 +24,77 @@ import Testing
     func hourlyConditionsAgreeInPreviewManualRunAndWatcher(kind: ConditionKind, op: Operator) throws {
         // Both files are less than a day old, but only one is less than an
         // hour old. This also catches hours accidentally being treated as days.
+        try expectAllPathsAgree(kind: kind, op: op, value: "1 hours", recentAge: 30 * 60, oldAge: 90 * 60)
+    }
+
+    @Test(arguments: [ConditionKind.dateAdded, .createdAt, .dateModified], [Operator.olderThan, .withinLast])
+    func minuteConditionsAgreeInPreviewManualRunAndWatcher(kind: ConditionKind, op: Operator) throws {
+        // Both files are less than an hour old, but only one is less than
+        // five minutes old. This also catches minutes being treated as hours.
+        try expectAllPathsAgree(kind: kind, op: op, value: "5 minutes", recentAge: 2 * 60, oldAge: 10 * 60)
+    }
+
+    /// A zero duration is meaningless: "older than 0 hours" must not match
+    /// every file, so it matches none, whatever the execution path.
+    @Test(arguments: [Operator.olderThan, .withinLast], ["0 minutes", "0 hours", "00 days"])
+    func zeroDurationsNeverMatchInPreviewManualRunOrWatcher(op: Operator, value: String) throws {
+        for execution in ["preview", "manual", "watcher"] {
+            let dir = TempDir()
+            let input = dir.dir("Input")
+            let destination = dir.dir("Processed")
+            let file = dir.file("Input/file.txt", contents: "file")
+            try setTimestamp(.dateModified, path: file, age: 10 * 60)
+
+            let db = try Database(path: ":memory:")
+            let folder = WatchedFolder(path: input)
+            try db.insertFolder(folder)
+            var rule = makeRule(folderId: folder.id, name: "zero duration")
+            rule.conditions = [makeCondition(.dateModified, op, value, ruleId: rule.id)]
+            rule.actions = [makeAction(.moveToFolder, .object([ActionParam.destination: .string(destination)]), ruleId: rule.id)]
+            try db.insertRule(rule)
+            let rules = try db.listRules(folderId: folder.id)
+
+            switch execution {
+            case "preview":
+                #expect(RuleEngine.previewFile(path: file, depth: 0, rules: rules) == nil)
+            case "manual":
+                for entry in RuleEngine.walkEntries(root: input, maxDepth: 0) {
+                    let result = RuleEngine.run(path: entry.path, depth: entry.depth, rules: rules, batchId: "zero")
+                    #expect(result.history.isEmpty)
+                }
+            default:
+                let coordinator = WatcherCoordinator(db: db, settleInterval: 0.01)
+                coordinator.enqueue(event: .pathArrived(file))
+                coordinator.waitForPendingEvents()
+            }
+            #expect(try db.listHistory().isEmpty)
+            #expect(FileManager.default.fileExists(atPath: file))
+        }
+    }
+
+    private func expectAllPathsAgree(kind: ConditionKind, op: Operator, value: String,
+                                     recentAge: TimeInterval, oldAge: TimeInterval) throws {
         for execution in ["preview", "manual", "watcher"] {
             let dir = TempDir()
             let input = dir.dir("Input")
             let destination = dir.dir("Processed")
             let recent = dir.file("Input/recent.txt", contents: "recent")
             let old = dir.file("Input/old.txt", contents: "old")
-            try setTimestamp(kind, path: recent, age: 30 * 60)
-            try setTimestamp(kind, path: old, age: 90 * 60)
+            try setTimestamp(kind, path: recent, age: recentAge)
+            try setTimestamp(kind, path: old, age: oldAge)
             let expected = op == .withinLast ? recent : old
             let untouched = op == .withinLast ? old : recent
 
             let db = try Database(path: ":memory:")
             let folder = WatchedFolder(path: input)
             try db.insertFolder(folder)
-            var rule = makeRule(folderId: folder.id, name: "hourly condition")
-            rule.conditions = [makeCondition(kind, op, "1 hours", ruleId: rule.id)]
+            var rule = makeRule(folderId: folder.id, name: "relative date condition")
+            rule.conditions = [makeCondition(kind, op, value, ruleId: rule.id)]
             rule.actions = [makeAction(.moveToFolder, .object([ActionParam.destination: .string(destination)]), ruleId: rule.id)]
             try db.insertRule(rule)
             let rules = try db.listRules(folderId: folder.id)
             #expect(rules.first?.conditions.first?.operator == op)
-            #expect(rules.first?.conditions.first?.value == "1 hours")
+            #expect(rules.first?.conditions.first?.value == value)
 
             if execution == "preview" {
                 let preview = try #require(RuleEngine.previewFile(path: expected, depth: 0, rules: rules))
@@ -82,6 +132,10 @@ import Testing
         #expect(ConditionEvaluator.evaluate(makeCondition(.dateAdded, .withinLast, "2 hours"), path: file))
         #expect(ConditionEvaluator.evaluate(makeCondition(.dateAdded, .withinLast, "1 day"), path: file))
         #expect(!ConditionEvaluator.evaluate(makeCondition(.dateAdded, .olderThan, "1 day"), path: file))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.dateAdded, .olderThan, "1 minute"), path: file))
+        #expect(ConditionEvaluator.evaluate(makeCondition(.dateAdded, .olderThan, "89 minutes"), path: file))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.dateAdded, .olderThan, "91 minutes"), path: file))
+        #expect(!ConditionEvaluator.evaluate(makeCondition(.dateAdded, .olderThan, "0 hours"), path: file))
         #expect(!ConditionEvaluator.evaluate(makeCondition(.dateAdded, .olderThan, "hours"), path: file))
         #expect(!ConditionEvaluator.evaluate(makeCondition(.dateAdded, .olderThan, "1 invalid"), path: file))
         #expect(!ConditionEvaluator.evaluate(makeCondition(.dateAdded, .olderThan, "1 hours"), path: dir.path + "/missing.txt"))
