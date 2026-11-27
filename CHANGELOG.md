@@ -3,7 +3,7 @@
 All notable changes to Forel are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.2.1] - 2026-11-27
 
 ### Added
 - Forel is now available in French, Spanish, and German. It follows the language of your Mac, or the one you choose in Settings > General > Language, applied after a relaunch.
