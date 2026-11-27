@@ -17,6 +17,9 @@ All notable changes to Forel are documented here. Format loosely follows
 
 ### Changed
 - Files uncompressed from a downloaded ZIP now keep the archive's quarantine flag, so macOS checks extracted apps on first launch just as it does after a double-click in Finder.
+- The main window's content and Settings now use the same translucent background as the sidebar, slightly more opaque behind the content, with a line separating the sidebar. Settings no longer shows its title.
+- Rule cards in the rule list only get a coloured border when selected, no longer when expanded.
+- The Matching Files panel in the rule editor is now open by default, and stays closed once you close it.
 
 ## [1.2.0] - 2026-11-09
 

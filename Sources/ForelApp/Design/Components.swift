@@ -40,6 +40,24 @@ struct VisualEffectBlur: NSViewRepresentable {
     }
 }
 
+/// Background shared by the sidebar, the content beside it, and Settings:
+/// the translucent material the sidebar always had, up to the top of the
+/// window. The system sidebar material is nearly opaque; this lets the
+/// desktop show through.
+struct WindowBackdrop: View {
+    /// How much of the theme background covers the material: 0 keeps it as
+    /// translucent as the sidebar, higher lets less of the desktop through.
+    var opacity: Double = 0
+
+    var body: some View {
+        ZStack {
+            VisualEffectBlur(material: .hudWindow)
+            ForelTheme.background.opacity(opacity)
+        }
+        .ignoresSafeArea()
+    }
+}
+
 /// Small caps section header, e.g. "WATCHED FOLDERS".
 struct SectionLabel: View {
     let title: String

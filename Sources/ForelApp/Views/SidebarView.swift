@@ -111,9 +111,15 @@ struct SidebarView: View {
         }
         .padding(16)
         .frame(minWidth: 250)
-        // The system sidebar material is nearly opaque; this lets the desktop
-        // show through, up to the top of the window.
-        .background(VisualEffectBlur(material: .hudWindow).ignoresSafeArea())
+        .background(WindowBackdrop())
+        // The content shares this backdrop, so the edge needs its own line,
+        // up to the top of the window.
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(ForelTheme.divider)
+                .frame(width: 1)
+                .ignoresSafeArea()
+        }
     }
 
     private func folderDropTarget(_ index: Int) -> some View {

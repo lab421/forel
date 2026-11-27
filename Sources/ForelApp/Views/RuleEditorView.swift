@@ -28,9 +28,9 @@ struct RuleEditorView: View {
     @State private var upgradeContext: ProUpgradeContext?
     @EnvironmentObject private var model: AppModel
     @State private var isWide = false
-    /// Shared with the card's own toggle: closed until the user opens it,
+    /// Shared with the card's own toggle: open until the user closes it,
     /// then remembered.
-    @AppStorage(RuleMatchPreviewCard.expandedKey) private var previewExpanded = false
+    @AppStorage(RuleMatchPreviewCard.expandedKey) private var previewExpanded = true
 
     /// From this width, the matching files get their own column.
     private nonisolated static let wideLayoutWidth: CGFloat = 1000
@@ -103,7 +103,6 @@ struct RuleEditorView: View {
         }
         .padding(22)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(ForelTheme.background)
         .onGeometryChange(for: Bool.self) { $0.size.width >= Self.wideLayoutWidth } action: { isWide = $0 }
         .sheet(item: $upgradeContext) { context in ProUpgradeView(context: context) }
         // Lets the main window tell whether leaving would lose changes.
@@ -254,7 +253,7 @@ private struct RuleValidationBanner: View {
 /// The items of the folder this rule would act on right now, recomputed a
 /// moment after each edit so the effect of a condition shows before saving.
 /// Uses the same matching and planning as Dry Run and never changes a file.
-/// Collapsed by default to just its header; once opened it stays open.
+/// Open by default; once collapsed it stays collapsed.
 private struct RuleMatchPreviewCard: View {
     static let expandedKey = "ruleMatchPreviewExpanded"
 
@@ -263,7 +262,7 @@ private struct RuleMatchPreviewCard: View {
     /// Caps the list's height (it scrolls past it) where the card sits under
     /// the editor; `nil` lets it grow, e.g. in its own column.
     var listMaxHeight: CGFloat? = nil
-    @AppStorage(expandedKey) private var isExpanded = false
+    @AppStorage(expandedKey) private var isExpanded = true
     @State private var summary: RuleMatchSummary?
     @State private var isScanning = false
 

@@ -110,7 +110,6 @@ struct HistoryView: View {
         }
         .padding(16)
         .frame(minWidth: 460)
-        .background(ForelTheme.background)
         .onAppear { model.reloadHistory() }
     }
 

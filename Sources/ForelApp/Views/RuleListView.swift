@@ -145,7 +145,6 @@ struct RuleListView: View {
         .animation(.easeInOut(duration: 0.25), value: model.runNowMessageForSelectedFolder)
         .padding(16)
         .frame(minWidth: 460)
-        .background(ForelTheme.background)
     }
 
     private func requestCopy(_ ruleIDs: Set<String>) {
@@ -460,7 +459,7 @@ private struct RuleCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(
-                    isSelected ? ForelTheme.accent : (isExpanded ? ForelTheme.accent.opacity(0.55) : ForelTheme.surfaceBorder),
+                    isSelected ? ForelTheme.accent : ForelTheme.surfaceBorder,
                     lineWidth: isSelected ? 1.5 : 1
                 )
         )

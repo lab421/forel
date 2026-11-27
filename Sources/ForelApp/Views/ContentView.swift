@@ -45,6 +45,10 @@ struct ContentView: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Slightly less translucent than the sidebar, so the content
+            // stays readable over a busy desktop.
+            .background(WindowBackdrop(opacity: 0.55))
             .overlay(alignment: .bottomTrailing) {
                 if !model.isPro, model.editingRule == nil {
                     Button(L10n.string("discover_pro")) { model.proUpgrade = .folders }

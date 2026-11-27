@@ -47,8 +47,11 @@ struct SettingsView: View {
             detail
         }
         .frame(width: 600, height: 440)
-        .background(ForelTheme.background)
+        .background(WindowBackdrop())
         .navigationTitle(L10n.string("settings"))
+        // The title stays for the Window menu and VoiceOver, but isn't drawn
+        // in the title bar.
+        .background(WindowAccessor { $0.titleVisibility = .hidden })
         .onAppear {
             let storedLogin = (try? model.db.getSetting("launch_at_login")) ?? nil
             launchAtLogin = LoginItem.isEnabled || storedLogin == "1"
